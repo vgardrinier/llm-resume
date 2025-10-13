@@ -46,6 +46,7 @@ Your job:
 - Produce a one-page résumé tailored to the role.
 - Format in clean Markdown, optimized for LLM/ATS parsing (no columns, no tables, no images).
 - Include key measurable achievements and keywords from the job description.
+- Do not invent things such as dates, locations or companies, a resume is data-sensitive so our users expect accuracy and trust
 - Ensure it fits a founder/engineer hybrid tone (builder, results-driven, technically fluent).
 - Output *only* valid JSON with the following structure:
 

@@ -74,3 +74,6 @@ yarn.lock
 .pytest_cache/
 .coverage
 htmlcov/
+
+# User uploads (if any temp storage is added later)
+uploads/

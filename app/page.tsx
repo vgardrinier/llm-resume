@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
-import { FileText, Download, Sparkles } from 'lucide-react'
+import { useState, useRef } from 'react'
+import { FileText, Download, Sparkles, Upload, X } from 'lucide-react'
+import { ParseResumeResponse } from '@/types/api'
 
 interface ResumeResult {
   resume_md: string
@@ -15,6 +16,12 @@ export default function Home() {
   const [companyVision, setCompanyVision] = useState('')
   const [result, setResult] = useState<ResumeResult | null>(null)
   const [loading, setLoading] = useState(false)
+  
+  // PDF upload state
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+  const [parseLoading, setParseLoading] = useState(false)
+  const [parseError, setParseError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const generateResume = async () => {
     setLoading(true)
@@ -59,6 +66,79 @@ export default function Home() {
     URL.revokeObjectURL(url)
   }
 
+  // PDF upload functions
+  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // Clear previous errors
+    setParseError(null)
+
+    // Client-side validation
+    if (file.size > 1024 * 1024) { // 1MB
+      setParseError('File too large. Please use a PDF under 1MB.')
+      return
+    }
+
+    if (file.type !== 'application/pdf') {
+      setParseError('Invalid file type. Please upload a PDF file.')
+      return
+    }
+
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      setParseError('Invalid file type. Please upload a PDF file.')
+      return
+    }
+
+    setUploadedFile(file)
+    setParseLoading(true)
+
+    try {
+      // Send file to parse API
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch('/api/parse-resume', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to parse PDF')
+      }
+
+      const data: ParseResumeResponse = await response.json()
+      
+      // Auto-fill the textarea with extracted text
+      setCurrentResume(data.text)
+      
+    } catch (error) {
+      console.error('PDF parsing error:', error)
+      setParseError(error instanceof Error ? error.message : 'Failed to extract text from PDF. Please paste text manually.')
+    } finally {
+      setParseLoading(false)
+    }
+  }
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click()
+  }
+
+  const handleRemoveFile = () => {
+    setUploadedFile(null)
+    setParseError(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return Math.round(bytes / 1024) + ' KB'
+    return Math.round(bytes / (1024 * 1024)) + ' MB'
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="container mx-auto px-4 py-8">
@@ -99,6 +179,62 @@ export default function Home() {
                 <label htmlFor="current-resume" className="block text-sm font-medium text-gray-700 mb-2">
                   Your Current Resume *
                 </label>
+                
+                {/* PDF Upload Section */}
+                <div className="mb-3">
+                  <button
+                    type="button"
+                    onClick={handleUploadClick}
+                    disabled={parseLoading}
+                    className="bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg border border-gray-300 flex items-center text-sm transition-colors"
+                  >
+                    {parseLoading ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-600 mr-2"></div>
+                    ) : (
+                      <Upload className="h-4 w-4 mr-2" />
+                    )}
+                    Upload Resume (PDF)
+                  </button>
+                  
+                  {/* Hidden file input */}
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
+                  
+                  {/* File chip */}
+                  {uploadedFile && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-sm flex items-center gap-2">
+                        <FileText className="h-3 w-3" />
+                        {uploadedFile.name} ({formatFileSize(uploadedFile.size)})
+                        <button
+                          type="button"
+                          onClick={handleRemoveFile}
+                          className="hover:bg-indigo-200 rounded-full p-0.5"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Error message */}
+                  {parseError && (
+                    <div className="mt-2 text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200">
+                      {parseError}
+                    </div>
+                  )}
+                  
+                  {/* Helper text */}
+                  <p className="mt-1 text-xs text-gray-500">
+                    Upload PDF or paste text manually
+                  </p>
+                </div>
+                
                 <textarea
                   id="current-resume"
                   value={currentResume}
