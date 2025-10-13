@@ -12,13 +12,12 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.27.0",
     "@types/node": "^20.9.0",
-    "@types/pdf-parse": "^1.1.5",
     "@types/react": "^18.2.37",
     "@types/react-dom": "^18.2.15",
     "autoprefixer": "^10.4.16",
     "lucide-react": "^0.291.0",
     "next": "14.0.3",
-    "pdf-parse": "^2.2.2",
+    "pdf2json": "^3.1.4",
     "postcss": "^8.4.31",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -28,5 +27,8 @@
   "devDependencies": {
     "eslint": "^8.54.0",
     "eslint-config-next": "14.0.3"
+  },
+  "overrides": {
+    "pdfjs-dist": "2.16.105"
   }
 }

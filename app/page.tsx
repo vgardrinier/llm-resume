@@ -235,14 +235,40 @@ export default function Home() {
                   </p>
                 </div>
                 
-                <textarea
-                  id="current-resume"
-                  value={currentResume}
-                  onChange={(e) => setCurrentResume(e.target.value)}
-                  placeholder="Paste your current resume or LinkedIn summary here..."
-                  className="w-full h-40 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  required
-                />
+                {/* Show textarea only if no file uploaded or user wants to edit */}
+                {!uploadedFile ? (
+                  <textarea
+                    id="current-resume"
+                    value={currentResume}
+                    onChange={(e) => setCurrentResume(e.target.value)}
+                    placeholder="Paste your current resume or LinkedIn summary here..."
+                    className="w-full h-40 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    required
+                  />
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-gray-600">
+                        Resume text extracted from PDF ({currentResume.length} characters)
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setUploadedFile(null)}
+                        className="text-sm text-indigo-600 hover:text-indigo-800"
+                      >
+                        Upload different file
+                      </button>
+                    </div>
+                    <textarea
+                      id="current-resume"
+                      value={currentResume}
+                      onChange={(e) => setCurrentResume(e.target.value)}
+                      placeholder="Edit your extracted resume text..."
+                      className="w-full h-40 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      required
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Company Vision (Optional) */}

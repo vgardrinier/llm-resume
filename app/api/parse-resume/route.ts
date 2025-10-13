@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-const pdf = require('pdf-parse')
+import PDFParser from 'pdf2json'
 import { normalizePdfText } from '@/lib/utils/normalizePdfText'
 import { ParseResumeResponse, ParseResumeError } from '@/types/api'
+
+// Force Node.js runtime for this API route
+export const runtime = 'nodejs'
 
 // Maximum file size: 1MB
 const MAX_FILE_SIZE = 1024 * 1024
@@ -44,22 +47,55 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Convert file to buffer for pdf-parse
+    // Convert file to buffer for pdf2json
     const buffer = Buffer.from(await file.arrayBuffer())
 
-    // Extract text from PDF
-    const pdfData = await pdf(buffer)
+    // Extract text from PDF using pdf2json
+    const pdfParser = new PDFParser()
+    
+    const pdfData = await new Promise<any>((resolve, reject) => {
+      pdfParser.on('pdfParser_dataError', (errData: any) => {
+        reject(new Error(`PDF parsing error: ${errData.parserError}`))
+      })
+      
+      pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
+        resolve(pdfData)
+      })
+      
+      pdfParser.parseBuffer(buffer)
+    })
+    
+    // Extract text from pdf2json output
+    let extractedText = ''
+    if (pdfData.Pages) {
+      for (const page of pdfData.Pages) {
+        if (page.Texts) {
+          for (const text of page.Texts) {
+            if (text.R) {
+              for (const run of text.R) {
+                if (run.T) {
+                  extractedText += decodeURIComponent(run.T) + ' '
+                }
+              }
+            }
+          }
+        }
+        extractedText += '\n'
+      }
+    }
     
     // Normalize the extracted text
-    const normalizedText = normalizePdfText(pdfData.text)
+    const normalizedText = normalizePdfText(extractedText)
+    
+    console.log(`Extracted text length: ${extractedText.length}, Normalized length: ${normalizedText.length}`)
 
     // Log metadata only (never log file contents)
-    console.log(`PDF parsed successfully: ${pdfData.numpages} pages, ${file.size} bytes`)
+    console.log(`PDF parsed successfully: ${pdfData.Pages?.length || 0} pages, ${file.size} bytes`)
 
     // Return successful response
     const response: ParseResumeResponse = {
       text: normalizedText,
-      pageCount: pdfData.numpages,
+      pageCount: pdfData.Pages?.length || 0,
       byteSize: file.size
     }
 
