@@ -1,0 +1,30 @@
+Senior Software Engineer - Full Stack
+
+We're seeking a Senior Software Engineer to join our fast-growing startup and help build scalable web applications that serve millions of users. You'll work closely with product and design teams to deliver features that drive user engagement and business growth.
+
+Key Responsibilities:
+- Architect and develop scalable full-stack web applications using React, Node.js, and PostgreSQL
+- Lead technical initiatives and mentor junior engineers
+- Collaborate with cross-functional teams to define product requirements and technical specifications
+- Optimize application performance and implement monitoring solutions
+- Build and maintain CI/CD pipelines and deployment infrastructure
+- Participate in code reviews and establish engineering best practices
+
+Required Qualifications:
+- 5+ years of software engineering experience
+- Strong proficiency in JavaScript/TypeScript, React, and Node.js
+- Experience with PostgreSQL or other relational databases
+- Familiarity with AWS or other cloud platforms
+- Experience with Docker, Kubernetes, and containerization
+- Strong understanding of software architecture and design patterns
+- Experience with agile development methodologies
+- Excellent communication and leadership skills
+
+Preferred Qualifications:
+- Experience at high-growth startups
+- Background in product development and user analytics
+- Experience with microservices architecture
+- Knowledge of ML/AI technologies
+- Previous team leadership experience
+
+We offer competitive compensation, equity, comprehensive benefits, and the opportunity to have significant impact in a fast-paced startup environment.

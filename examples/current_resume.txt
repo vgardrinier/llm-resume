@@ -1,0 +1,45 @@
+Jane Smith
+Senior Software Engineer
+jane.smith@email.com | (555) 123-4567 | linkedin.com/in/janesmith | github.com/janesmith
+
+PROFESSIONAL SUMMARY
+Experienced full-stack engineer with 6+ years building scalable web applications and leading development teams. Proven track record of delivering high-impact features that drive user growth and business metrics. Strong background in React, Node.js, and cloud infrastructure.
+
+TECHNICAL SKILLS
+Languages: JavaScript, TypeScript, Python, SQL
+Frontend: React, Vue.js, HTML5, CSS3, Webpack
+Backend: Node.js, Express, Django, REST APIs
+Databases: PostgreSQL, MongoDB, Redis
+Cloud: AWS (EC2, S3, RDS, Lambda), Docker
+Tools: Git, Jenkins, Jira, Slack
+
+WORK EXPERIENCE
+
+TechStartup Inc. | Senior Software Engineer | 2020-Present
+- Built user authentication system handling 100K+ daily active users
+- Led migration from monolithic to microservices architecture, improving deployment speed by 50%
+- Implemented real-time analytics dashboard increasing product team efficiency by 30%
+- Mentored 2 junior developers on React best practices and code review processes
+- Collaborated with design team to rebuild user onboarding, increasing conversion rate by 25%
+
+WebSolutions Co. | Software Engineer | 2018-2020
+- Developed e-commerce platform serving 500+ small businesses
+- Created automated testing suite reducing bug reports by 40%
+- Built responsive web applications using React and Node.js
+- Optimized database queries improving page load times by 35%
+- Participated in agile development cycles and daily standups
+
+StartupXYZ | Junior Developer | 2017-2018
+- Built REST APIs using Python and Django framework
+- Implemented user interface components with React and CSS
+- Fixed bugs and added features to existing web applications
+- Collaborated with senior engineers on code reviews and architecture decisions
+
+EDUCATION
+Bachelor of Science in Computer Science
+State University | 2017
+
+PROJECTS
+- Personal Finance Tracker: Full-stack web app with 1000+ users
+- Open Source Contributions: Contributed to React testing libraries
+- Machine Learning Side Project: Built recommendation system using Python
