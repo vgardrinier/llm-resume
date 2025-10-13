@@ -197,11 +197,6 @@ export default function Home() {
             )}
           </div>
         </div>
-
-        {/* Footer */}
-        <div className="text-center mt-12 text-gray-600">
-          <p>Built for founders, engineers, and technical talent who need results fast.</p>
-        </div>
       </div>
     </div>
   )
