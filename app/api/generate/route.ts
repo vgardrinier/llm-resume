@@ -5,6 +5,41 @@ import Anthropic from '@anthropic-ai/sdk'
 // Import fit score calculation
 import { calculateFitScore } from '@/lib/utils/fitScore'
 
+// Rate limiting: Track usage per session (in-memory store)
+// In production, you'd want to use Redis or a database
+const sessionUsage = new Map<string, { count: number; lastReset: number }>()
+const MAX_REQUESTS_PER_SESSION = 5
+const SESSION_DURATION = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+
+function getSessionId(request: NextRequest): string {
+  // Use IP address as session identifier
+  // In production, you might want to use a more sophisticated session management
+  const forwarded = request.headers.get('x-forwarded-for')
+  const ip = forwarded ? forwarded.split(',')[0] : request.headers.get('x-real-ip') || 'unknown'
+  return ip
+}
+
+function checkRateLimit(sessionId: string): { allowed: boolean; remaining: number; resetTime: number } {
+  const now = Date.now()
+  const sessionData = sessionUsage.get(sessionId)
+  
+  // If no session data or session expired, create new session
+  if (!sessionData || (now - sessionData.lastReset) > SESSION_DURATION) {
+    sessionUsage.set(sessionId, { count: 1, lastReset: now })
+    return { allowed: true, remaining: MAX_REQUESTS_PER_SESSION - 1, resetTime: now + SESSION_DURATION }
+  }
+  
+  // Check if under limit
+  if (sessionData.count < MAX_REQUESTS_PER_SESSION) {
+    sessionData.count++
+    sessionUsage.set(sessionId, sessionData)
+    return { allowed: true, remaining: MAX_REQUESTS_PER_SESSION - sessionData.count, resetTime: sessionData.lastReset + SESSION_DURATION }
+  }
+  
+  // Over limit
+  return { allowed: false, remaining: 0, resetTime: sessionData.lastReset + SESSION_DURATION }
+}
+
 // Create an Anthropic client instance using your API key from environment variables
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -94,7 +129,7 @@ function performSanityCheck(generatedResume: string, originalResume: string): { 
   }
 }
 
-// Auto-patch validator: Replace hallucinated numbers with neutral qualifiers
+// Auto-patch validator: Replace hallucinated numbers with contextual qualifiers
 function autoPatchHallucinations(generatedResume: string, originalResume: string): string {
   let patchedResume = generatedResume
   
@@ -105,16 +140,36 @@ function autoPatchHallucinations(generatedResume: string, originalResume: string
   // Find numeric values in generated resume
   const generatedNumbers = (generatedResume.match(numericPattern) || []) as string[]
   
-  // Replace numbers not in original with plain adjectives only
+  // Replace numbers not in original with contextual qualifiers
   generatedNumbers.forEach((num: string) => {
     if (!originalNumbers.includes(num)) {
-      // Choose appropriate plain adjective based on context
+      // Get context around the number to choose appropriate replacement
+      const contextStart = Math.max(0, generatedResume.indexOf(num) - 20)
+      const contextEnd = Math.min(generatedResume.length, generatedResume.indexOf(num) + num.length + 20)
+      const context = generatedResume.substring(contextStart, contextEnd).toLowerCase()
+      
+      // Choose contextual qualifier based on surrounding text
       let qualifier = 'significant'
-      if (num.includes('$')) qualifier = 'substantial'
-      else if (num.includes('%')) qualifier = 'notable'
-      else if (num.includes('K') || num.includes('M') || num.includes('B')) qualifier = 'strong'
-      else if (num.includes('+')) qualifier = 'notable'
-      else if (num.match(/^\d+$/)) qualifier = 'multiple'
+      
+      if (num.includes('$')) {
+        if (context.includes('revenue') || context.includes('sales')) qualifier = 'substantial'
+        else if (context.includes('budget') || context.includes('cost')) qualifier = 'notable'
+        else qualifier = 'meaningful'
+      } else if (num.includes('%')) {
+        if (context.includes('growth') || context.includes('increase')) qualifier = 'notable'
+        else if (context.includes('reduction') || context.includes('decrease')) qualifier = 'significant'
+        else qualifier = 'measurable'
+      } else if (num.includes('K') || num.includes('M') || num.includes('B')) {
+        if (context.includes('users') || context.includes('customers')) qualifier = 'large'
+        else if (context.includes('team') || context.includes('employees')) qualifier = 'sizable'
+        else qualifier = 'considerable'
+      } else if (num.includes('+')) {
+        qualifier = 'notable'
+      } else if (num.match(/^\d+$/)) {
+        if (context.includes('years') || context.includes('months')) qualifier = 'several'
+        else if (context.includes('projects') || context.includes('initiatives')) qualifier = 'multiple'
+        else qualifier = 'numerous'
+      }
       
       patchedResume = patchedResume.replace(num, qualifier)
     }
@@ -126,6 +181,23 @@ function autoPatchHallucinations(generatedResume: string, originalResume: string
 // This function handles POST requests to /api/generate
 export async function POST(request: NextRequest) {
   try {
+    // Step 0: Check rate limit
+    const sessionId = getSessionId(request)
+    const rateLimit = checkRateLimit(sessionId)
+    
+    if (!rateLimit.allowed) {
+      const resetDate = new Date(rateLimit.resetTime)
+      return NextResponse.json(
+        { 
+          error: 'Rate limit exceeded', 
+          message: `You've reached the limit of ${MAX_REQUESTS_PER_SESSION} requests per session. Try again after ${resetDate.toLocaleString()}`,
+          remaining: rateLimit.remaining,
+          resetTime: rateLimit.resetTime
+        },
+        { status: 429 }
+      )
+    }
+
     // Step 1: Extract the data sent from the frontend
     const body = await request.json()
     const { job_description, candidate_resume, creative_mode = 'balanced' } = body
@@ -157,20 +229,23 @@ export async function POST(request: NextRequest) {
     const systemPrompt = `You are a professional résumé optimizer specializing in technical and product roles.
 
 IDENTITY & ETHICS:
-- Your job is to rewrite the candidate's résumé so it fits a specific job description WITHOUT inventing untrue facts
-- You may reword, emphasize, or generalize existing achievements, but NEVER add details not implied by the candidate's background
+- Your job is to rewrite the candidate's résumé so it fits a specific job description WITHOUT inventing ANY untrue facts
+- CRITICAL: NEVER invent, fabricate, or add details not explicitly present in the original resume
+- You may ONLY reword, emphasize, or generalize existing achievements - NEVER add new information
 - You may emphasize scale or impact using relative phrasing ("significant", "double-digit", "multi-country") instead of inventing numbers
 - Do not add any numeric values that are not present or clearly implied in the original resume
 - Preserve the candidate's writing style and personality - do not genericize
 - Keep their authentic phrasing where possible
 - Tone: concise, confident, metric-oriented
 - Goal: make the résumé feel tailor-made for the role, truthful, and impressive
+- TRUST IS IRREVERSIBLE: One false claim destroys user trust forever
 
 STRUCTURE REQUIREMENTS:
 - One-page résumé (500-700 words)
 - Clean Markdown format (no columns, tables, or images)
 - Start with candidate's name, title, and contact info
 - Use strong action verbs and quantify results where possible
+- Prefer concrete verbs ("enabled", "scaled", "launched", "built", "delivered") over absolute ones ("transformed", "revolutionized", "disrupted")
 - End every experience section with a concise "impact sentence" summarizing results or vision (e.g., "Drove measurable user growth and product adoption across markets")
 - Keep impact sentences truthful but high-energy
 - Prioritize covering these job themes: ${jobFocusKeywords.join(', ')}
@@ -188,7 +263,7 @@ Return only valid JSON with this structure:
 CRITICAL: All newlines in string values must be escaped as \\n (not literal newlines).
 
 CREATIVE MODE: ${creative_mode}
-${creative_mode === 'assertive' ? '- You may elevate tone and reframe generic achievements as outcomes, still truthful\n- Use vivid, impactful adjectives: "transformative", "exceptional", "outstanding", "remarkable", "pioneering", "breakthrough"\n- Emphasize scale and impact with strong descriptors while staying factual' : ''}
+${creative_mode === 'assertive' ? '- You may elevate tone and reframe generic achievements as outcomes, still truthful\n- Use vivid, impactful adjectives: "transformative", "exceptional", "outstanding", "remarkable", "pioneering", "breakthrough"\n- Emphasize scale and impact with strong descriptors while staying factual\n- CRITICAL: Even in assertive mode, NEVER invent facts, numbers, or details not in the original resume' : ''}
 ${creative_mode === 'conservative' ? '- Maintain conservative tone, focus on factual accuracy over impact' : ''}
 
 Job Description:
@@ -326,6 +401,12 @@ ${candidate_resume}`
       
       result.fit_score = fitScore
       console.log('Fit score calculated:', fitScore.score)
+      
+      // Add rate limit info to response
+      result.rate_limit = {
+        remaining: rateLimit.remaining,
+        resetTime: rateLimit.resetTime
+      }
     } catch (parseError) {
       // If parsing fails, log the error and return a helpful message to the user
       console.error('Failed to parse Anthropic response:', parseError)
