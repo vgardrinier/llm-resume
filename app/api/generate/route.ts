@@ -129,7 +129,7 @@ function performSanityCheck(generatedResume: string, originalResume: string): { 
   }
 }
 
-// Auto-patch validator: Replace hallucinated numbers with neutral qualifiers
+// Auto-patch validator: Replace hallucinated numbers with contextual qualifiers
 function autoPatchHallucinations(generatedResume: string, originalResume: string): string {
   let patchedResume = generatedResume
   
@@ -140,16 +140,36 @@ function autoPatchHallucinations(generatedResume: string, originalResume: string
   // Find numeric values in generated resume
   const generatedNumbers = (generatedResume.match(numericPattern) || []) as string[]
   
-  // Replace numbers not in original with plain adjectives only
+  // Replace numbers not in original with contextual qualifiers
   generatedNumbers.forEach((num: string) => {
     if (!originalNumbers.includes(num)) {
-      // Choose appropriate plain adjective based on context
+      // Get context around the number to choose appropriate replacement
+      const contextStart = Math.max(0, generatedResume.indexOf(num) - 20)
+      const contextEnd = Math.min(generatedResume.length, generatedResume.indexOf(num) + num.length + 20)
+      const context = generatedResume.substring(contextStart, contextEnd).toLowerCase()
+      
+      // Choose contextual qualifier based on surrounding text
       let qualifier = 'significant'
-      if (num.includes('$')) qualifier = 'substantial'
-      else if (num.includes('%')) qualifier = 'notable'
-      else if (num.includes('K') || num.includes('M') || num.includes('B')) qualifier = 'strong'
-      else if (num.includes('+')) qualifier = 'notable'
-      else if (num.match(/^\d+$/)) qualifier = 'multiple'
+      
+      if (num.includes('$')) {
+        if (context.includes('revenue') || context.includes('sales')) qualifier = 'substantial'
+        else if (context.includes('budget') || context.includes('cost')) qualifier = 'notable'
+        else qualifier = 'meaningful'
+      } else if (num.includes('%')) {
+        if (context.includes('growth') || context.includes('increase')) qualifier = 'notable'
+        else if (context.includes('reduction') || context.includes('decrease')) qualifier = 'significant'
+        else qualifier = 'measurable'
+      } else if (num.includes('K') || num.includes('M') || num.includes('B')) {
+        if (context.includes('users') || context.includes('customers')) qualifier = 'large'
+        else if (context.includes('team') || context.includes('employees')) qualifier = 'sizable'
+        else qualifier = 'considerable'
+      } else if (num.includes('+')) {
+        qualifier = 'notable'
+      } else if (num.match(/^\d+$/)) {
+        if (context.includes('years') || context.includes('months')) qualifier = 'several'
+        else if (context.includes('projects') || context.includes('initiatives')) qualifier = 'multiple'
+        else qualifier = 'numerous'
+      }
       
       patchedResume = patchedResume.replace(num, qualifier)
     }
@@ -209,20 +229,23 @@ export async function POST(request: NextRequest) {
     const systemPrompt = `You are a professional résumé optimizer specializing in technical and product roles.
 
 IDENTITY & ETHICS:
-- Your job is to rewrite the candidate's résumé so it fits a specific job description WITHOUT inventing untrue facts
-- You may reword, emphasize, or generalize existing achievements, but NEVER add details not implied by the candidate's background
+- Your job is to rewrite the candidate's résumé so it fits a specific job description WITHOUT inventing ANY untrue facts
+- CRITICAL: NEVER invent, fabricate, or add details not explicitly present in the original resume
+- You may ONLY reword, emphasize, or generalize existing achievements - NEVER add new information
 - You may emphasize scale or impact using relative phrasing ("significant", "double-digit", "multi-country") instead of inventing numbers
 - Do not add any numeric values that are not present or clearly implied in the original resume
 - Preserve the candidate's writing style and personality - do not genericize
 - Keep their authentic phrasing where possible
 - Tone: concise, confident, metric-oriented
 - Goal: make the résumé feel tailor-made for the role, truthful, and impressive
+- TRUST IS IRREVERSIBLE: One false claim destroys user trust forever
 
 STRUCTURE REQUIREMENTS:
 - One-page résumé (500-700 words)
 - Clean Markdown format (no columns, tables, or images)
 - Start with candidate's name, title, and contact info
 - Use strong action verbs and quantify results where possible
+- Prefer concrete verbs ("enabled", "scaled", "launched", "built", "delivered") over absolute ones ("transformed", "revolutionized", "disrupted")
 - End every experience section with a concise "impact sentence" summarizing results or vision (e.g., "Drove measurable user growth and product adoption across markets")
 - Keep impact sentences truthful but high-energy
 - Prioritize covering these job themes: ${jobFocusKeywords.join(', ')}
@@ -240,7 +263,7 @@ Return only valid JSON with this structure:
 CRITICAL: All newlines in string values must be escaped as \\n (not literal newlines).
 
 CREATIVE MODE: ${creative_mode}
-${creative_mode === 'assertive' ? '- You may elevate tone and reframe generic achievements as outcomes, still truthful\n- Use vivid, impactful adjectives: "transformative", "exceptional", "outstanding", "remarkable", "pioneering", "breakthrough"\n- Emphasize scale and impact with strong descriptors while staying factual' : ''}
+${creative_mode === 'assertive' ? '- You may elevate tone and reframe generic achievements as outcomes, still truthful\n- Use vivid, impactful adjectives: "transformative", "exceptional", "outstanding", "remarkable", "pioneering", "breakthrough"\n- Emphasize scale and impact with strong descriptors while staying factual\n- CRITICAL: Even in assertive mode, NEVER invent facts, numbers, or details not in the original resume' : ''}
 ${creative_mode === 'conservative' ? '- Maintain conservative tone, focus on factual accuracy over impact' : ''}
 
 Job Description:
