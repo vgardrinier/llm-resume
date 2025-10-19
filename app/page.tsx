@@ -22,6 +22,10 @@ interface ResumeResult {
     }
     explanation: string
   }
+  rate_limit?: {
+    remaining: number
+    resetTime: number
+  }
 }
 
 export default function Home() {
@@ -30,6 +34,8 @@ export default function Home() {
   const [creativeMode, setCreativeMode] = useState<'conservative' | 'balanced' | 'assertive'>('balanced')
   const [result, setResult] = useState<ResumeResult | null>(null)
   const [loading, setLoading] = useState(false)
+  const [remainingRequests, setRemainingRequests] = useState<number | null>(null)
+  const [rateLimitError, setRateLimitError] = useState<string | null>(null)
   
   // PDF upload state
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
@@ -39,6 +45,7 @@ export default function Home() {
 
   const generateResume = async () => {
     setLoading(true)
+    setRateLimitError(null)
     try {
       const response = await fetch('/api/generate', {
         method: 'POST',
@@ -53,11 +60,22 @@ export default function Home() {
       })
 
       if (!response.ok) {
+        if (response.status === 429) {
+          const errorData = await response.json()
+          setRateLimitError(errorData.message)
+          setRemainingRequests(errorData.remaining)
+          return
+        }
         throw new Error('Failed to generate resume')
       }
 
       const data = await response.json()
       setResult(data)
+      
+      // Update remaining requests
+      if (data.rate_limit) {
+        setRemainingRequests(data.rate_limit.remaining)
+      }
     } catch (error) {
       console.error('Error generating resume:', error)
       alert('Failed to generate resume. Please try again.')
@@ -337,10 +355,45 @@ export default function Home() {
                 </div>
               </div>
 
+              {/* Rate Limit Info */}
+              {remainingRequests !== null && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-blue-700">
+                      Requests remaining this session:
+                    </span>
+                    <span className="font-semibold text-blue-600">
+                      {remainingRequests}/5
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Rate Limit Error */}
+              {rateLimitError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="flex items-start">
+                    <div className="flex-shrink-0">
+                      <svg className="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                      </svg>
+                    </div>
+                    <div className="ml-3">
+                      <h3 className="text-sm font-medium text-red-800">
+                        Rate Limit Reached
+                      </h3>
+                      <p className="mt-1 text-sm text-red-700">
+                        {rateLimitError}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Generate Button */}
               <button
                 onClick={generateResume}
-                disabled={!jobDescription || !currentResume || loading}
+                disabled={!jobDescription || !currentResume || loading || remainingRequests === 0}
                 className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white font-semibold py-3 px-4 rounded-lg transition-colors flex items-center justify-center"
               >
                 {loading ? (
