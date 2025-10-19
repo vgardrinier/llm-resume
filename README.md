@@ -4,6 +4,7 @@ A world-class résumé generator for technical and product talent that produces 
 
 ## Features
 
+- **PDF Upload**: Upload your resume as a PDF and automatically extract text
 - **ATS-Optimized**: Clean Markdown format without columns, tables, or images
 - **Keyword Extraction**: Automatically identifies and incorporates relevant keywords from job descriptions
 - **Tailored Content**: Adapts achievements and experience to match specific role requirements
@@ -14,29 +15,54 @@ A world-class résumé generator for technical and product talent that produces 
 
 1. **Install dependencies:**
    ```bash
-   pip install -r requirements.txt
+   npm install
    ```
 
-2. **Run the generator:**
-   ```bash
-   python resume_generator.py --job-desc examples/job_description.txt --resume examples/current_resume.txt --output tailored_resume.json
+2. **Set up environment variables:**
+   Create a `.env.local` file with your Anthropic API key:
+   ```
+   ANTHROPIC_API_KEY=your_api_key_here
    ```
 
-3. **View the output:**
+3. **Run the development server:**
    ```bash
-   cat tailored_resume.json
+   npm run dev
    ```
+
+4. **Open your browser:**
+   Navigate to `http://localhost:3000`
+
+## PDF Upload Feature
+
+The application supports uploading PDF resumes for automatic text extraction:
+
+- **File Size Limit**: Maximum 1MB per file
+- **File Type**: PDF files only (.pdf extension)
+- **Text Extraction**: Server-side processing using pdf-parse
+- **Text Normalization**: Automatically cleans whitespace and limits to 10,000 characters
+- **Manual Fallback**: Manual text input remains available if PDF parsing fails
+- **Error Handling**: Clear error messages for invalid files or parsing failures
+
+### How PDF Upload Works
+
+1. Click "Upload Resume (PDF)" button
+2. Select a PDF file (≤1MB)
+3. Text is automatically extracted and fills the resume field
+4. Edit the extracted text as needed
+5. Generate your tailored resume
+
+If PDF parsing fails, you can always paste text manually in the textarea below.
 
 ## Input Requirements
 
 The generator expects:
-- **Job Description**: Plain text file with role requirements and company info
-- **Current Resume**: Your existing resume or LinkedIn summary as text
+- **Job Description**: Plain text with role requirements and company info
+- **Current Resume**: Your existing resume as PDF upload or pasted text
 - **Company Vision** (optional): Additional company culture/vision text
 
 ## Output Format
 
-The tool outputs a JSON file with:
+The tool outputs a JSON response with:
 
 ```json
 {
@@ -44,34 +70,6 @@ The tool outputs a JSON file with:
   "fit_summary": "3-line explanation of why the candidate fits the role",
   "keywords": ["keyword1", "keyword2", "keyword3"]
 }
-```
-
-## Usage Examples
-
-### Basic Usage
-```bash
-python resume_generator.py --job-desc job.txt --resume my_resume.txt
-```
-
-### With Company Vision
-```bash
-python resume_generator.py --job-desc job.txt --resume my_resume.txt --company-vision vision.txt --output custom_resume.json
-```
-
-### Programmatic Usage
-
-```python
-from resume_generator import ResumeGenerator, ResumeInput
-
-generator = ResumeGenerator()
-input_data = ResumeInput(
-    job_description="Your job description here...",
-    candidate_resume="Your current resume here...",
-    company_vision="Optional company vision..."
-)
-
-result = generator.generate_resume(input_data)
-print(result.to_json())
 ```
 
 ## Resume Guidelines
@@ -84,23 +82,60 @@ The generated resume follows these principles:
 - **Technical Keywords**: Relevant technologies and methodologies
 - **Builder Mindset**: Emphasizes creation, leadership, and impact
 
+## Tech Stack
+
+- **Frontend**: Next.js 14, React, TypeScript, Tailwind CSS
+- **Backend**: Next.js API Routes
+- **AI**: Anthropic Claude API
+- **PDF Processing**: pdf-parse library
+- **Deployment**: Vercel-ready
+
 ## Project Structure
 
 ```
 llm-resume/
-├── resume_generator.py    # Main generator script
-├── requirements.txt       # Python dependencies
-├── examples/             # Sample input files
-│   ├── job_description.txt
-│   └── current_resume.txt
-└── README.md             # This file
+├── app/
+│   ├── api/
+│   │   ├── generate/          # Resume generation endpoint
+│   │   └── parse-resume/      # PDF parsing endpoint
+│   ├── page.tsx              # Main UI component
+│   └── layout.tsx            # App layout
+├── lib/
+│   └── utils/
+│       └── normalizePdfText.ts # PDF text normalization
+├── types/
+│   └── api.ts                # TypeScript interfaces
+├── examples/                 # Sample files
+└── README.md
 ```
+
+## Development
+
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+
+2. **Run development server:**
+   ```bash
+   npm run dev
+   ```
+
+3. **Type checking:**
+   ```bash
+   npm run type-check
+   ```
+
+4. **Linting:**
+   ```bash
+   npm run lint
+   ```
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch
-3. Add tests for new functionality
+3. Make your changes
 4. Submit a pull request
 
 ## License

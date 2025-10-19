@@ -10,7 +10,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -74,3 +73,6 @@ yarn.lock
 .pytest_cache/
 .coverage
 htmlcov/
+
+# User uploads (if any temp storage is added later)
+uploads/

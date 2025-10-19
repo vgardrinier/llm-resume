@@ -2,18 +2,133 @@
 import { NextRequest, NextResponse } from 'next/server'
 // Import the Anthropic SDK to call Claude AI
 import Anthropic from '@anthropic-ai/sdk'
+// Import fit score calculation
+import { calculateFitScore } from '@/lib/utils/fitScore'
 
 // Create an Anthropic client instance using your API key from environment variables
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 })
 
+// Pre-processor: Extract job focus themes and keywords from job description
+function extractJobFocus(jobDescription: string): string[] {
+  const text = jobDescription.toLowerCase()
+  
+  // Define theme patterns to look for
+  const themePatterns = {
+    'growth': ['growth', 'scale', 'scaling', 'acquisition', 'retention', 'activation'],
+    'experimentation': ['experiment', 'testing', 'a/b test', 'optimization', 'iteration'],
+    'analytics': ['analytics', 'metrics', 'data', 'insights', 'measurement', 'tracking'],
+    'product': ['product', 'roadmap', 'strategy', 'vision', 'feature', 'launch'],
+    'technical': ['technical', 'engineering', 'development', 'architecture', 'system'],
+    'leadership': ['lead', 'manage', 'team', 'mentor', 'direct', 'oversee'],
+    'user experience': ['ux', 'user experience', 'usability', 'interface', 'design'],
+    'business': ['business', 'revenue', 'profit', 'market', 'customer', 'sales'],
+    'innovation': ['innovation', 'creative', 'disrupt', 'transform', 'pioneer'],
+    'collaboration': ['collaborate', 'cross-functional', 'stakeholder', 'partnership']
+  }
+  
+  const foundThemes: string[] = []
+  
+  // Check for each theme pattern
+  Object.entries(themePatterns).forEach(([theme, keywords]) => {
+    const hasTheme = keywords.some(keyword => text.includes(keyword))
+    if (hasTheme) {
+      foundThemes.push(theme)
+    }
+  })
+  
+  // Extract specific technical keywords
+  const techKeywords = [
+    'javascript', 'python', 'react', 'node', 'sql', 'aws', 'docker', 'kubernetes',
+    'machine learning', 'ai', 'llm', 'api', 'microservices', 'blockchain', 'web3'
+  ]
+  
+  const foundTechKeywords = techKeywords.filter(keyword => text.includes(keyword))
+  
+  // Combine themes and tech keywords, limit to top 8
+  const allKeywords = [...foundThemes, ...foundTechKeywords]
+  return allKeywords.slice(0, 8)
+}
+
+// Post-processor: Sanity check for hallucinated numbers/claims
+function performSanityCheck(generatedResume: string, originalResume: string): { hasConcerns: boolean, concerns: string[] } {
+  const concerns: string[] = []
+  
+  // Extract numbers from both resumes
+  const generatedNumbers: string[] = generatedResume.match(/\$[\d,]+|\d+%|\d+[KMB]|\d+\+|\d+\.\d+[KMB]?/g) || []
+  const originalNumbers: string[] = originalResume.match(/\$[\d,]+|\d+%|\d+[KMB]|\d+\+|\d+\.\d+[KMB]?/g) || []
+  
+  // Check for numbers in generated resume that aren't in original
+  const newNumbers = generatedNumbers.filter(num => !originalNumbers.includes(num))
+  if (newNumbers.length > 0) {
+    concerns.push(`Added metrics not in original resume: ${newNumbers.join(', ')}`)
+  }
+  
+  // Check for company names that might be hallucinated
+  const companyPattern = /(?:at|@|Company:|Employer:)\s*([A-Z][a-zA-Z\s&]+)/g
+  const generatedCompanies: string[] = []
+  const originalCompanies: string[] = []
+  
+  let match
+  while ((match = companyPattern.exec(generatedResume)) !== null) {
+    generatedCompanies.push(match[1].trim())
+  }
+  
+  companyPattern.lastIndex = 0 // Reset regex
+  while ((match = companyPattern.exec(originalResume)) !== null) {
+    originalCompanies.push(match[1].trim())
+  }
+  
+  const newCompanies = generatedCompanies.filter(company => 
+    !originalCompanies.some(orig => orig.toLowerCase().includes(company.toLowerCase()) || company.toLowerCase().includes(orig.toLowerCase()))
+  )
+  
+  if (newCompanies.length > 0) {
+    concerns.push(`Added companies not in original resume: ${newCompanies.join(', ')}`)
+  }
+  
+  return {
+    hasConcerns: concerns.length > 0,
+    concerns
+  }
+}
+
+// Auto-patch validator: Replace hallucinated numbers with neutral qualifiers
+function autoPatchHallucinations(generatedResume: string, originalResume: string): string {
+  let patchedResume = generatedResume
+  
+  // Extract all numeric patterns from both resumes
+  const numericPattern = /\$[\d,]+|\d+%|\d+[KMB]|\d+\+|\d+\.\d+[KMB]?|\d+[,\d]*/g
+  const originalNumbers = (originalResume.match(numericPattern) || []) as string[]
+  
+  // Find numeric values in generated resume
+  const generatedNumbers = (generatedResume.match(numericPattern) || []) as string[]
+  
+  // Replace numbers not in original with plain adjectives only
+  generatedNumbers.forEach((num: string) => {
+    if (!originalNumbers.includes(num)) {
+      // Choose appropriate plain adjective based on context
+      let qualifier = 'significant'
+      if (num.includes('$')) qualifier = 'substantial'
+      else if (num.includes('%')) qualifier = 'notable'
+      else if (num.includes('K') || num.includes('M') || num.includes('B')) qualifier = 'strong'
+      else if (num.includes('+')) qualifier = 'notable'
+      else if (num.match(/^\d+$/)) qualifier = 'multiple'
+      
+      patchedResume = patchedResume.replace(num, qualifier)
+    }
+  })
+  
+  return patchedResume
+}
+
 // This function handles POST requests to /api/generate
 export async function POST(request: NextRequest) {
   try {
     // Step 1: Extract the data sent from the frontend
     const body = await request.json()
-    const { job_description, candidate_resume, company_vision } = body
+    const { job_description, candidate_resume, creative_mode = 'balanced' } = body
 
     // Step 2: Validate that required fields are present
     if (!job_description || !candidate_resume) {
@@ -34,43 +149,55 @@ export async function POST(request: NextRequest) {
 
     console.log('Starting resume generation with Anthropic API...')
 
-    // Step 4: Build the prompt for Claude AI
-    // This is the "instruction manual" that tells Claude exactly what to do
-    const prompt = `You are a world-class résumé generator for technical and product talent.
-You receive:
-1. A job description (plain text)
-2. The candidate's résumé text or LinkedIn summary
-3. Optional company vision or culture text
+    // Step 4: Extract job focus themes and keywords (Pre-processor)
+    const jobFocusKeywords = extractJobFocus(job_description)
+    console.log('Extracted job focus:', jobFocusKeywords)
 
-Your job:
-- Produce a one-page résumé tailored to the role.
-- Format in clean Markdown, optimized for LLM/ATS parsing (no columns, no tables, no images).
-- Include key measurable achievements and keywords from the job description.
-- Ensure it fits a founder/engineer hybrid tone (builder, results-driven, technically fluent).
-- Output *only* valid JSON with the following structure:
+    // Step 5: Build the system prompt with identity + ethics guardrails
+    const systemPrompt = `You are a professional résumé optimizer specializing in technical and product roles.
 
+IDENTITY & ETHICS:
+- Your job is to rewrite the candidate's résumé so it fits a specific job description WITHOUT inventing untrue facts
+- You may reword, emphasize, or generalize existing achievements, but NEVER add details not implied by the candidate's background
+- You may emphasize scale or impact using relative phrasing ("significant", "double-digit", "multi-country") instead of inventing numbers
+- Do not add any numeric values that are not present or clearly implied in the original resume
+- Preserve the candidate's writing style and personality - do not genericize
+- Keep their authentic phrasing where possible
+- Tone: concise, confident, metric-oriented
+- Goal: make the résumé feel tailor-made for the role, truthful, and impressive
+
+STRUCTURE REQUIREMENTS:
+- One-page résumé (500-700 words)
+- Clean Markdown format (no columns, tables, or images)
+- Start with candidate's name, title, and contact info
+- Use strong action verbs and quantify results where possible
+- End every experience section with a concise "impact sentence" summarizing results or vision (e.g., "Drove measurable user growth and product adoption across markets")
+- Keep impact sentences truthful but high-energy
+- Prioritize covering these job themes: ${jobFocusKeywords.join(', ')}
+
+OUTPUT FORMAT:
+Return only valid JSON with this structure:
 {
-  "resume_md": "markdown resume text",
-  "fit_summary": "3-line explanation of why the candidate fits the role",
-  "keywords": ["keyword1", "keyword2", "keyword3"]
+  "resume_md": "markdown resume text with escaped newlines",
+  "fit_summary": "3-line explanation of why candidate fits + what was emphasized",
+  "changes_made": ["rewrote phrasing for clarity", "reordered experience", "emphasized growth metrics"],
+  "keywords_used": ["keyword1", "keyword2", "keyword3"],
+  "themes_covered": ["growth", "experimentation", "analytics"]
 }
 
-Follow these rules strictly:
-- The résumé must fit one printed page (about 500–700 words).
-- Always start with the candidate's name, title, and contact placeholders.
-- Use strong action verbs, quantify results, and preserve factual truth.
-- Do NOT include any explanations, markdown formatting outside the JSON, or meta-commentary.
+CRITICAL: All newlines in string values must be escaped as \\n (not literal newlines).
+
+CREATIVE MODE: ${creative_mode}
+${creative_mode === 'assertive' ? '- You may elevate tone and reframe generic achievements as outcomes, still truthful\n- Use vivid, impactful adjectives: "transformative", "exceptional", "outstanding", "remarkable", "pioneering", "breakthrough"\n- Emphasize scale and impact with strong descriptors while staying factual' : ''}
+${creative_mode === 'conservative' ? '- Maintain conservative tone, focus on factual accuracy over impact' : ''}
 
 Job Description:
 ${job_description}
 
 Candidate Resume:
-${candidate_resume}
+${candidate_resume}`
 
-${company_vision ? `Company Vision/Culture:
-${company_vision}` : ''}`
-
-    // Step 5: Call Claude AI with our prompt
+    // Step 6: Call Claude AI with our prompt
     // This sends the prompt to Claude and waits for a response
     const message = await anthropic.messages.create({
       model: 'claude-3-5-sonnet-20241022',  // Use the latest Claude model
@@ -79,36 +206,126 @@ ${company_vision}` : ''}`
       messages: [
         {
           role: 'user',                     // We're the user asking Claude
-          content: prompt                   // Our detailed instructions
+          content: systemPrompt             // Our detailed instructions
         }
       ]
     })
 
-    // Step 6: Extract the text response from Claude
+    // Step 7: Extract the text response from Claude
     const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
     console.log('Anthropic API response received, length:', responseText.length)
     
-    // Step 7: Parse Claude's JSON response
+    // Step 8: Parse Claude's JSON response
     // Claude should return JSON, but sometimes it adds extra text, so we extract just the JSON part
     let result
     try {
-      // Look for JSON object in the response (handles cases where Claude adds extra text)
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) {
-        console.error('No JSON found in response. Raw response:', responseText)
-        throw new Error('No JSON found in response')
+      // Clean the response text first - remove any markdown formatting or extra text
+      let cleanedResponse = responseText.trim()
+      
+      // Remove any markdown code blocks if present
+      cleanedResponse = cleanedResponse.replace(/```json\s*/, '').replace(/```\s*$/, '')
+      
+      // Try to find and extract the JSON object more carefully
+      let jsonString = ''
+      
+      // Look for the start of JSON object
+      const startIndex = cleanedResponse.indexOf('{')
+      if (startIndex === -1) {
+        console.error('No JSON object found in response. Raw response:', responseText)
+        throw new Error('No JSON object found in response')
       }
       
-      // Convert the JSON string to a JavaScript object
-      result = JSON.parse(jsonMatch[0])
+      // Find the matching closing brace by counting braces
+      let braceCount = 0
+      let endIndex = startIndex
+      
+      for (let i = startIndex; i < cleanedResponse.length; i++) {
+        if (cleanedResponse[i] === '{') {
+          braceCount++
+        } else if (cleanedResponse[i] === '}') {
+          braceCount--
+          if (braceCount === 0) {
+            endIndex = i
+            break
+          }
+        }
+      }
+      
+      if (braceCount !== 0) {
+        console.error('Unmatched braces in JSON. Raw response:', responseText)
+        throw new Error('Unmatched braces in JSON')
+      }
+      
+      jsonString = cleanedResponse.substring(startIndex, endIndex + 1)
+      
+      // Fix the JSON by properly escaping newlines and other characters in string values
+      // This is a more robust approach that handles the specific issue we're seeing
+      try {
+        // First try to parse as-is
+        result = JSON.parse(jsonString)
+      } catch (firstError) {
+        console.log('First parse attempt failed, trying to fix JSON...')
+        
+        // If that fails, fix the JSON by escaping newlines in string values
+        let fixedJson = jsonString
+        
+        // Find all string values and escape newlines within them
+        fixedJson = fixedJson.replace(/"([^"]*(?:\\.[^"]*)*)"/g, (match, content) => {
+          // Escape newlines, carriage returns, and tabs in the string content
+          const escaped = content
+            .replace(/\n/g, '\\n')
+            .replace(/\r/g, '\\r')
+            .replace(/\t/g, '\\t')
+            .replace(/\\/g, '\\\\')
+            .replace(/"/g, '\\"')
+          return `"${escaped}"`
+        })
+        
+        // Try parsing the fixed JSON
+        result = JSON.parse(fixedJson)
+        console.log('Successfully parsed fixed JSON')
+      }
       console.log('Successfully parsed JSON response')
       
-      // Step 8: Validate that Claude gave us the right structure
+      // Step 9: Post-processor - Sanity filtering and validation
       // Check that all required fields are present and correct types
-      if (!result.resume_md || !result.fit_summary || !Array.isArray(result.keywords)) {
+      if (!result.resume_md || !result.fit_summary) {
         console.error('Invalid response structure:', result)
         throw new Error('Invalid response structure')
       }
+      
+      // Post-processor: Auto-patch hallucinations and sanity check
+      const patchedResume = autoPatchHallucinations(result.resume_md, candidate_resume)
+      if (patchedResume !== result.resume_md) {
+        console.log('Auto-patched hallucinated numbers with neutral qualifiers')
+        result.resume_md = patchedResume
+        result.auto_patched = true
+      }
+      
+      const sanityCheck = performSanityCheck(result.resume_md, candidate_resume)
+      if (sanityCheck.hasConcerns) {
+        console.warn('Sanity check concerns:', sanityCheck.concerns)
+        // Add transparency by including concerns in response
+        result.sanity_concerns = sanityCheck.concerns
+      }
+      
+      // Ensure arrays exist with defaults
+      result.changes_made = result.changes_made || []
+      result.keywords_used = result.keywords_used || []
+      result.themes_covered = result.themes_covered || []
+      
+      // Calculate fit score using Anthropic API
+      console.log('Calculating fit score with Anthropic API...')
+      const fitScore = await calculateFitScore({
+        jobDescription: job_description,
+        candidateResume: candidate_resume,
+        generatedResume: result.resume_md,
+        keywordsUsed: result.keywords_used,
+        themesCovered: result.themes_covered
+      })
+      
+      result.fit_score = fitScore
+      console.log('Fit score calculated:', fitScore.score)
     } catch (parseError) {
       // If parsing fails, log the error and return a helpful message to the user
       console.error('Failed to parse Anthropic response:', parseError)
@@ -119,11 +336,11 @@ ${company_vision}` : ''}`
       )
     }
 
-    // Step 9: Success! Send the parsed result back to the frontend
+    // Step 10: Success! Send the parsed result back to the frontend
     return NextResponse.json(result)
 
   } catch (error) {
-    // Step 10: Handle any errors that occur during the process
+    // Step 11: Handle any errors that occur during the process
     console.error('API error:', error)
     
     // Handle Anthropic API specific errors (like invalid API key, rate limits, etc.)
