@@ -5,6 +5,41 @@ import Anthropic from '@anthropic-ai/sdk'
 // Import fit score calculation
 import { calculateFitScore } from '@/lib/utils/fitScore'
 
+// Rate limiting: Track usage per session (in-memory store)
+// In production, you'd want to use Redis or a database
+const sessionUsage = new Map<string, { count: number; lastReset: number }>()
+const MAX_REQUESTS_PER_SESSION = 5
+const SESSION_DURATION = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+
+function getSessionId(request: NextRequest): string {
+  // Use IP address as session identifier
+  // In production, you might want to use a more sophisticated session management
+  const forwarded = request.headers.get('x-forwarded-for')
+  const ip = forwarded ? forwarded.split(',')[0] : request.headers.get('x-real-ip') || 'unknown'
+  return ip
+}
+
+function checkRateLimit(sessionId: string): { allowed: boolean; remaining: number; resetTime: number } {
+  const now = Date.now()
+  const sessionData = sessionUsage.get(sessionId)
+  
+  // If no session data or session expired, create new session
+  if (!sessionData || (now - sessionData.lastReset) > SESSION_DURATION) {
+    sessionUsage.set(sessionId, { count: 1, lastReset: now })
+    return { allowed: true, remaining: MAX_REQUESTS_PER_SESSION - 1, resetTime: now + SESSION_DURATION }
+  }
+  
+  // Check if under limit
+  if (sessionData.count < MAX_REQUESTS_PER_SESSION) {
+    sessionData.count++
+    sessionUsage.set(sessionId, sessionData)
+    return { allowed: true, remaining: MAX_REQUESTS_PER_SESSION - sessionData.count, resetTime: sessionData.lastReset + SESSION_DURATION }
+  }
+  
+  // Over limit
+  return { allowed: false, remaining: 0, resetTime: sessionData.lastReset + SESSION_DURATION }
+}
+
 // Create an Anthropic client instance using your API key from environment variables
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
@@ -126,6 +161,23 @@ function autoPatchHallucinations(generatedResume: string, originalResume: string
 // This function handles POST requests to /api/generate
 export async function POST(request: NextRequest) {
   try {
+    // Step 0: Check rate limit
+    const sessionId = getSessionId(request)
+    const rateLimit = checkRateLimit(sessionId)
+    
+    if (!rateLimit.allowed) {
+      const resetDate = new Date(rateLimit.resetTime)
+      return NextResponse.json(
+        { 
+          error: 'Rate limit exceeded', 
+          message: `You've reached the limit of ${MAX_REQUESTS_PER_SESSION} requests per session. Try again after ${resetDate.toLocaleString()}`,
+          remaining: rateLimit.remaining,
+          resetTime: rateLimit.resetTime
+        },
+        { status: 429 }
+      )
+    }
+
     // Step 1: Extract the data sent from the frontend
     const body = await request.json()
     const { job_description, candidate_resume, creative_mode = 'balanced' } = body
@@ -326,6 +378,12 @@ ${candidate_resume}`
       
       result.fit_score = fitScore
       console.log('Fit score calculated:', fitScore.score)
+      
+      // Add rate limit info to response
+      result.rate_limit = {
+        remaining: rateLimit.remaining,
+        resetTime: rateLimit.resetTime
+      }
     } catch (parseError) {
       // If parsing fails, log the error and return a helpful message to the user
       console.error('Failed to parse Anthropic response:', parseError)
