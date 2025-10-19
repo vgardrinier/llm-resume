@@ -7,13 +7,27 @@ import { ParseResumeResponse } from '@/types/api'
 interface ResumeResult {
   resume_md: string
   fit_summary: string
-  keywords: string[]
+  keywords_used: string[]
+  themes_covered: string[]
+  changes_made: string[]
+  sanity_concerns?: string[]
+  auto_patched?: boolean
+  fit_score: {
+    score: number
+    breakdown: {
+      keywordMatch: number
+      themeAlignment: number
+      experienceRelevance: number
+      skillOverlap: number
+    }
+    explanation: string
+  }
 }
 
 export default function Home() {
   const [jobDescription, setJobDescription] = useState('')
   const [currentResume, setCurrentResume] = useState('')
-  const [companyVision, setCompanyVision] = useState('')
+  const [creativeMode, setCreativeMode] = useState<'conservative' | 'balanced' | 'assertive'>('balanced')
   const [result, setResult] = useState<ResumeResult | null>(null)
   const [loading, setLoading] = useState(false)
   
@@ -34,7 +48,7 @@ export default function Home() {
         body: JSON.stringify({
           job_description: jobDescription,
           candidate_resume: currentResume,
-          company_vision: companyVision || undefined,
+          creative_mode: creativeMode,
         }),
       })
 
@@ -271,18 +285,56 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Company Vision (Optional) */}
+
+              {/* Creative Mode Control */}
               <div>
-                <label htmlFor="company-vision" className="block text-sm font-medium text-gray-700 mb-2">
-                  Company Vision (Optional)
+                <label htmlFor="creative-mode" className="block text-sm font-medium text-gray-700 mb-2">
+                  Tone & Creativity Level
                 </label>
-                <textarea
-                  id="company-vision"
-                  value={companyVision}
-                  onChange={(e) => setCompanyVision(e.target.value)}
-                  placeholder="Additional company culture or vision information..."
-                  className="w-full h-24 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-4">
+                    <input
+                      type="radio"
+                      id="conservative"
+                      name="creative-mode"
+                      value="conservative"
+                      checked={creativeMode === 'conservative'}
+                      onChange={(e) => setCreativeMode(e.target.value as 'conservative' | 'balanced' | 'assertive')}
+                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                    />
+                    <label htmlFor="conservative" className="text-sm text-gray-700">
+                      <span className="font-medium">Conservative</span> - Factual accuracy over impact
+                    </label>
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <input
+                      type="radio"
+                      id="balanced"
+                      name="creative-mode"
+                      value="balanced"
+                      checked={creativeMode === 'balanced'}
+                      onChange={(e) => setCreativeMode(e.target.value as 'conservative' | 'balanced' | 'assertive')}
+                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                    />
+                    <label htmlFor="balanced" className="text-sm text-gray-700">
+                      <span className="font-medium">Balanced</span> - Optimal truth + impact (recommended)
+                    </label>
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <input
+                      type="radio"
+                      id="assertive"
+                      name="creative-mode"
+                      value="assertive"
+                      checked={creativeMode === 'assertive'}
+                      onChange={(e) => setCreativeMode(e.target.value as 'conservative' | 'balanced' | 'assertive')}
+                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                    />
+                    <label htmlFor="assertive" className="text-sm text-gray-700">
+                      <span className="font-medium">Assertive</span> - High-energy, outcome-focused
+                    </label>
+                  </div>
+                </div>
               </div>
 
               {/* Generate Button */}
@@ -314,6 +366,44 @@ export default function Home() {
               </div>
             ) : (
               <div className="space-y-6">
+                {/* Fit Score */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Fit Score</h3>
+                  <div className="bg-blue-50 p-6 rounded-lg border-l-4 border-blue-400">
+                    {/* Overall Score and Explanation */}
+                    <div className="mb-6">
+                      <div className="flex items-start gap-4 mb-4">
+                        <span className="text-4xl font-bold text-blue-600">{result.fit_score.score}%</span>
+                        <div className="flex-1">
+                          <p className="text-sm text-blue-800 leading-relaxed">
+                            {result.fit_score.explanation}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Breakdown Metrics */}
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="flex justify-between items-center py-2">
+                        <span className="text-blue-700">Keywords:</span>
+                        <span className="font-semibold text-blue-600">{result.fit_score.breakdown.keywordMatch}%</span>
+                      </div>
+                      <div className="flex justify-between items-center py-2">
+                        <span className="text-blue-700">Themes:</span>
+                        <span className="font-semibold text-blue-600">{result.fit_score.breakdown.themeAlignment}%</span>
+                      </div>
+                      <div className="flex justify-between items-center py-2">
+                        <span className="text-blue-700">Experience:</span>
+                        <span className="font-semibold text-blue-600">{result.fit_score.breakdown.experienceRelevance}%</span>
+                      </div>
+                      <div className="flex justify-between items-center py-2">
+                        <span className="text-blue-700">Skills:</span>
+                        <span className="font-semibold text-blue-600">{result.fit_score.breakdown.skillOverlap}%</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {/* Fit Summary */}
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">Why You're a Great Fit</h3>
@@ -326,7 +416,7 @@ export default function Home() {
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">Key Terms Included</h3>
                   <div className="flex flex-wrap gap-2">
-                    {result.keywords.map((keyword, index) => (
+                    {(result.keywords_used || []).map((keyword, index) => (
                       <span
                         key={index}
                         className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-sm"
@@ -336,6 +426,61 @@ export default function Home() {
                     ))}
                   </div>
                 </div>
+
+                {/* Themes Covered */}
+                {result.themes_covered && result.themes_covered.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Themes Emphasized</h3>
+                    <div className="flex flex-wrap gap-2">
+                      {result.themes_covered.map((theme, index) => (
+                        <span
+                          key={index}
+                          className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm"
+                        >
+                          {theme}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Changes Made */}
+                {result.changes_made && result.changes_made.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Optimizations Made</h3>
+                    <ul className="list-disc list-inside text-gray-700 space-y-1">
+                      {result.changes_made.map((change, index) => (
+                        <li key={index}>{change}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Sanity Concerns */}
+                {result.sanity_concerns && result.sanity_concerns.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-yellow-800 mb-2">⚠️ Review Notes</h3>
+                    <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                      <ul className="list-disc list-inside text-yellow-800 space-y-1">
+                        {result.sanity_concerns.map((concern, index) => (
+                          <li key={index}>{concern}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+
+                {/* Auto-patch Notification */}
+                {result.auto_patched && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-blue-800 mb-2">🔧 Auto-Optimized</h3>
+                    <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
+                      <p className="text-blue-800">
+                        Replaced potentially inflated numbers with neutral qualifiers to maintain accuracy while preserving impact.
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Resume Preview */}
                 <div>
