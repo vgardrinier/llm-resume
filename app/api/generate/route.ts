@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 // Import fit score calculation
 import { calculateFitScore } from '@/lib/utils/fitScore'
+// Import salary MCP utilities
+import { lookupSalary, extractJobTitleAndLocation, generateSalaryContext } from '@/lib/utils/salaryMCP'
 
 // Create an Anthropic client instance using your API key from environment variables
 const anthropic = new Anthropic({
@@ -51,41 +53,97 @@ function extractJobFocus(jobDescription: string): string[] {
   return allKeywords.slice(0, 8)
 }
 
-// Post-processor: Sanity check for hallucinated numbers/claims
+// Post-processor: Enhanced sanity check for hallucinated content
 function performSanityCheck(generatedResume: string, originalResume: string): { hasConcerns: boolean, concerns: string[] } {
   const concerns: string[] = []
   
   // Extract numbers from both resumes
-  const generatedNumbers: string[] = generatedResume.match(/\$[\d,]+|\d+%|\d+[KMB]|\d+\+|\d+\.\d+[KMB]?/g) || []
-  const originalNumbers: string[] = originalResume.match(/\$[\d,]+|\d+%|\d+[KMB]|\d+\+|\d+\.\d+[KMB]?/g) || []
+  const generatedNumbers: string[] = generatedResume.match(/\$[\d,]+|\d+%|\d+[KMB]|\d+\+|\d+\.\d+[KMB]?|\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4}/g) || []
+  const originalNumbers: string[] = originalResume.match(/\$[\d,]+|\d+%|\d+[KMB]|\d+\+|\d+\.\d+[KMB]?|\d{4}|\d{1,2}\/\d{1,2}\/\d{2,4}/g) || []
   
   // Check for numbers in generated resume that aren't in original
   const newNumbers = generatedNumbers.filter(num => !originalNumbers.includes(num))
   if (newNumbers.length > 0) {
-    concerns.push(`Added metrics not in original resume: ${newNumbers.join(', ')}`)
+    concerns.push(`Added metrics/dates not in original resume: ${newNumbers.join(', ')}`)
   }
   
-  // Check for company names that might be hallucinated
-  const companyPattern = /(?:at|@|Company:|Employer:)\s*([A-Z][a-zA-Z\s&]+)/g
+  // Enhanced company name detection
+  const companyPatterns = [
+    /(?:at|@|Company:|Employer:|worked at|joined)\s*([A-Z][a-zA-Z\s&.,]+?)(?:\s|,|\.|$)/g,
+    /([A-Z][a-zA-Z\s&.,]+?)\s+(?:Inc|Corp|LLC|Ltd|Company|Technologies|Systems|Solutions|Labs|Group)/g,
+    /([A-Z][a-zA-Z\s&.,]+?)\s+(?:Google|Microsoft|Apple|Amazon|Meta|Facebook|Tesla|Netflix|Uber|Airbnb)/g
+  ]
+  
   const generatedCompanies: string[] = []
   const originalCompanies: string[] = []
   
-  let match
-  while ((match = companyPattern.exec(generatedResume)) !== null) {
-    generatedCompanies.push(match[1].trim())
-  }
+  // Extract companies from generated resume
+  companyPatterns.forEach(pattern => {
+    let match
+    while ((match = pattern.exec(generatedResume)) !== null) {
+      const company = match[1].trim().replace(/[.,]$/, '')
+      if (company.length > 2 && company.length < 50) {
+        generatedCompanies.push(company)
+      }
+    }
+  })
   
-  companyPattern.lastIndex = 0 // Reset regex
-  while ((match = companyPattern.exec(originalResume)) !== null) {
-    originalCompanies.push(match[1].trim())
-  }
+  // Extract companies from original resume
+  companyPatterns.forEach(pattern => {
+    pattern.lastIndex = 0 // Reset regex
+    let match
+    while ((match = pattern.exec(originalResume)) !== null) {
+      const company = match[1].trim().replace(/[.,]$/, '')
+      if (company.length > 2 && company.length < 50) {
+        originalCompanies.push(company)
+      }
+    }
+  })
   
+  // Check for hallucinated companies
   const newCompanies = generatedCompanies.filter(company => 
-    !originalCompanies.some(orig => orig.toLowerCase().includes(company.toLowerCase()) || company.toLowerCase().includes(orig.toLowerCase()))
+    !originalCompanies.some(orig => 
+      orig.toLowerCase().includes(company.toLowerCase()) ||
+      company.toLowerCase().includes(orig.toLowerCase()) ||
+      // Allow partial matches for common variations
+      company.toLowerCase().replace(/\s+/g, '') === orig.toLowerCase().replace(/\s+/g, '')
+    )
   )
   
   if (newCompanies.length > 0) {
     concerns.push(`Added companies not in original resume: ${newCompanies.join(', ')}`)
+  }
+  
+  // Check for job title hallucinations
+  const titlePattern = /(?:Senior|Lead|Principal|Staff|VP|Director|Manager|Engineer|Developer|Designer|Analyst|Scientist|Architect)\s+[A-Za-z\s]+/g
+  const generatedTitles = generatedResume.match(titlePattern) || []
+  const originalTitles = originalResume.match(titlePattern) || []
+  
+  const newTitles = generatedTitles.filter(title => 
+    !originalTitles.some(orig => 
+      orig.toLowerCase().includes(title.toLowerCase()) ||
+      title.toLowerCase().includes(orig.toLowerCase())
+    )
+  )
+  
+  if (newTitles.length > 0) {
+    concerns.push(`Added job titles not in original resume: ${newTitles.join(', ')}`)
+  }
+  
+  // Check for technology/tool hallucinations
+  const techPattern = /(?:React|Angular|Vue|Node\.js|Python|Java|JavaScript|TypeScript|AWS|Azure|Docker|Kubernetes|MongoDB|PostgreSQL|Redis|GraphQL|REST|API|iOS|Android|Swift|Kotlin|TensorFlow|PyTorch|Pandas|NumPy|Scikit-learn|Jupyter|Git|GitHub|GitLab|Jenkins|CI\/CD|Agile|Scrum|Kanban)/g
+  const generatedTechs = generatedResume.match(techPattern) || []
+  const originalTechs = originalResume.match(techPattern) || []
+  
+  const newTechs = generatedTechs.filter(tech => 
+    !originalTechs.some(orig => 
+      orig.toLowerCase().includes(tech.toLowerCase()) ||
+      tech.toLowerCase().includes(orig.toLowerCase())
+    )
+  )
+  
+  if (newTechs.length > 0) {
+    concerns.push(`Added technologies not in original resume: ${newTechs.join(', ')}`)
   }
   
   return {
@@ -153,14 +211,26 @@ export async function POST(request: NextRequest) {
     const jobFocusKeywords = extractJobFocus(job_description)
     console.log('Extracted job focus:', jobFocusKeywords)
 
+    // Step 4.5: Lookup salary data for context using AI-powered extraction
+    console.log('Looking up salary data...')
+    const { role, location } = await extractJobTitleAndLocation(job_description)
+    const salaryData = await lookupSalary({ role, location })
+    const salaryContext = salaryData ? generateSalaryContext(salaryData) : ''
+    console.log('Salary lookup result:', salaryData ? `${salaryData.median.toLocaleString()} median for ${role} in ${location}` : 'No data found')
+
     // Step 5: Build the system prompt with identity + ethics guardrails
     const systemPrompt = `You are a professional résumé optimizer specializing in technical and product roles.
 
 IDENTITY & ETHICS:
-- Your job is to rewrite the candidate's résumé so it fits a specific job description WITHOUT inventing untrue facts
+- Your job is to rewrite the candidate's résumé so it fits a specific job description WITHOUT inventing ANY untrue facts
 - You may reword, emphasize, or generalize existing achievements, but NEVER add details not implied by the candidate's background
+- CRITICAL: NEVER invent company names, job titles, or specific projects that aren't in the original resume
+- CRITICAL: NEVER add specific metrics, numbers, or achievements that aren't clearly implied in the original
+- CRITICAL: NEVER invent dates, years, or time periods not mentioned in the original
+- CRITICAL: NEVER invent specific technologies, tools, or platforms not mentioned in the original
 - You may emphasize scale or impact using relative phrasing ("significant", "double-digit", "multi-country") instead of inventing numbers
-- Do not add any numeric values that are not present or clearly implied in the original resume
+- If the original mentions "mobile apps", you can say "mobile applications" but NOT "iOS and Android apps"
+- If the original mentions "web platforms", you can say "web applications" but NOT "React and Node.js"
 - Preserve the candidate's writing style and personality - do not genericize
 - Keep their authentic phrasing where possible
 - Tone: concise, confident, metric-oriented
@@ -195,7 +265,9 @@ Job Description:
 ${job_description}
 
 Candidate Resume:
-${candidate_resume}`
+${candidate_resume}
+
+${salaryContext ? `${salaryContext}\n\n` : ''}`
 
     // Step 6: Call Claude AI with our prompt
     // This sends the prompt to Claude and waits for a response
@@ -326,6 +398,11 @@ ${candidate_resume}`
       
       result.fit_score = fitScore
       console.log('Fit score calculated:', fitScore.score)
+      
+      // Add salary data to response
+      if (salaryData) {
+        result.salary_data = salaryData
+      }
     } catch (parseError) {
       // If parsing fails, log the error and return a helpful message to the user
       console.error('Failed to parse Anthropic response:', parseError)

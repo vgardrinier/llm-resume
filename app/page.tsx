@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react'
 import { FileText, Download, Sparkles, Upload, X } from 'lucide-react'
 import { ParseResumeResponse } from '@/types/api'
+import { SalaryDisplay } from '@/app/components/SalaryDisplay'
 
 interface ResumeResult {
   resume_md: string
@@ -21,6 +22,14 @@ interface ResumeResult {
       skillOverlap: number
     }
     explanation: string
+  }
+  salary_data?: {
+    low: number
+    median: number
+    high: number
+    source: string
+    role: string
+    location: string
   }
 }
 
@@ -366,50 +375,45 @@ export default function Home() {
               </div>
             ) : (
               <div className="space-y-6">
-                {/* Fit Score */}
+                {/* Salary Intelligence */}
+                {result.salary_data && (
+                  <SalaryDisplay salaryData={result.salary_data} />
+                )}
+                
+                {/* Fit Analysis - Compact & Cheeky */}
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Fit Score</h3>
-                  <div className="bg-blue-50 p-6 rounded-lg border-l-4 border-blue-400">
-                    {/* Overall Score and Explanation */}
-                    <div className="mb-6">
-                      <div className="flex items-start gap-4 mb-4">
-                        <span className="text-4xl font-bold text-blue-600">{result.fit_score.score}%</span>
-                        <div className="flex-1">
-                          <p className="text-sm text-blue-800 leading-relaxed">
-                            {result.fit_score.explanation}
-                          </p>
-                        </div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Fit Analysis</h3>
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
+                    {/* Overall Score */}
+                    <div className="flex items-center gap-4 mb-3">
+                      <div className="text-3xl font-bold text-blue-600">{result.fit_score.score}%</div>
+                      <div className="flex-1">
+                        <p className="text-sm text-blue-800 leading-relaxed">
+                          {result.fit_score.explanation}
+                        </p>
                       </div>
                     </div>
                     
-                    {/* Breakdown Metrics */}
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div className="flex justify-between items-center py-2">
-                        <span className="text-blue-700">Keywords:</span>
-                        <span className="font-semibold text-blue-600">{result.fit_score.breakdown.keywordMatch}%</span>
+                    {/* Compact Breakdown */}
+                    <div className="flex gap-6 text-xs">
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                        <span className="text-blue-700">Keywords: {result.fit_score.breakdown.keywordMatch}%</span>
                       </div>
-                      <div className="flex justify-between items-center py-2">
-                        <span className="text-blue-700">Themes:</span>
-                        <span className="font-semibold text-blue-600">{result.fit_score.breakdown.themeAlignment}%</span>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                        <span className="text-blue-700">Themes: {result.fit_score.breakdown.themeAlignment}%</span>
                       </div>
-                      <div className="flex justify-between items-center py-2">
-                        <span className="text-blue-700">Experience:</span>
-                        <span className="font-semibold text-blue-600">{result.fit_score.breakdown.experienceRelevance}%</span>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                        <span className="text-blue-700">Experience: {result.fit_score.breakdown.experienceRelevance}%</span>
                       </div>
-                      <div className="flex justify-between items-center py-2">
-                        <span className="text-blue-700">Skills:</span>
-                        <span className="font-semibold text-blue-600">{result.fit_score.breakdown.skillOverlap}%</span>
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+                        <span className="text-blue-700">Skills: {result.fit_score.breakdown.skillOverlap}%</span>
                       </div>
                     </div>
                   </div>
-                </div>
-
-                {/* Fit Summary */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Why You're a Great Fit</h3>
-                  <p className="text-gray-700 bg-green-50 p-4 rounded-lg border-l-4 border-green-400">
-                    {result.fit_summary}
-                  </p>
                 </div>
 
                 {/* Keywords */}
