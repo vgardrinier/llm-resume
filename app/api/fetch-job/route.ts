@@ -90,13 +90,51 @@ Instructions:
 
       const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
 
-      // Parse the JSON response from Claude
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/)
-      if (!jsonMatch) {
-        throw new Error('Failed to parse AI response')
-      }
+      // Parse the JSON response from Claude with robust extraction
+      let extractedData: any
 
-      const extractedData = JSON.parse(jsonMatch[0])
+      try {
+        // First, try parsing the entire response as JSON
+        extractedData = JSON.parse(responseText)
+      } catch {
+        // If that fails, try to extract JSON from code blocks or text
+        let jsonString = responseText
+
+        // Try extracting from ```json code blocks
+        const codeBlockMatch = responseText.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/)
+        if (codeBlockMatch) {
+          jsonString = codeBlockMatch[1]
+        } else {
+          // Find the first complete JSON object by counting braces
+          const firstBrace = responseText.indexOf('{')
+          if (firstBrace === -1) {
+            throw new Error('No JSON object found in AI response')
+          }
+
+          let braceCount = 0
+          let startIndex = firstBrace
+          let endIndex = -1
+
+          for (let i = firstBrace; i < responseText.length; i++) {
+            if (responseText[i] === '{') braceCount++
+            if (responseText[i] === '}') {
+              braceCount--
+              if (braceCount === 0) {
+                endIndex = i
+                break
+              }
+            }
+          }
+
+          if (endIndex === -1) {
+            throw new Error('Incomplete JSON object in AI response')
+          }
+
+          jsonString = responseText.substring(startIndex, endIndex + 1)
+        }
+
+        extractedData = JSON.parse(jsonString)
+      }
 
       if (!extractedData.jobDescription || extractedData.jobDescription.trim().length < 50) {
         return NextResponse.json(
