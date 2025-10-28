@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { FileText, Download, Sparkles, Upload, X } from 'lucide-react'
+import { FileText, Download, Sparkles, Upload, X, Link2 } from 'lucide-react'
 import { ParseResumeResponse } from '@/types/api'
 import { SalaryDisplay } from '@/app/components/SalaryDisplay'
+import { HonestCoach } from '@/app/components/HonestCoach'
 
 interface ResumeResult {
   resume_md: string
@@ -31,6 +32,11 @@ interface ResumeResult {
     role: string
     location: string
   }
+  job_metadata?: {
+    title: string
+    company: string
+    location: string
+  }
 }
 
 export default function Home() {
@@ -45,6 +51,12 @@ export default function Home() {
   const [parseLoading, setParseLoading] = useState(false)
   const [parseError, setParseError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Job URL state
+  const [jobUrl, setJobUrl] = useState('')
+  const [urlLoading, setUrlLoading] = useState(false)
+  const [urlError, setUrlError] = useState<string | null>(null)
+  const [inputMode, setInputMode] = useState<'text' | 'url'>('url')
 
   const generateResume = async () => {
     setLoading(true)
@@ -162,6 +174,48 @@ export default function Home() {
     return Math.round(bytes / (1024 * 1024)) + ' MB'
   }
 
+  // Job URL fetching
+  const handleFetchJobFromUrl = async () => {
+    if (!jobUrl.trim()) {
+      setUrlError('Please enter a valid URL')
+      return
+    }
+
+    setUrlError(null)
+    setUrlLoading(true)
+
+    try {
+      const response = await fetch('/api/fetch-job', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: jobUrl }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to fetch job description')
+      }
+
+      const data = await response.json()
+
+      // Auto-fill the textarea with extracted job description
+      setJobDescription(data.jobDescription)
+
+      // Store company info if needed (for display later)
+      if (data.companyName) {
+        console.log('Company detected:', data.companyName)
+      }
+
+    } catch (error) {
+      console.error('URL fetching error:', error)
+      setUrlError(error instanceof Error ? error.message : 'Failed to extract job description from URL. Please paste text manually.')
+    } finally {
+      setUrlLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       <div className="container mx-auto px-4 py-8">
@@ -187,14 +241,94 @@ export default function Home() {
                 <label htmlFor="job-desc" className="block text-sm font-medium text-gray-700 mb-2">
                   Job Description *
                 </label>
-                <textarea
-                  id="job-desc"
-                  value={jobDescription}
-                  onChange={(e) => setJobDescription(e.target.value)}
-                  placeholder="Paste the full job description here..."
-                  className="w-full h-40 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  required
-                />
+
+                {/* Toggle between URL and Text input */}
+                <div className="flex gap-2 mb-3">
+                  <button
+                    type="button"
+                    onClick={() => setInputMode('text')}
+                    className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+                      inputMode === 'text'
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    Paste Text
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInputMode('url')}
+                    className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+                      inputMode === 'url'
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    <Link2 className="inline h-4 w-4 mr-1" />
+                    From URL
+                  </button>
+                </div>
+
+                {/* URL Input Mode */}
+                {inputMode === 'url' && (
+                  <div className="space-y-3">
+                    <div className="flex gap-2">
+                      <input
+                        type="url"
+                        value={jobUrl}
+                        onChange={(e) => setJobUrl(e.target.value)}
+                        placeholder="https://company.com/jobs/senior-engineer"
+                        className="flex-1 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        disabled={urlLoading}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleFetchJobFromUrl}
+                        disabled={urlLoading || !jobUrl.trim()}
+                        className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white px-6 py-3 rounded-lg flex items-center text-sm transition-colors whitespace-nowrap"
+                      >
+                        {urlLoading ? (
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        ) : (
+                          <>
+                            <Link2 className="h-4 w-4 mr-2" />
+                            Fetch
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Success message */}
+                    {jobDescription && !urlLoading && (
+                      <div className="text-sm text-green-600 bg-green-50 p-2 rounded border border-green-200">
+                        ✓ Job description extracted successfully ({jobDescription.length} characters)
+                      </div>
+                    )}
+
+                    {/* Error message */}
+                    {urlError && (
+                      <div className="text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200">
+                        {urlError}
+                      </div>
+                    )}
+
+                    <p className="text-xs text-gray-500">
+                      Enter a job posting URL from LinkedIn, Indeed, Glassdoor, or any company career page
+                    </p>
+                  </div>
+                )}
+
+                {/* Text input (only shown in text mode) */}
+                {inputMode === 'text' && (
+                  <textarea
+                    id="job-desc"
+                    value={jobDescription}
+                    onChange={(e) => setJobDescription(e.target.value)}
+                    placeholder="Paste the full job description here..."
+                    className="w-full h-40 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    required
+                  />
+                )}
               </div>
 
               {/* Current Resume */}
@@ -228,38 +362,35 @@ export default function Home() {
                     className="hidden"
                   />
                   
-                  {/* File chip */}
-                  {uploadedFile && (
-                    <div className="mt-2 flex items-center gap-2">
-                      <div className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-sm flex items-center gap-2">
-                        <FileText className="h-3 w-3" />
-                        {uploadedFile.name} ({formatFileSize(uploadedFile.size)})
-                        <button
-                          type="button"
-                          onClick={handleRemoveFile}
-                          className="hover:bg-indigo-200 rounded-full p-0.5"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
+                  {/* Success message */}
+                  {uploadedFile && currentResume && !parseLoading && (
+                    <div className="mt-2 text-sm text-green-600 bg-green-50 p-2 rounded border border-green-200 flex items-center justify-between">
+                      <span>✓ Resume extracted from {uploadedFile.name} ({currentResume.length} characters)</span>
+                      <button
+                        type="button"
+                        onClick={handleRemoveFile}
+                        className="text-green-700 hover:text-green-900 underline text-xs"
+                      >
+                        Remove
+                      </button>
                     </div>
                   )}
-                  
+
                   {/* Error message */}
                   {parseError && (
                     <div className="mt-2 text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200">
                       {parseError}
                     </div>
                   )}
-                  
+
                   {/* Helper text */}
                   <p className="mt-1 text-xs text-gray-500">
                     Upload PDF or paste text manually
                   </p>
                 </div>
-                
-                {/* Show textarea only if no file uploaded or user wants to edit */}
-                {!uploadedFile ? (
+
+                {/* Show textarea only if no file uploaded */}
+                {!uploadedFile && (
                   <textarea
                     id="current-resume"
                     value={currentResume}
@@ -268,29 +399,6 @@ export default function Home() {
                     className="w-full h-40 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                     required
                   />
-                ) : (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm text-gray-600">
-                        Resume text extracted from PDF ({currentResume.length} characters)
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => setUploadedFile(null)}
-                        className="text-sm text-indigo-600 hover:text-indigo-800"
-                      >
-                        Upload different file
-                      </button>
-                    </div>
-                    <textarea
-                      id="current-resume"
-                      value={currentResume}
-                      onChange={(e) => setCurrentResume(e.target.value)}
-                      placeholder="Edit your extracted resume text..."
-                      className="w-full h-40 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                      required
-                    />
-                  </div>
                 )}
               </div>
 
@@ -375,6 +483,22 @@ export default function Home() {
               </div>
             ) : (
               <div className="space-y-6">
+                {/* The Honest Coach Chat */}
+                {result.salary_data && result.job_metadata && (
+                  <HonestCoach
+                    jobTitle={result.job_metadata.title}
+                    companyName={result.job_metadata.company}
+                    location={result.job_metadata.location}
+                    salaryMedian={result.salary_data.median}
+                    salaryLow={result.salary_data.low}
+                    salaryHigh={result.salary_data.high}
+                    fitScore={result.fit_score.score}
+                    changesMade={result.changes_made}
+                    keywordsUsed={result.keywords_used}
+                    isVisible={true}
+                  />
+                )}
+                
                 {/* Salary Intelligence */}
                 {result.salary_data && (
                   <SalaryDisplay salaryData={result.salary_data} />
