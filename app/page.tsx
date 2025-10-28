@@ -4,7 +4,6 @@ import { useState, useRef } from 'react'
 import { FileText, Download, Sparkles, Upload, X, Link2 } from 'lucide-react'
 import { ParseResumeResponse } from '@/types/api'
 import { SalaryDisplay } from '@/app/components/SalaryDisplay'
-import { HonestCoach } from '@/app/components/HonestCoach'
 
 interface ResumeResult {
   resume_md: string
@@ -30,11 +29,6 @@ interface ResumeResult {
     high: number
     source: string
     role: string
-    location: string
-  }
-  job_metadata?: {
-    title: string
-    company: string
     location: string
   }
 }
@@ -483,22 +477,6 @@ export default function Home() {
               </div>
             ) : (
               <div className="space-y-6">
-                {/* The Honest Coach Chat */}
-                {result.salary_data && result.job_metadata && (
-                  <HonestCoach
-                    jobTitle={result.job_metadata.title}
-                    companyName={result.job_metadata.company}
-                    location={result.job_metadata.location}
-                    salaryMedian={result.salary_data.median}
-                    salaryLow={result.salary_data.low}
-                    salaryHigh={result.salary_data.high}
-                    fitScore={result.fit_score.score}
-                    changesMade={result.changes_made}
-                    keywordsUsed={result.keywords_used}
-                    isVisible={true}
-                  />
-                )}
-                
                 {/* Salary Intelligence */}
                 {result.salary_data && (
                   <SalaryDisplay salaryData={result.salary_data} />
