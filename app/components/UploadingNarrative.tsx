@@ -56,7 +56,7 @@ export function UploadingNarrative({ jobDescription, companyNameHint }: Uploadin
   useEffect(() => {
     let raf: number
     const start = performance.now()
-    const rampDuration = 15000 // ~15s to ~92%
+    const rampDuration = 20000 // ~20s to ~92% (5s slower)
     const maxDuringLoad = 92
     const tick = (ts: number) => {
       const elapsed = ts - start
