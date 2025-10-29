@@ -44,7 +44,7 @@ export function UploadingNarrative({ jobDescription, companyNameHint }: Uploadin
   // Advance through beats up to the last one; then hold
   useEffect(() => {
     if (step >= beats.length - 1) return
-    const t = setTimeout(() => setStep(s => Math.min(s + 1, beats.length - 1)), 2600)
+    const t = setTimeout(() => setStep(s => Math.min(s + 1, beats.length - 1)), 4000)
     return () => clearTimeout(t)
   }, [step, beats])
 
@@ -54,12 +54,23 @@ export function UploadingNarrative({ jobDescription, companyNameHint }: Uploadin
   useEffect(() => {
     let raf: number
     const start = performance.now()
-    const duration = 10000 // ~10s to ~80%
+    const rampDuration = 15000 // ~15s to ~92%
+    const maxDuringLoad = 92
     const tick = (ts: number) => {
-      const e = Math.min(1, (ts - start) / duration)
-      const val = Math.round(80 * e)
-      progressRef.current = val
-      setProgress(val)
+      const elapsed = ts - start
+      if (elapsed <= rampDuration) {
+        const e = Math.min(1, elapsed / rampDuration)
+        const val = Math.round(maxDuringLoad * e)
+        progressRef.current = val
+        setProgress(val)
+      } else {
+        // Subtle breathing between 90–95% while we wait
+        const t2 = elapsed - rampDuration
+        const oscill = 92 + 2 * Math.sin(t2 / 800)
+        const val = Math.max(90, Math.min(95, Math.round(oscill)))
+        progressRef.current = val
+        setProgress(val)
+      }
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
@@ -104,6 +115,9 @@ export function UploadingNarrative({ jobDescription, companyNameHint }: Uploadin
               {beats[step]}
             </motion.div>
           </AnimatePresence>
+          {step === beats.length - 1 && (
+            <div className="mt-1 text-xs text-gray-500">Still working…</div>
+          )}
         </div>
       </div>
     </div>
