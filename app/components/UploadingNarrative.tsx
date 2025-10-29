@@ -33,7 +33,7 @@ export function UploadingNarrative({ jobDescription, companyNameHint }: Uploadin
     messages.push(name
       ? `Alright, let's get to work. I'm scanning your résumé and the job at ${name} now.`
       : "Alright, let's get to work. I'm scanning your résumé and the job details now.")
-    messages.push("Don't worry — I don't store your data. Just me, you, and your future recruiter 😎")
+    messages.push("Privacy check: I don't store your résumé — it's processed only for this session.")
     messages.push(name
       ? `${name} — nice pick. Ambitious team, tight hiring bar. Let's make sure you clear it.`
       : "Good pick — tight hiring bar. Let's make sure your résumé clears it.")
