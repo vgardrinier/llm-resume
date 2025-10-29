@@ -4,6 +4,7 @@ import { useState, useRef } from 'react'
 import { FileText, Download, Sparkles, Upload, X, Link2 } from 'lucide-react'
 import { ParseResumeResponse, GenerateInsightsResponse } from '@/types/api'
 import { ChatNarrator } from '@/app/components/ChatNarrator'
+import { UploadingNarrative } from '@/app/components/UploadingNarrative'
 import { InsightCard } from '@/app/components/InsightCard'
 import { ResumePreview } from '@/app/components/ResumePreview'
 
@@ -13,6 +14,7 @@ export default function Home() {
   const [creativeMode, setCreativeMode] = useState<'conservative' | 'balanced' | 'assertive'>('balanced')
   const [result, setResult] = useState<GenerateInsightsResponse | null>(null)
   const [loading, setLoading] = useState(false)
+  const [companyName, setCompanyName] = useState<string | null>(null)
   
   // PDF upload state
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
@@ -69,6 +71,7 @@ export default function Home() {
     document.body.removeChild(a)
     URL.revokeObjectURL(url)
   }
+
 
   // PDF upload functions
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -172,6 +175,7 @@ export default function Home() {
 
       // Auto-fill the textarea with extracted job description
       setJobDescription(data.jobDescription)
+      if (data.companyName) setCompanyName(data.companyName)
       setUrlFetchSuccess(true)
 
       // Store company info if needed (for display later)
@@ -461,8 +465,16 @@ export default function Home() {
 
             {!result ? (
               <div className="text-center text-gray-500 py-12">
-                <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                <p>Your tailored resume will appear here</p>
+                {loading ? (
+                  <div className="text-left">
+                    <UploadingNarrative jobDescription={jobDescription} companyNameHint={companyName ?? undefined} />
+                  </div>
+                ) : (
+                  <>
+                    <FileText className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <p>Your tailored resume will appear here</p>
+                  </>
+                )}
               </div>
             ) : (
               <div className="space-y-6">

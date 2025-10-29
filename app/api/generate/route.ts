@@ -19,63 +19,67 @@ function extractCompanyName(jobDescription: string): string {
     /(?:at|@|Company:|Employer:)\s*([A-Z][a-zA-Z\s&.,]+?)(?:\s|,|\.|$)/i,
     /([A-Z][a-zA-Z\s&.,]+?)\s+(?:Inc|Corp|LLC|Ltd|Technologies|Systems|Solutions|Labs|Group)/i
   ]
-  
+
   for (const pattern of patterns) {
     const match = jobDescription.match(pattern)
     if (match && match[1]) {
       return match[1].trim()
     }
   }
-  
+
   // Fallback: look for "at Company" pattern
   const atPattern = /at\s+([A-Z][a-zA-Z\s&.,]+?)(?:\s+in|\s+located|$|,|\.)/i
   const atMatch = jobDescription.match(atPattern)
   if (atMatch && atMatch[1]) {
     return atMatch[1].trim()
   }
-  
+
   return 'Company'
 }
 
-// Pre-processor: Extract job focus themes and keywords from job description
-function extractJobFocus(jobDescription: string): string[] {
-  const text = jobDescription.toLowerCase()
-  
-  // Define theme patterns to look for
-  const themePatterns = {
-    'growth': ['growth', 'scale', 'scaling', 'acquisition', 'retention', 'activation'],
-    'experimentation': ['experiment', 'testing', 'a/b test', 'optimization', 'iteration'],
-    'analytics': ['analytics', 'metrics', 'data', 'insights', 'measurement', 'tracking'],
-    'product': ['product', 'roadmap', 'strategy', 'vision', 'feature', 'launch'],
-    'technical': ['technical', 'engineering', 'development', 'architecture', 'system'],
-    'leadership': ['lead', 'manage', 'team', 'mentor', 'direct', 'oversee'],
-    'user experience': ['ux', 'user experience', 'usability', 'interface', 'design'],
-    'business': ['business', 'revenue', 'profit', 'market', 'customer', 'sales'],
-    'innovation': ['innovation', 'creative', 'disrupt', 'transform', 'pioneer'],
-    'collaboration': ['collaborate', 'cross-functional', 'stakeholder', 'partnership']
-  }
-  
-  const foundThemes: string[] = []
-  
-  // Check for each theme pattern
-  Object.entries(themePatterns).forEach(([theme, keywords]) => {
-    const hasTheme = keywords.some(keyword => text.includes(keyword))
-    if (hasTheme) {
-      foundThemes.push(theme)
+// AI-powered: Extract job focus themes and keywords dynamically from job description
+async function extractJobFocus(jobDescription: string): Promise<string[]> {
+  const extractionPrompt = `Analyze this job description and extract the 6-8 most important themes, focus areas, and key skills.
+
+Job Description:
+${jobDescription}
+
+Return themes that capture:
+- Core responsibilities (e.g., "growth", "product strategy", "technical architecture")
+- Key technical skills (e.g., "React", "Python", "AWS")
+- Soft skills emphasized (e.g., "leadership", "collaboration", "data-driven decision making")
+- Domain expertise (e.g., "fintech", "healthcare", "e-commerce")
+
+Be specific and prioritize what this role ACTUALLY requires. Return ONLY a JSON array of strings:
+["theme1", "theme2", "theme3", ...]
+
+Limit to 6-8 most critical themes.`
+
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-3-7-sonnet-20250219',
+      max_tokens: 500,
+      temperature: 0.3,
+      messages: [{ role: 'user', content: extractionPrompt }]
+    })
+
+    const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
+
+    // Extract JSON array from response
+    const jsonMatch = responseText.match(/\[[\s\S]*?\]/)
+    if (!jsonMatch) {
+      console.warn('No JSON array found in theme extraction response, using fallback')
+      return ['technical skills', 'product development', 'collaboration', 'problem solving']
     }
-  })
-  
-  // Extract specific technical keywords
-  const techKeywords = [
-    'javascript', 'python', 'react', 'node', 'sql', 'aws', 'docker', 'kubernetes',
-    'machine learning', 'ai', 'llm', 'api', 'microservices', 'blockchain', 'web3'
-  ]
-  
-  const foundTechKeywords = techKeywords.filter(keyword => text.includes(keyword))
-  
-  // Combine themes and tech keywords, limit to top 8
-  const allKeywords = [...foundThemes, ...foundTechKeywords]
-  return allKeywords.slice(0, 8)
+
+    const themes = JSON.parse(jsonMatch[0]) as string[]
+    return themes.slice(0, 8) // Ensure max 8 themes
+
+  } catch (error) {
+    console.error('AI theme extraction failed:', error)
+    // Fallback to generic themes
+    return ['technical skills', 'product development', 'collaboration', 'problem solving']
+  }
 }
 
 // Post-processor: Enhanced sanity check for hallucinated content
@@ -232,9 +236,10 @@ export async function POST(request: NextRequest) {
 
     console.log('Starting resume generation with Anthropic API...')
 
-    // Step 4: Extract job focus themes and keywords (Pre-processor)
-    const jobFocusKeywords = extractJobFocus(job_description)
-    console.log('Extracted job focus:', jobFocusKeywords)
+    // Step 4: Extract job focus themes and keywords using AI (Pre-processor)
+    console.log('Extracting themes and keywords with AI...')
+    const jobFocusKeywords = await extractJobFocus(job_description)
+    console.log('AI-extracted job focus:', jobFocusKeywords)
 
     // Step 4.5: Lookup salary data for context using AI-powered extraction
     console.log('Looking up salary data...')

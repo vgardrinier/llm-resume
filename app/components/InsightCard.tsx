@@ -45,7 +45,7 @@ export function InsightCard({ type, title, data, collapsed = false }: InsightCar
       <motion.div
         initial={false}
         animate={{ height: isOpen ? 'auto' : 0 }}
-        className="px-4 pb-4"
+        className="px-4 pb-4 overflow-hidden"
       >
         {/* Render variants */}
         {type === 'salary' && (
