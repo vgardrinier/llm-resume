@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { FileText, Download, Sparkles, Upload, X, Link2 } from 'lucide-react'
 import { ParseResumeResponse, GenerateInsightsResponse } from '@/types/api'
 import { ChatNarrator } from '@/app/components/ChatNarrator'
@@ -15,7 +15,8 @@ export default function Home() {
   const [result, setResult] = useState<GenerateInsightsResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [companyName, setCompanyName] = useState<string | null>(null)
-  
+  const [showResume, setShowResume] = useState(false)
+
   // PDF upload state
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [parseLoading, setParseLoading] = useState(false)
@@ -31,6 +32,7 @@ export default function Home() {
 
   const generateResume = async () => {
     setLoading(true)
+    setShowResume(false) // Reset resume visibility
     try {
       const response = await fetch('/api/generate', {
         method: 'POST',
@@ -57,6 +59,15 @@ export default function Home() {
       setLoading(false)
     }
   }
+
+  // Listen for resume reveal event from ChatNarrator
+  useEffect(() => {
+    const handleRevealResume = () => {
+      setShowResume(true)
+    }
+    window.addEventListener('reveal-resume', handleRevealResume)
+    return () => window.removeEventListener('reveal-resume', handleRevealResume)
+  }, [])
 
   const downloadMarkdown = () => {
     if (!result) return
@@ -480,19 +491,11 @@ export default function Home() {
               <div className="space-y-6">
                 <ChatNarrator insights={result.insights} />
 
-                {result.insights.optimizations && result.insights.optimizations.length > 0 && (
-                  <InsightCard type="optimizations" title="Optimizations Made" data={result.insights.optimizations} />
+                {showResume && (
+                  <div className="animate-fade-in">
+                    <ResumePreview optimized={result.optimized_resume} />
+                  </div>
                 )}
-
-                {result.insights.review_notes && result.insights.review_notes.length > 0 && (
-                  <InsightCard type="review" title="Review Notes" data={result.insights.review_notes} />
-                )}
-
-                {result.insights.auto_optimized && result.insights.auto_optimized.length > 0 && (
-                  <InsightCard type="auto_optimized" title="Auto-Optimized" data={result.insights.auto_optimized} />
-                )}
-
-                <ResumePreview optimized={result.optimized_resume} />
               </div>
             )}
           </div>
