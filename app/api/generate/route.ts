@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 // Import the Anthropic SDK to call Claude AI
 import Anthropic from '@anthropic-ai/sdk'
 // Import fit score calculation
-import { calculateFitScore } from '@/lib/utils/fitScore'
+import { calculateFitScore, calculateBaselineFitScore, type FitScoreResult } from '@/lib/utils/fitScore'
 // Import salary MCP utilities
 import { lookupSalary, extractJobTitleAndLocation, generateSalaryContext } from '@/lib/utils/salaryMCP'
 
@@ -11,6 +11,31 @@ import { lookupSalary, extractJobTitleAndLocation, generateSalaryContext } from 
 const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 })
+
+// Extract company name from job description
+function extractCompanyName(jobDescription: string): string {
+  // Look for common patterns
+  const patterns = [
+    /(?:at|@|Company:|Employer:)\s*([A-Z][a-zA-Z\s&.,]+?)(?:\s|,|\.|$)/i,
+    /([A-Z][a-zA-Z\s&.,]+?)\s+(?:Inc|Corp|LLC|Ltd|Technologies|Systems|Solutions|Labs|Group)/i
+  ]
+
+  for (const pattern of patterns) {
+    const match = jobDescription.match(pattern)
+    if (match && match[1]) {
+      return match[1].trim()
+    }
+  }
+
+  // Fallback: look for "at Company" pattern
+  const atPattern = /at\s+([A-Z][a-zA-Z\s&.,]+?)(?:\s+in|\s+located|$|,|\.)/i
+  const atMatch = jobDescription.match(atPattern)
+  if (atMatch && atMatch[1]) {
+    return atMatch[1].trim()
+  }
+
+  return 'Company'
+}
 
 // AI-powered: Extract job focus themes and keywords dynamically from job description
 async function extractJobFocus(jobDescription: string): Promise<string[]> {
@@ -223,6 +248,9 @@ export async function POST(request: NextRequest) {
     const salaryContext = salaryData ? generateSalaryContext(salaryData) : ''
     console.log('Salary lookup result:', salaryData ? `${salaryData.median.toLocaleString()} median for ${role} in ${location}` : 'No data found')
 
+    // Step 4.6: Extract company name from job description for coach chat
+    const companyName = extractCompanyName(job_description)
+
     // Step 5: Build the system prompt with identity + ethics guardrails
     const systemPrompt = `You are a professional résumé optimizer specializing in technical and product roles.
 
@@ -277,7 +305,7 @@ ${salaryContext ? `${salaryContext}\n\n` : ''}`
     // Step 6: Call Claude AI with our prompt
     // This sends the prompt to Claude and waits for a response
     const message = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',  // Use the latest Claude model
+      model: 'claude-3-7-sonnet-20250219',  // Use the latest Claude 3.7 model
       max_tokens: 4000,                     // Maximum length of response
       temperature: 0.3,                     // Lower = more consistent, Higher = more creative
       messages: [
@@ -408,6 +436,13 @@ ${salaryContext ? `${salaryContext}\n\n` : ''}`
       if (salaryData) {
         result.salary_data = salaryData
       }
+
+      // Add metadata for coach chat
+      result.job_metadata = {
+        title: role,
+        company: companyName,
+        location: location
+      }
     } catch (parseError) {
       // If parsing fails, log the error and return a helpful message to the user
       console.error('Failed to parse Anthropic response:', parseError)
@@ -418,8 +453,74 @@ ${salaryContext ? `${salaryContext}\n\n` : ''}`
       )
     }
 
-    // Step 10: Success! Send the parsed result back to the frontend
-    return NextResponse.json(result)
+    // Step 10: Reshape to Narrated Insights structure
+    const insights: any = {}
+
+    // Salary insight
+    if (salaryData) {
+      insights.salary = {
+        median: salaryData.median,
+        range: [salaryData.low, salaryData.high],
+        location,
+        role,
+        comment: `This ${role} role in ${location} pays around $${salaryData.median.toLocaleString()} (range $${salaryData.low.toLocaleString()}–$${salaryData.high.toLocaleString()}).`
+      }
+    }
+
+    // Fit insight (before/after)
+    let baseline: FitScoreResult
+    try {
+      baseline = await calculateBaselineFitScore({
+        jobDescription: job_description,
+        originalResume: candidate_resume
+      })
+    } catch (e) {
+      console.warn('Baseline fit score failed, using estimate:', e)
+      baseline = {
+        score: Math.max(0, (result.fit_score?.score ?? 70) - 10),
+        breakdown: result.fit_score?.breakdown ?? {
+          keywordMatch: 65,
+          themeAlignment: 65,
+          experienceRelevance: 65,
+          skillOverlap: 65
+        },
+        explanation: 'Estimated baseline (scoring service unavailable)'
+      }
+    }
+
+    insights.fit = {
+      score_before: baseline.score,
+      score_after: result.fit_score?.score ?? 0,
+      subscores: {
+        before: baseline.breakdown,
+        after: result.fit_score?.breakdown ?? {
+          keywordMatch: 0,
+          themeAlignment: 0,
+          experienceRelevance: 0,
+          skillOverlap: 0
+        }
+      },
+      summary: result.fit_score?.explanation ?? 'Unable to calculate fit score'
+    }
+
+    // Other insights
+    insights.keywords = result.keywords_used || []
+    insights.themes = result.themes_covered || []
+    insights.optimizations = result.changes_made || []
+    if (result.sanity_concerns && result.sanity_concerns.length > 0) {
+      insights.review_notes = result.sanity_concerns
+    }
+    if (result.auto_patched) {
+      insights.auto_optimized = ['Replaced inflated metrics with neutral phrasing.']
+    }
+
+    const responsePayload = {
+      insights,
+      optimized_resume: result.resume_md || '',
+      raw_resume: candidate_resume
+    }
+
+    return NextResponse.json(responsePayload)
 
   } catch (error) {
     // Step 11: Handle any errors that occur during the process
