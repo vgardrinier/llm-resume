@@ -427,8 +427,13 @@ ${salaryContext ? `${salaryContext}\n\n` : ''}`
         themesCovered: result.themes_covered
       })
       
-      result.fit_score = fitScore
-      console.log('Fit score calculated:', fitScore.score)
+      // Normalize and guard against edge cases (e.g., zero or NaN)
+      const normalizedScore = Math.max(1, Math.min(100, Number.isFinite(fitScore.score) ? fitScore.score : 0))
+      if (normalizedScore !== fitScore.score) {
+        console.warn('Adjusted fit score to normalized range:', { original: fitScore.score, normalized: normalizedScore })
+      }
+      result.fit_score = { ...fitScore, score: normalizedScore }
+      console.log('Fit score calculated:', result.fit_score.score)
       
       // Add salary data to response
       if (salaryData) {
@@ -486,9 +491,11 @@ ${salaryContext ? `${salaryContext}\n\n` : ''}`
       }
     }
 
+    // Final guard: if score_after somehow ends up falsy, fall back to baseline
+    const scoreAfter = result.fit_score?.score ?? baseline.score
     insights.fit = {
       score_before: baseline.score,
-      score_after: result.fit_score?.score ?? 0,
+      score_after: Math.max(1, Math.min(100, scoreAfter)),
       subscores: {
         before: baseline.breakdown,
         after: result.fit_score?.breakdown ?? {
