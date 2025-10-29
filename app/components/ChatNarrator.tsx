@@ -198,6 +198,13 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
       const increment = (to - from) / stepCount
       const intervalTime = duration / stepCount
 
+      // Guard: if there is no change, set once and exit to avoid useless updates
+      if (increment === 0) {
+        setAnimatingScore(to)
+        setHeaderScore(to)
+        return
+      }
+
       let current = from
       const interval = setInterval(() => {
         current += increment
