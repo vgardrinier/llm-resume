@@ -378,12 +378,12 @@ ${salaryContext ? `${salaryContext}\n\n` : ''}`
         
         // Find all string values and escape newlines within them
         fixedJson = fixedJson.replace(/"([^"]*(?:\\.[^"]*)*)"/g, (match, content) => {
-          // Escape newlines, carriage returns, and tabs in the string content
+          // Correct escape order: backslash → newline → carriage return → tab → quote
           const escaped = content
+            .replace(/\\/g, '\\\\')
             .replace(/\n/g, '\\n')
             .replace(/\r/g, '\\r')
             .replace(/\t/g, '\\t')
-            .replace(/\\/g, '\\\\')
             .replace(/"/g, '\\"')
           return `"${escaped}"`
         })
