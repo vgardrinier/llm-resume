@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useRef } from 'react'
-import { FileText, Download, Sparkles, Upload, X, Link2 } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { FileText, Sparkles, Upload, Link2 } from 'lucide-react'
 import { ParseResumeResponse, GenerateInsightsResponse } from '@/types/api'
 import { ChatNarrator } from '@/app/components/ChatNarrator'
 import { UploadingNarrative } from '@/app/components/UploadingNarrative'
@@ -15,7 +15,7 @@ export default function Home() {
   const [result, setResult] = useState<GenerateInsightsResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [companyName, setCompanyName] = useState<string | null>(null)
-  
+  const [showResume, setShowResume] = useState(false)
   // PDF upload state
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [parseLoading, setParseLoading] = useState(false)
@@ -26,11 +26,11 @@ export default function Home() {
   const [jobUrl, setJobUrl] = useState('')
   const [urlLoading, setUrlLoading] = useState(false)
   const [urlError, setUrlError] = useState<string | null>(null)
-  const [inputMode, setInputMode] = useState<'text' | 'url'>('url')
   const [urlFetchSuccess, setUrlFetchSuccess] = useState(false)
 
   const generateResume = async () => {
     setLoading(true)
+    setShowResume(false) // Reset resume visibility
     try {
       const response = await fetch('/api/generate', {
         method: 'POST',
@@ -57,6 +57,15 @@ export default function Home() {
       setLoading(false)
     }
   }
+
+  // Listen for resume reveal event from ChatNarrator
+  useEffect(() => {
+    const handleRevealResume = () => {
+      setShowResume(true)
+    }
+    window.addEventListener('reveal-resume', handleRevealResume)
+    return () => window.removeEventListener('reveal-resume', handleRevealResume)
+  }, [])
 
   const downloadMarkdown = () => {
     if (!result) return
@@ -122,7 +131,7 @@ export default function Home() {
       
     } catch (error) {
       console.error('PDF parsing error:', error)
-      setParseError(error instanceof Error ? error.message : 'Failed to extract text from PDF. Please paste text manually.')
+      setParseError(error instanceof Error ? error.message : 'Failed to extract text from PDF. Please try another PDF file.')
     } finally {
       setParseLoading(false)
     }
@@ -173,7 +182,7 @@ export default function Home() {
 
       const data = await response.json()
 
-      // Auto-fill the textarea with extracted job description
+      // Store extracted job description and company
       setJobDescription(data.jobDescription)
       if (data.companyName) setCompanyName(data.companyName)
       setUrlFetchSuccess(true)
@@ -187,10 +196,10 @@ export default function Home() {
       console.error('URL fetching error:', error)
       const message = error instanceof Error ? error.message : ''
       const friendly = message.includes('not contain a job posting')
-        ? "That page doesn’t look like a job posting. Try another link or paste the text."
+        ? "That page doesn’t look like a job posting. Try another link."
         : message.includes('Failed to fetch content from URL')
-        ? "Couldn’t load that page. Some sites block scraping—paste the job text instead."
-        : "Couldn’t extract the job details from that link. Paste the description and we’ll roll."
+        ? "Couldn’t load that page. Some sites block scraping—try a different link."
+        : "Couldn’t extract the job details from that link. Please try another URL."
       setUrlError(friendly)
     } finally {
       setUrlLoading(false)
@@ -217,47 +226,12 @@ export default function Home() {
             <h2 className="text-2xl font-semibold text-gray-900 mb-6">Input Information</h2>
 
             <div className="space-y-6">
-              {/* Job Description */}
+              {/* Job Description (URL only) */}
               <div>
                 <label htmlFor="job-desc" className="block text-sm font-medium text-gray-700 mb-2">
                   Job Description *
                 </label>
-
-                {/* Toggle between URL and Text input */}
-                <div className="flex gap-2 mb-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setInputMode('text')
-                      setUrlFetchSuccess(false)
-                    }}
-                    className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-                      inputMode === 'text'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    Paste Text
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setInputMode('url')
-                      setUrlFetchSuccess(false)
-                    }}
-                    className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-                      inputMode === 'url'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    <Link2 className="inline h-4 w-4 mr-1" />
-                    From URL
-                  </button>
-                </div>
-
-                {/* URL Input Mode */}
-                {inputMode === 'url' && (
+                {/* URL Input */}
                   <div className="space-y-3">
                     <div className="flex gap-2">
                       <input
@@ -303,19 +277,6 @@ export default function Home() {
                       Enter a job posting URL from LinkedIn, Indeed, Glassdoor, or any company career page
                     </p>
                   </div>
-                )}
-
-                {/* Text input (only shown in text mode) */}
-                {inputMode === 'text' && (
-                <textarea
-                  id="job-desc"
-                  value={jobDescription}
-                  onChange={(e) => setJobDescription(e.target.value)}
-                  placeholder="Paste the full job description here..."
-                  className="w-full h-40 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  required
-                />
-                )}
               </div>
 
               {/* Current Resume */}
@@ -371,73 +332,33 @@ export default function Home() {
                   )}
                   
                   {/* Helper text */}
-                  <p className="mt-1 text-xs text-gray-500">
-                    Upload PDF or paste text manually
-                  </p>
+                  <p className="mt-1 text-xs text-gray-500">Upload a PDF résumé.</p>
                 </div>
-                
-                {/* Show textarea only if no file uploaded */}
-                {!uploadedFile && (
-                  <textarea
-                    id="current-resume"
-                    value={currentResume}
-                    onChange={(e) => setCurrentResume(e.target.value)}
-                    placeholder="Paste your current resume or LinkedIn summary here..."
-                    className="w-full h-40 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    required
-                  />
-                )}
               </div>
 
 
-              {/* Creative Mode Control */}
+              {/* Tone selector as chips */}
               <div>
-                <label htmlFor="creative-mode" className="block text-sm font-medium text-gray-700 mb-2">
-                  Tone & Creativity Level
-                </label>
-                <div className="space-y-3">
-                  <div className="flex items-center space-x-4">
-                    <input
-                      type="radio"
-                      id="conservative"
-                      name="creative-mode"
-                      value="conservative"
-                      checked={creativeMode === 'conservative'}
-                      onChange={(e) => setCreativeMode(e.target.value as 'conservative' | 'balanced' | 'assertive')}
-                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
-                    />
-                    <label htmlFor="conservative" className="text-sm text-gray-700">
-                      <span className="font-medium">Conservative</span> - Factual accuracy over impact
-                    </label>
-                  </div>
-                  <div className="flex items-center space-x-4">
-                    <input
-                      type="radio"
-                      id="balanced"
-                      name="creative-mode"
-                      value="balanced"
-                      checked={creativeMode === 'balanced'}
-                      onChange={(e) => setCreativeMode(e.target.value as 'conservative' | 'balanced' | 'assertive')}
-                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
-                    />
-                    <label htmlFor="balanced" className="text-sm text-gray-700">
-                      <span className="font-medium">Balanced</span> - Optimal truth + impact (recommended)
-                    </label>
-                  </div>
-                  <div className="flex items-center space-x-4">
-                    <input
-                      type="radio"
-                      id="assertive"
-                      name="creative-mode"
-                      value="assertive"
-                      checked={creativeMode === 'assertive'}
-                      onChange={(e) => setCreativeMode(e.target.value as 'conservative' | 'balanced' | 'assertive')}
-                      className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
-                    />
-                    <label htmlFor="assertive" className="text-sm text-gray-700">
-                      <span className="font-medium">Assertive</span> - High-energy, outcome-focused
-                    </label>
-                  </div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Tone</label>
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    { id: 'conservative', label: 'Conservative' },
+                    { id: 'balanced', label: 'Balanced' },
+                    { id: 'assertive', label: 'Assertive' }
+                  ] as const).map(opt => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setCreativeMode(opt.id)}
+                      className={`px-3 py-2 rounded-full text-sm border transition-colors ${
+                        creativeMode === opt.id
+                          ? 'bg-indigo-600 text-white border-indigo-600'
+                          : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -480,19 +401,11 @@ export default function Home() {
               <div className="space-y-6">
                 <ChatNarrator insights={result.insights} />
 
-                {result.insights.optimizations && result.insights.optimizations.length > 0 && (
-                  <InsightCard type="optimizations" title="Optimizations Made" data={result.insights.optimizations} />
+                {showResume && (
+                  <div className="animate-fade-in">
+                    <ResumePreview optimized={result.optimized_resume} />
+                  </div>
                 )}
-
-                {result.insights.review_notes && result.insights.review_notes.length > 0 && (
-                  <InsightCard type="review" title="Review Notes" data={result.insights.review_notes} />
-                )}
-
-                {result.insights.auto_optimized && result.insights.auto_optimized.length > 0 && (
-                  <InsightCard type="auto_optimized" title="Auto-Optimized" data={result.insights.auto_optimized} />
-                )}
-
-                <ResumePreview optimized={result.optimized_resume} />
               </div>
             )}
           </div>
