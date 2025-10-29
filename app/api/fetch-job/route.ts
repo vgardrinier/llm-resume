@@ -53,7 +53,57 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Use Claude to extract job description and company info from HTML
+    // Quick fallback 1: try to extract from JSON-LD JobPosting without LLM
+    const extractFromJsonLd = (html: string): { jobDescription?: string; companyName?: string; jobTitle?: string } | null => {
+      const scripts = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi) || []
+      for (const script of scripts) {
+        const jsonTextMatch = script.match(/<script[^>]*>[\s\S]*?<\/script>/i)
+        if (!jsonTextMatch) continue
+        const jsonText = jsonTextMatch[0].replace(/<script[^>]*>/i, '').replace(/<\/script>/i, '')
+        try {
+          const data = JSON.parse(jsonText)
+
+          // Flatten potential structures: single object, array, or { @graph: [...] }
+          const collectNodes = (node: any): any[] => {
+            if (!node) return []
+            if (Array.isArray(node)) return node.flatMap(collectNodes)
+            if (node['@graph']) return collectNodes(node['@graph'])
+            return [node]
+          }
+
+          const nodes = collectNodes(data)
+          for (const item of nodes) {
+            const typeVal = item['@type']
+            const isJob = typeof typeVal === 'string'
+              ? typeVal === 'JobPosting'
+              : Array.isArray(typeVal) && typeVal.includes('JobPosting')
+            if (!isJob) continue
+
+            const rawDesc = (item.description || '').toString()
+            const desc = rawDesc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+            const company = item.hiringOrganization?.name || item.organization?.name
+            const title = item.title || item.name
+            if (desc && desc.length > 80) {
+              return { jobDescription: desc, companyName: company || undefined, jobTitle: title || undefined }
+            }
+          }
+        } catch {
+          // ignore JSON parse errors and continue
+        }
+      }
+      return null
+    }
+
+    const jsonLdResult = extractFromJsonLd(htmlContent)
+    if (jsonLdResult?.jobDescription) {
+      return NextResponse.json({
+        jobDescription: jsonLdResult.jobDescription,
+        companyName: jsonLdResult.companyName || null,
+        jobTitle: jsonLdResult.jobTitle || null,
+      })
+    }
+
+    // Use Claude to extract job description and company info from HTML as a robust fallback
     try {
       const extractionPrompt = `You are a job posting parser. Extract the following information from this HTML content:
 
@@ -78,7 +128,7 @@ Instructions:
 - If you cannot find certain fields, use null`
 
       const message = await anthropic.messages.create({
-        model: 'claude-3-5-sonnet-20241022',
+        model: 'claude-3-7-sonnet-20250219',
         max_tokens: 4000,
         messages: [
           {

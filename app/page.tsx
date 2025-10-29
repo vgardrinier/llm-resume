@@ -181,8 +181,13 @@ export default function Home() {
 
     } catch (error) {
       console.error('URL fetching error:', error)
-      setUrlError(error instanceof Error ? error.message : 'Failed to extract job description from URL. Please paste text manually.')
-      setUrlFetchSuccess(false)
+      const message = error instanceof Error ? error.message : ''
+      const friendly = message.includes('not contain a job posting')
+        ? "That page doesn’t look like a job posting. Try another link or paste the text."
+        : message.includes('Failed to fetch content from URL')
+        ? "Couldn’t load that page. Some sites block scraping—paste the job text instead."
+        : "Couldn’t extract the job details from that link. Paste the description and we’ll roll."
+      setUrlError(friendly)
     } finally {
       setUrlLoading(false)
     }
