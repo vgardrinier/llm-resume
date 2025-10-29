@@ -46,7 +46,7 @@ export function UploadingNarrative({ jobDescription, companyNameHint }: Uploadin
   // Advance through beats up to the last one; then hold
   useEffect(() => {
     if (step >= beats.length - 1) return
-    const t = setTimeout(() => setStep(s => Math.min(s + 1, beats.length - 1)), 4000)
+    const t = setTimeout(() => setStep(s => Math.min(s + 1, beats.length - 1)), 6000)
     return () => clearTimeout(t)
   }, [step, beats])
 
