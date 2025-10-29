@@ -7,7 +7,7 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 })
 
-interface FitScoreInputs {
+export interface FitScoreInputs {
   jobDescription: string
   candidateResume: string
   generatedResume: string
@@ -15,7 +15,7 @@ interface FitScoreInputs {
   themesCovered: string[]
 }
 
-interface FitScoreResult {
+export interface FitScoreResult {
   score: number // 0-100
   breakdown: {
     keywordMatch: number
@@ -69,7 +69,7 @@ Be thorough but concise. Consider both the original resume and the optimized ver
 
   try {
     const message = await anthropic.messages.create({
-      model: 'claude-3-5-sonnet-20241022',
+      model: 'claude-3-7-sonnet-20250219',
       max_tokens: 1000,
       temperature: 0.2, // Low temperature for consistent scoring
       messages: [
@@ -114,6 +114,79 @@ Be thorough but concise. Consider both the original resume and the optimized ver
         skillOverlap: 75
       },
       explanation: "Unable to calculate precise fit score, showing estimated values"
+    }
+  }
+}
+
+// Baseline scorer for the ORIGINAL resume only (before optimization)
+export async function calculateBaselineFitScore(params: {
+  jobDescription: string
+  originalResume: string
+}): Promise<FitScoreResult> {
+  const { jobDescription, originalResume } = params
+
+  const prompt = `You are an expert recruiter and hiring manager evaluating how well a candidate's resume matches a job description.
+
+JOB DESCRIPTION:
+${jobDescription}
+
+RESUME TO SCORE:
+${originalResume}
+
+Evaluate the fit across these dimensions (0-100 scale each):
+
+1. KEYWORD MATCH (0-100)
+2. THEME ALIGNMENT (0-100)
+3. EXPERIENCE RELEVANCE (0-100)
+4. SKILL OVERLAP (0-100)
+
+Provide your assessment as valid JSON only:
+{
+  "overall_score": 72,
+  "breakdown": {
+    "keywordMatch": 70,
+    "themeAlignment": 72,
+    "experienceRelevance": 68,
+    "skillOverlap": 74
+  },
+  "explanation": "Concise explanation of strengths and gaps."
+}`
+
+  try {
+    const message = await anthropic.messages.create({
+      model: 'claude-3-7-sonnet-20250219',
+      max_tokens: 800,
+      temperature: 0.2,
+      messages: [{ role: 'user', content: prompt }]
+    })
+
+    const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) throw new Error('No JSON found in baseline fit score response')
+
+    const result = JSON.parse(jsonMatch[0])
+
+    return {
+      score: result.overall_score,
+      breakdown: {
+        keywordMatch: result.breakdown.keywordMatch,
+        themeAlignment: result.breakdown.themeAlignment,
+        experienceRelevance: result.breakdown.experienceRelevance,
+        skillOverlap: result.breakdown.skillOverlap
+      },
+      explanation: result.explanation
+    }
+  } catch (error) {
+    console.error('Baseline fit score calculation error:', error)
+    return {
+      score: 65,
+      breakdown: {
+        keywordMatch: 65,
+        themeAlignment: 65,
+        experienceRelevance: 65,
+        skillOverlap: 65
+      },
+      explanation: 'Unable to calculate precise baseline fit score, showing estimated values'
     }
   }
 }
