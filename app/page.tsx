@@ -2,42 +2,16 @@
 
 import { useState, useRef } from 'react'
 import { FileText, Download, Sparkles, Upload, X, Link2 } from 'lucide-react'
-import { ParseResumeResponse } from '@/types/api'
-import { SalaryDisplay } from '@/app/components/SalaryDisplay'
-
-interface ResumeResult {
-  resume_md: string
-  fit_summary: string
-  keywords_used: string[]
-  themes_covered: string[]
-  changes_made: string[]
-  sanity_concerns?: string[]
-  auto_patched?: boolean
-  fit_score: {
-    score: number
-    breakdown: {
-      keywordMatch: number
-      themeAlignment: number
-      experienceRelevance: number
-      skillOverlap: number
-    }
-    explanation: string
-  }
-  salary_data?: {
-    low: number
-    median: number
-    high: number
-    source: string
-    role: string
-    location: string
-  }
-}
+import { ParseResumeResponse, GenerateInsightsResponse } from '@/types/api'
+import { ChatNarrator } from '@/app/components/ChatNarrator'
+import { InsightCard } from '@/app/components/InsightCard'
+import { ResumePreview } from '@/app/components/ResumePreview'
 
 export default function Home() {
   const [jobDescription, setJobDescription] = useState('')
   const [currentResume, setCurrentResume] = useState('')
   const [creativeMode, setCreativeMode] = useState<'conservative' | 'balanced' | 'assertive'>('balanced')
-  const [result, setResult] = useState<ResumeResult | null>(null)
+  const [result, setResult] = useState<GenerateInsightsResponse | null>(null)
   const [loading, setLoading] = useState(false)
   
   // PDF upload state
@@ -51,6 +25,7 @@ export default function Home() {
   const [urlLoading, setUrlLoading] = useState(false)
   const [urlError, setUrlError] = useState<string | null>(null)
   const [inputMode, setInputMode] = useState<'text' | 'url'>('url')
+  const [urlFetchSuccess, setUrlFetchSuccess] = useState(false)
 
   const generateResume = async () => {
     setLoading(true)
@@ -71,7 +46,7 @@ export default function Home() {
         throw new Error('Failed to generate resume')
       }
 
-      const data = await response.json()
+      const data: GenerateInsightsResponse = await response.json()
       setResult(data)
     } catch (error) {
       console.error('Error generating resume:', error)
@@ -84,7 +59,7 @@ export default function Home() {
   const downloadMarkdown = () => {
     if (!result) return
 
-    const blob = new Blob([result.resume_md], { type: 'text/markdown' })
+    const blob = new Blob([result.optimized_resume], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
@@ -177,6 +152,7 @@ export default function Home() {
 
     setUrlError(null)
     setUrlLoading(true)
+    setUrlFetchSuccess(false)
 
     try {
       const response = await fetch('/api/fetch-job', {
@@ -196,6 +172,7 @@ export default function Home() {
 
       // Auto-fill the textarea with extracted job description
       setJobDescription(data.jobDescription)
+      setUrlFetchSuccess(true)
 
       // Store company info if needed (for display later)
       if (data.companyName) {
@@ -205,6 +182,7 @@ export default function Home() {
     } catch (error) {
       console.error('URL fetching error:', error)
       setUrlError(error instanceof Error ? error.message : 'Failed to extract job description from URL. Please paste text manually.')
+      setUrlFetchSuccess(false)
     } finally {
       setUrlLoading(false)
     }
@@ -240,7 +218,10 @@ export default function Home() {
                 <div className="flex gap-2 mb-3">
                   <button
                     type="button"
-                    onClick={() => setInputMode('text')}
+                    onClick={() => {
+                      setInputMode('text')
+                      setUrlFetchSuccess(false)
+                    }}
                     className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
                       inputMode === 'text'
                         ? 'bg-indigo-600 text-white'
@@ -251,7 +232,10 @@ export default function Home() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setInputMode('url')}
+                    onClick={() => {
+                      setInputMode('url')
+                      setUrlFetchSuccess(false)
+                    }}
                     className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
                       inputMode === 'url'
                         ? 'bg-indigo-600 text-white'
@@ -293,7 +277,7 @@ export default function Home() {
                     </div>
 
                     {/* Success message */}
-                    {jobDescription && !urlLoading && (
+                    {urlFetchSuccess && !urlLoading && (
                       <div className="text-sm text-green-600 bg-green-50 p-2 rounded border border-green-200">
                         ✓ Job description extracted successfully ({jobDescription.length} characters)
                       </div>
@@ -314,14 +298,14 @@ export default function Home() {
 
                 {/* Text input (only shown in text mode) */}
                 {inputMode === 'text' && (
-                  <textarea
-                    id="job-desc"
-                    value={jobDescription}
-                    onChange={(e) => setJobDescription(e.target.value)}
-                    placeholder="Paste the full job description here..."
-                    className="w-full h-40 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    required
-                  />
+                <textarea
+                  id="job-desc"
+                  value={jobDescription}
+                  onChange={(e) => setJobDescription(e.target.value)}
+                  placeholder="Paste the full job description here..."
+                  className="w-full h-40 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  required
+                />
                 )}
               </div>
 
@@ -360,29 +344,29 @@ export default function Home() {
                   {uploadedFile && currentResume && !parseLoading && (
                     <div className="mt-2 text-sm text-green-600 bg-green-50 p-2 rounded border border-green-200 flex items-center justify-between">
                       <span>✓ Resume extracted from {uploadedFile.name} ({currentResume.length} characters)</span>
-                      <button
-                        type="button"
-                        onClick={handleRemoveFile}
+                        <button
+                          type="button"
+                          onClick={handleRemoveFile}
                         className="text-green-700 hover:text-green-900 underline text-xs"
-                      >
+                        >
                         Remove
-                      </button>
+                        </button>
                     </div>
                   )}
-
+                  
                   {/* Error message */}
                   {parseError && (
                     <div className="mt-2 text-sm text-red-600 bg-red-50 p-2 rounded border border-red-200">
                       {parseError}
                     </div>
                   )}
-
+                  
                   {/* Helper text */}
                   <p className="mt-1 text-xs text-gray-500">
                     Upload PDF or paste text manually
                   </p>
                 </div>
-
+                
                 {/* Show textarea only if no file uploaded */}
                 {!uploadedFile && (
                   <textarea
@@ -477,135 +461,21 @@ export default function Home() {
               </div>
             ) : (
               <div className="space-y-6">
-                {/* Salary Intelligence */}
-                {result.salary_data && (
-                  <SalaryDisplay salaryData={result.salary_data} />
-                )}
-                
-                {/* Fit Analysis - Compact & Cheeky */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Fit Analysis</h3>
-                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4">
-                    {/* Overall Score */}
-                    <div className="flex items-center gap-4 mb-3">
-                      <div className="text-3xl font-bold text-blue-600">{result.fit_score.score}%</div>
-                      <div className="flex-1">
-                        <p className="text-sm text-blue-800 leading-relaxed">
-                          {result.fit_score.explanation}
-                        </p>
-                      </div>
-                    </div>
-                    
-                    {/* Compact Breakdown */}
-                    <div className="flex gap-6 text-xs">
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                        <span className="text-blue-700">Keywords: {result.fit_score.breakdown.keywordMatch}%</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                        <span className="text-blue-700">Themes: {result.fit_score.breakdown.themeAlignment}%</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                        <span className="text-blue-700">Experience: {result.fit_score.breakdown.experienceRelevance}%</span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                        <span className="text-blue-700">Skills: {result.fit_score.breakdown.skillOverlap}%</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <ChatNarrator insights={result.insights} />
 
-                {/* Keywords */}
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">Key Terms Included</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {(result.keywords_used || []).map((keyword, index) => (
-                      <span
-                        key={index}
-                        className="bg-indigo-100 text-indigo-800 px-3 py-1 rounded-full text-sm"
-                      >
-                        {keyword}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Themes Covered */}
-                {result.themes_covered && result.themes_covered.length > 0 && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Themes Emphasized</h3>
-                    <div className="flex flex-wrap gap-2">
-                      {result.themes_covered.map((theme, index) => (
-                        <span
-                          key={index}
-                          className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm"
-                        >
-                          {theme}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
+                {result.insights.optimizations && result.insights.optimizations.length > 0 && (
+                  <InsightCard type="optimizations" title="Optimizations Made" data={result.insights.optimizations} />
                 )}
 
-                {/* Changes Made */}
-                {result.changes_made && result.changes_made.length > 0 && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900 mb-2">Optimizations Made</h3>
-                    <ul className="list-disc list-inside text-gray-700 space-y-1">
-                      {result.changes_made.map((change, index) => (
-                        <li key={index}>{change}</li>
-                      ))}
-                    </ul>
-                  </div>
+                {result.insights.review_notes && result.insights.review_notes.length > 0 && (
+                  <InsightCard type="review" title="Review Notes" data={result.insights.review_notes} />
                 )}
 
-                {/* Sanity Concerns */}
-                {result.sanity_concerns && result.sanity_concerns.length > 0 && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-yellow-800 mb-2">⚠️ Review Notes</h3>
-                    <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4">
-                      <ul className="list-disc list-inside text-yellow-800 space-y-1">
-                        {result.sanity_concerns.map((concern, index) => (
-                          <li key={index}>{concern}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
+                {result.insights.auto_optimized && result.insights.auto_optimized.length > 0 && (
+                  <InsightCard type="auto_optimized" title="Auto-Optimized" data={result.insights.auto_optimized} />
                 )}
 
-                {/* Auto-patch Notification */}
-                {result.auto_patched && (
-                  <div>
-                    <h3 className="text-lg font-semibold text-blue-800 mb-2">🔧 Auto-Optimized</h3>
-                    <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
-                      <p className="text-blue-800">
-                        Replaced potentially inflated numbers with neutral qualifiers to maintain accuracy while preserving impact.
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                {/* Resume Preview */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-lg font-semibold text-gray-900">Resume Preview</h3>
-                    <button
-                      onClick={downloadMarkdown}
-                      className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center text-sm"
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Download MD
-                    </button>
-                  </div>
-                  <div className="bg-gray-50 p-4 rounded-lg max-h-96 overflow-y-auto">
-                    <pre className="text-sm text-gray-800 whitespace-pre-wrap font-mono">
-                      {result.resume_md}
-                    </pre>
-                  </div>
-                </div>
+                <ResumePreview optimized={result.optimized_resume} />
               </div>
             )}
           </div>

@@ -88,23 +88,27 @@ function generateIntelligentEstimate(role: string, location: string): SalaryLook
   }
 }
 
+// Shared business logic for salary lookup
+function handleSalaryLookup(params: SalaryLookupRequest): NextResponse {
+  const { role, location, company } = params
+
+  // Validate required fields
+  if (!role || !location) {
+    return NextResponse.json(
+      { error: 'Role and location are required' },
+      { status: 400 }
+    )
+  }
+
+  // Generate intelligent estimate
+  const result = generateIntelligentEstimate(role, location)
+  return NextResponse.json(result)
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body: SalaryLookupRequest = await request.json()
-    const { role, location, company } = body
-
-    // Validate required fields
-    if (!role || !location) {
-      return NextResponse.json(
-        { error: 'Role and location are required' },
-        { status: 400 }
-      )
-    }
-
-    // Generate intelligent estimate
-    const result = generateIntelligentEstimate(role, location)
-    return NextResponse.json(result)
-
+    return handleSalaryLookup(body)
   } catch (error) {
     console.error('Salary lookup error:', error)
     return NextResponse.json(
@@ -116,22 +120,23 @@ export async function POST(request: NextRequest) {
 
 // Also support GET requests for testing
 export async function GET(request: NextRequest) {
-  const { searchParams } = new URL(request.url)
-  const role = searchParams.get('role')
-  const location = searchParams.get('location')
-  const company = searchParams.get('company')
+  try {
+    const { searchParams } = new URL(request.url)
+    const role = searchParams.get('role')
+    const location = searchParams.get('location')
+    const company = searchParams.get('company')
 
-  if (!role || !location) {
+    // Call shared business logic directly (no mock request needed)
+    return handleSalaryLookup({
+      role: role || '',
+      location: location || '',
+      company: company || undefined
+    })
+  } catch (error) {
+    console.error('Salary lookup error:', error)
     return NextResponse.json(
-      { error: 'Role and location are required' },
-      { status: 400 }
+      { error: 'Failed to lookup salary data' },
+      { status: 500 }
     )
   }
-
-  // Convert GET to POST format and call POST handler
-  const mockRequest = {
-    json: async () => ({ role, location, company })
-  } as NextRequest
-
-  return POST(mockRequest)
 }
