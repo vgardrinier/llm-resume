@@ -15,12 +15,28 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
 
   useEffect(() => {
     const build: Array<{ type: string; payload?: any }> = []
+    // 0) Initial Fit Score reveal (centered, emotional hook)
+    if (insights.fit && typeof insights.fit.score_after === 'number') {
+      const score = Math.max(0, Math.min(100, Math.round(insights.fit.score_after)))
+      let note = "Strong showing. We'll polish the edges and make it undeniable."
+      if (score < 60) note = "We can level this up — let's focus where it matters most."
+      else if (score < 80) note = "Solid foundation. A few smart tweaks will push this over the line."
+      build.push({ type: 'fit-reveal', payload: { score, note } })
+      // Score statement as part of intro
+      build.push({ type: 'msg', payload: `Your résumé scored ${score}/100 for this role.` })
+    }
+
     // 1) Intro sets tone
     build.push({
       type: 'msg',
       payload:
         "Let's be real — your résumé had good bones. We stripped the fluff and aligned it to what this role values."
     })
+
+    // 1.5) Acknowledge optimizations early so users know what's improved
+    if (Array.isArray(insights.optimizations) && insights.optimizations.length > 0) {
+      build.push({ type: 'msg', payload: 'First, we tightened the language and sharpened outcomes. Here’s how it got stronger.' })
+    }
 
     // 2) Salary (soft dopamine)
     if (insights.salary) {
@@ -36,9 +52,9 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
       build.push({ type: 'card-fit', payload: f })
     }
 
-    // 4) Optimizations are shown below as a card outside narrator; just acknowledge here
+    // 4) Reinforce that the detailed list is below
     if (Array.isArray(insights.optimizations) && insights.optimizations.length > 0) {
-      build.push({ type: 'msg', payload: 'We tightened language and reframed outcomes. See the full list below.' })
+      build.push({ type: 'msg', payload: 'You can skim the full change list below when you’re ready.' })
     }
 
     // 5) Themes/keywords (supporting evidence)
@@ -57,12 +73,21 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
     }
 
     setSteps(build)
-    setRevealed(1) // show intro immediately
+    setRevealed(1) // show the first step immediately (fit-reveal if present, else intro)
   }, [insights])
 
+  // Removed automatic scroll-to-bottom to prevent jarring jumps
+
+  // Auto-advance from the fit-reveal to the next narrator step for a smooth start
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [revealed])
+    if (steps.length === 0) return
+    if (steps[0]?.type !== 'fit-reveal') return
+    if (revealed !== 1) return
+    const t = setTimeout(() => {
+      setRevealed(prev => Math.min(prev + 1, steps.length))
+    }, 1600)
+    return () => clearTimeout(t)
+  }, [steps, revealed])
 
   const randomDelayMs = () => Math.round(1000 + Math.random() * 600) // 1.0s–1.6s
 
@@ -85,10 +110,26 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
   // no auto-reveal beyond intro; user-driven pacing
 
   return (
-    <div className="bg-gradient-to-br from-orange-50 via-purple-50 to-blue-50 rounded-xl shadow-xl p-6">
+    <div className="bg-gradient-to-br from-orange-50 via-purple-50 to-blue-50 rounded-xl shadow-xl p-6 relative">
+      {typeof insights?.fit?.score_after === 'number' && (
+        <div className="absolute top-3 right-3">
+          <div className="w-12 h-12 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow ring-2 ring-white">
+            <span className="text-sm font-bold">{Math.round(insights.fit.score_after)}</span>
+          </div>
+        </div>
+      )}
       <div className="space-y-3">
         {steps.slice(0, revealed).map((s, idx) => (
           <motion.div key={idx} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
+            {s.type === 'fit-reveal' && (
+              <div className="flex items-center justify-center">
+                <div className="text-center bg-gradient-to-br from-indigo-50 via-purple-50 to-blue-50 border border-indigo-100 rounded-2xl shadow px-6 py-8 w-full">
+                  <div className="text-5xl font-extrabold text-gray-900 mb-1">{s.payload.score}/100</div>
+                  <div className="text-gray-800 text-base mb-1">Your résumé score for this role</div>
+                  <div className="text-sm text-gray-600">{s.payload.note}</div>
+                </div>
+              </div>
+            )}
             {s.type === 'msg' && (
               <div className="bg-white/80 border border-purple-100 rounded-lg p-3 text-sm text-gray-800">
                 {s.payload}

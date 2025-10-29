@@ -70,6 +70,7 @@ export default function Home() {
     URL.revokeObjectURL(url)
   }
 
+
   // PDF upload functions
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
