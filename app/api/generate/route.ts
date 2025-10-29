@@ -270,13 +270,15 @@ IDENTITY & ETHICS:
 - Goal: make the résumé feel tailor-made for the role, truthful, and impressive
 
 STRUCTURE REQUIREMENTS:
-- One-page résumé (500-700 words)
+- CRITICAL: One-page résumé targeting 500-650 words MAX. Keep it tight and impactful.
+- Match or slightly reduce the length of the original résumé - never make it significantly longer
 - Clean Markdown format (no columns, tables, or images)
 - Start with candidate's name, title, and contact info
 - Use strong action verbs and quantify results where possible
 - End every experience section with a concise "impact sentence" summarizing results or vision (e.g., "Drove measurable user growth and product adoption across markets")
 - Keep impact sentences truthful but high-energy
 - Prioritize covering these job themes: ${jobFocusKeywords.join(', ')}
+- If you must cut content, prioritize recency and relevance over exhaustive history
 
 OUTPUT FORMAT:
 Return only valid JSON with this structure:
@@ -376,12 +378,12 @@ ${salaryContext ? `${salaryContext}\n\n` : ''}`
         
         // Find all string values and escape newlines within them
         fixedJson = fixedJson.replace(/"([^"]*(?:\\.[^"]*)*)"/g, (match, content) => {
-          // Escape newlines, carriage returns, and tabs in the string content
+          // Correct escape order: backslash → newline → carriage return → tab → quote
           const escaped = content
+            .replace(/\\/g, '\\\\')
             .replace(/\n/g, '\\n')
             .replace(/\r/g, '\\r')
             .replace(/\t/g, '\\t')
-            .replace(/\\/g, '\\\\')
             .replace(/"/g, '\\"')
           return `"${escaped}"`
         })
@@ -399,20 +401,16 @@ ${salaryContext ? `${salaryContext}\n\n` : ''}`
         throw new Error('Invalid response structure')
       }
       
-      // Post-processor: Auto-patch hallucinations and sanity check
+      // Post-processor: Auto-patch hallucinations only (sanity check disabled due to false positives)
       const patchedResume = autoPatchHallucinations(result.resume_md, candidate_resume)
       if (patchedResume !== result.resume_md) {
         console.log('Auto-patched hallucinated numbers with neutral qualifiers')
         result.resume_md = patchedResume
         result.auto_patched = true
       }
-      
-      const sanityCheck = performSanityCheck(result.resume_md, candidate_resume)
-      if (sanityCheck.hasConcerns) {
-        console.warn('Sanity check concerns:', sanityCheck.concerns)
-        // Add transparency by including concerns in response
-        result.sanity_concerns = sanityCheck.concerns
-      }
+
+      // Sanity check disabled - was catching false positives like "VP" from "MVP"
+      // Users should review the résumé themselves
       
       // Ensure arrays exist with defaults
       result.changes_made = result.changes_made || []
@@ -429,8 +427,13 @@ ${salaryContext ? `${salaryContext}\n\n` : ''}`
         themesCovered: result.themes_covered
       })
       
-      result.fit_score = fitScore
-      console.log('Fit score calculated:', fitScore.score)
+      // Normalize and guard against edge cases (e.g., zero or NaN)
+      const normalizedScore = Math.max(1, Math.min(100, Number.isFinite(fitScore.score) ? fitScore.score : 0))
+      if (normalizedScore !== fitScore.score) {
+        console.warn('Adjusted fit score to normalized range:', { original: fitScore.score, normalized: normalizedScore })
+      }
+      result.fit_score = { ...fitScore, score: normalizedScore }
+      console.log('Fit score calculated:', result.fit_score.score)
       
       // Add salary data to response
       if (salaryData) {
@@ -463,7 +466,7 @@ ${salaryContext ? `${salaryContext}\n\n` : ''}`
         range: [salaryData.low, salaryData.high],
         location,
         role,
-        comment: `This ${role} role in ${location} pays around $${salaryData.median.toLocaleString()} (range $${salaryData.low.toLocaleString()}–$${salaryData.high.toLocaleString()}).`
+        comment: `Typical salary in ${location}: $${salaryData.median.toLocaleString()} (range $${salaryData.low.toLocaleString()}–$${salaryData.high.toLocaleString()}).`
       }
     }
 
@@ -488,9 +491,11 @@ ${salaryContext ? `${salaryContext}\n\n` : ''}`
       }
     }
 
+    // Final guard: if score_after somehow ends up falsy, fall back to baseline
+    const scoreAfter = result.fit_score?.score ?? baseline.score
     insights.fit = {
       score_before: baseline.score,
-      score_after: result.fit_score?.score ?? 0,
+      score_after: Math.max(1, Math.min(100, scoreAfter)),
       subscores: {
         before: baseline.breakdown,
         after: result.fit_score?.breakdown ?? {

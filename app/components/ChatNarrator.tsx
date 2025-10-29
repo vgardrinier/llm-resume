@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { InsightCard } from './InsightCard'
 
 interface ChatNarratorProps {
@@ -11,95 +11,172 @@ interface ChatNarratorProps {
 export function ChatNarrator({ insights }: ChatNarratorProps) {
   const [steps, setSteps] = useState<Array<{ type: string; payload?: any }>>([])
   const [revealed, setRevealed] = useState<number>(0)
+  const [animatingScore, setAnimatingScore] = useState<number | null>(null)
+  const [headerScore, setHeaderScore] = useState<number | null>(null)
+  const [showingTransformed, setShowingTransformed] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => {
-    const build: Array<{ type: string; payload?: any }> = []
-    // 0) Initial Fit Score reveal (centered, emotional hook)
-    if (insights.fit && typeof insights.fit.score_after === 'number') {
-      const score = Math.max(0, Math.min(100, Math.round(insights.fit.score_after)))
-      let note = "Strong showing. We'll polish the edges and make it undeniable."
-      if (score < 60) note = "We can level this up — let's focus where it matters most."
-      else if (score < 80) note = "Solid foundation. A few smart tweaks will push this over the line."
-      build.push({ type: 'fit-reveal', payload: { score, note } })
-      // Score statement as part of intro
-      build.push({ type: 'msg', payload: `Your résumé scored ${score}/100 for this role.` })
+  // Helper: Get score range category
+  const getScoreRange = (score: number): 'low' | 'mid' | 'high' => {
+    if (score < 50) return 'low'
+    if (score < 76) return 'mid'
+    return 'high'
+  }
+
+  // Helper: Generate contextual messaging based on initial score
+  const generateContextualMessages = (scoreBefore: number, scoreAfter: number) => {
+    const rangeBefore = getScoreRange(scoreBefore)
+    const rangeAfter = getScoreRange(scoreAfter)
+    const improvement = scoreAfter - scoreBefore
+
+    const messages: any = {
+      initial: {},
+      validation: {},
+      transformation: {},
+      close: {}
     }
 
-    // 1) Intro sets tone
+    // Initial reaction based on score_before
+    if (rangeBefore === 'low') {
+      messages.initial.reaction = "Alright, let's talk about your résumé."
+      messages.initial.assessment = "You've got solid experience, but the way it's written? It's hiding your best work."
+      messages.validation = "The bones are there — we just need to make recruiters see it in the first 6 seconds."
+    } else if (rangeBefore === 'mid') {
+      messages.initial.reaction = "Here's the thing about your résumé."
+      messages.initial.assessment = "It's competent, but forgettable. And in a stack of 200 applications, forgettable gets you nowhere."
+      messages.validation = "You've got the experience — we just need to make recruiters see it in the first 6 seconds."
+    } else {
+      messages.initial.reaction = "Okay, you're already in good shape."
+      messages.initial.assessment = "Most candidates would kill for a résumé like yours. But 'good' doesn't get you the offer."
+      messages.validation = "You're close. A few sharp tweaks and you'll be in the top 1% for this role."
+    }
+
+    // Transformation messaging
+    if (improvement >= 20) {
+      messages.transformation.setup = `So we made ${improvement} points worth of changes. Not surface-level stuff — real improvements.`
+      messages.transformation.impact = "This is the kind of jump that moves you from 'maybe' to 'interview.'"
+    } else if (improvement >= 10) {
+      messages.transformation.setup = `We tightened ${improvement} points. Doesn't sound like much, but in résumé math? It's everything.`
+      messages.transformation.impact = "These are the details that separate callbacks from silence."
+    } else {
+      messages.transformation.setup = `We moved you ${improvement} points. Small number, high leverage.`
+      messages.transformation.impact = rangeAfter === 'high' ? "You were already strong — now you're undeniable." : "Every point counts when you're this close."
+    }
+
+    // Closing based on final score
+    if (rangeAfter === 'high') {
+      messages.close = `You're now ${scoreAfter}% aligned. This résumé competes.`
+    } else if (rangeAfter === 'mid') {
+      messages.close = `You're at ${scoreAfter}%. Solid position — ready to see the changes?`
+    } else {
+      messages.close = `We got you to ${scoreAfter}%. Not perfect, but way better positioned. Check it out.`
+    }
+
+    return messages
+  }
+
+  useEffect(() => {
+    if (!insights?.fit) return
+
+    const scoreBefore = Math.round(insights.fit.score_before ?? 0)
+    const scoreAfter = Math.round(insights.fit.score_after ?? 0)
+
+    const messages = generateContextualMessages(scoreBefore, scoreAfter)
+    const build: Array<{ type: string; payload?: any }> = []
+
+    // 1. INITIAL SCORE REVEAL (emotional hook)
     build.push({
-      type: 'msg',
-      payload:
-        "Let's be real — your résumé had good bones. We stripped the fluff and aligned it to what this role values."
+      type: 'initial-score',
+      payload: {
+        score: scoreBefore,
+        label: 'Your résumé scored'
+      }
     })
 
-    // 1.5) Acknowledge optimizations early so users know what's improved
-    if (Array.isArray(insights.optimizations) && insights.optimizations.length > 0) {
-      build.push({ type: 'msg', payload: 'First, we tightened the language and sharpened outcomes. Here’s how it got stronger.' })
-    }
+    // 2. INITIAL REACTION (score-dependent)
+    build.push({ type: 'msg', payload: messages.initial.reaction })
+    build.push({ type: 'msg', payload: messages.initial.assessment })
 
-    // 2) Salary (soft dopamine)
-    if (insights.salary) {
-      const s = insights.salary
-      build.push({ type: 'msg', payload: `First, the money in ${s.location}: $${s.median.toLocaleString()} (range $${s.range[0].toLocaleString()}–$${s.range[1].toLocaleString()}).` })
-      build.push({ type: 'card-salary', payload: s })
-    }
+    // 3. VALIDATION (builds confidence before showing transformation)
+    build.push({ type: 'msg', payload: messages.validation })
 
-    // 3) Fit (analytical validation)
-    if (insights.fit) {
-      const f = insights.fit
-      build.push({ type: 'msg', payload: `Your fit moved from ${f.score_before}% → ${f.score_after}%. Here's what changed.` })
-      build.push({ type: 'card-fit', payload: f })
-    }
+    // 4. FIT SCORE TRANSFORMATION (animated reveal)
+    build.push({ type: 'msg', payload: messages.transformation.setup })
+    build.push({
+      type: 'score-transform',
+      payload: {
+        from: scoreBefore,
+        to: scoreAfter,
+        subscores: insights.fit.subscores
+      }
+    })
+    build.push({ type: 'msg', payload: messages.transformation.impact })
 
-    // 4) Reinforce that the detailed list is below
-    if (Array.isArray(insights.optimizations) && insights.optimizations.length > 0) {
-      build.push({ type: 'msg', payload: 'You can skim the full change list below when you’re ready.' })
-    }
-
-    // 5) Themes/keywords (supporting evidence)
+    // 5. SUPPORTING EVIDENCE (keywords & themes)
     if (insights.keywords && insights.keywords.length > 0) {
-      build.push({ type: 'msg', payload: 'You now hit the terms recruiters skim for.' })
+      const keywordIntro = scoreBefore < 50
+        ? "Now you're hitting the terms recruiters actually scan for:"
+        : "You're now aligned with the terms that get noticed:"
+      build.push({ type: 'msg', payload: keywordIntro })
       build.push({ type: 'card-keywords', payload: insights.keywords })
     }
+
     if (insights.themes && insights.themes.length > 0) {
-      build.push({ type: 'msg', payload: 'And the storylines it emphasizes:' })
+      build.push({ type: 'msg', payload: 'And the storylines we emphasized:' })
       build.push({ type: 'card-themes', payload: insights.themes })
     }
 
-    // 6) Wrap-up
-    if (insights.fit) {
-      build.push({ type: 'msg', payload: `You're now ${insights.fit.score_after}% aligned. Ready to see it?` })
+    // 6. SALARY CONTEXT (market reality check)
+    if (insights.salary) {
+      const s = insights.salary
+      const salaryIntro = `Real talk on money: this role in ${s.location} pays around $${s.median.toLocaleString()}.`
+      build.push({ type: 'msg', payload: salaryIntro })
+      build.push({ type: 'card-salary', payload: s })
     }
 
+    // 7. WHAT TO WATCH FOR (review notes reframed)
+    if (insights.review_notes && insights.review_notes.length > 0) {
+      build.push({ type: 'msg', payload: 'Double-check these changes - they pushed the limits:' })
+      build.push({ type: 'card-review', payload: insights.review_notes })
+    }
+
+    // 8. MOTIVATING CLOSE
+    build.push({ type: 'msg', payload: messages.close })
+
+    // 9. REVEAL CTA
+    build.push({ type: 'reveal-cta' })
+
     setSteps(build)
-    setRevealed(1) // show the first step immediately (fit-reveal if present, else intro)
+    setRevealed(1) // Show first step immediately
   }, [insights])
 
-  // Removed automatic scroll-to-bottom to prevent jarring jumps
-
-  // Auto-advance from the fit-reveal to the next narrator step for a smooth start
+  // Auto-advance from initial score after 1.8s
   useEffect(() => {
     if (steps.length === 0) return
-    if (steps[0]?.type !== 'fit-reveal') return
+    if (steps[0]?.type !== 'initial-score') return
     if (revealed !== 1) return
     const t = setTimeout(() => {
       setRevealed(prev => Math.min(prev + 1, steps.length))
-    }, 1600)
+    }, 1800)
     return () => clearTimeout(t)
   }, [steps, revealed])
 
-  const randomDelayMs = () => Math.round(1000 + Math.random() * 600) // 1.0s–1.6s
+  const randomDelayMs = () => Math.round(1000 + Math.random() * 500) // 1.0s–1.5s
 
   const revealNext = () => {
     if (revealed >= steps.length) return
     const currentIndex = revealed
     setRevealed(currentIndex + 1)
 
-    // If next item is a card for the message we just revealed, auto-reveal after a small human cadence
+    // If next item is a card or score-transform, auto-reveal after natural pause
     const justRevealed = steps[currentIndex]
     const upcoming = steps[currentIndex + 1]
-    if (justRevealed && justRevealed.type === 'msg' && upcoming && upcoming.type.startsWith('card-')) {
+    if (
+      justRevealed &&
+      justRevealed.type === 'msg' &&
+      upcoming &&
+      (upcoming.type.startsWith('card-') || upcoming.type === 'score-transform')
+    ) {
       const delay = randomDelayMs()
       setTimeout(() => {
         setRevealed(prev => Math.min(prev + 1, steps.length))
@@ -107,64 +184,186 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
     }
   }
 
-  // no auto-reveal beyond intro; user-driven pacing
+  // Animated score counter for transformation (both main card and header)
+  useEffect(() => {
+    const currentStep = steps[revealed - 1]
+    if (currentStep?.type === 'score-transform') {
+      const { from, to } = currentStep.payload
+      setAnimatingScore(from)
+      setHeaderScore(from)
+      setShowingTransformed(true)
+
+      const duration = 1500 // 1.5s animation
+      const stepCount = 30
+      const increment = (to - from) / stepCount
+      const intervalTime = duration / stepCount
+
+      // Guard: if there is no change, set once and exit to avoid useless updates
+      if (increment === 0) {
+        setAnimatingScore(to)
+        setHeaderScore(to)
+        return
+      }
+
+      let current = from
+      const interval = setInterval(() => {
+        current += increment
+        if ((increment > 0 && current >= to) || (increment < 0 && current <= to)) {
+          setAnimatingScore(to)
+          setHeaderScore(to)
+          clearInterval(interval)
+        } else {
+          const roundedCurrent = Math.round(current)
+          setAnimatingScore(roundedCurrent)
+          setHeaderScore(roundedCurrent)
+        }
+      }, intervalTime)
+
+      return () => clearInterval(interval)
+    }
+  }, [revealed, steps])
 
   return (
     <div className="bg-gradient-to-br from-orange-50 via-purple-50 to-blue-50 rounded-xl shadow-xl p-6 relative">
-      {typeof insights?.fit?.score_after === 'number' && (
-        <div className="absolute top-3 right-3">
-          <div className="w-12 h-12 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow ring-2 ring-white">
-            <span className="text-sm font-bold">{Math.round(insights.fit.score_after)}</span>
-          </div>
-        </div>
-      )}
       <div className="space-y-3">
-        {steps.slice(0, revealed).map((s, idx) => (
-          <motion.div key={idx} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
-            {s.type === 'fit-reveal' && (
-              <div className="flex items-center justify-center">
-                <div className="text-center bg-gradient-to-br from-indigo-50 via-purple-50 to-blue-50 border border-indigo-100 rounded-2xl shadow px-6 py-8 w-full">
-                  <div className="text-5xl font-extrabold text-gray-900 mb-1">{s.payload.score}/100</div>
-                  <div className="text-gray-800 text-base mb-1">Your résumé score for this role</div>
-                  <div className="text-sm text-gray-600">{s.payload.note}</div>
+        <AnimatePresence mode="sync">
+          {steps.slice(0, revealed).map((s, idx) => (
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+            >
+              {/* Initial score reveal - updates during transformation */}
+              {s.type === 'initial-score' && (
+                <div className="flex items-center justify-center">
+                  <div className="text-center bg-white border-2 border-indigo-200 rounded-2xl shadow-lg px-8 py-10 w-full">
+                    <div className="text-gray-600 text-sm mb-2">
+                      {showingTransformed ? 'Your improved résumé scored' : 'Your résumé scored'}
+                    </div>
+                    <motion.div
+                      key={headerScore ?? s.payload.score}
+                      initial={{ scale: 0.8, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ duration: 0.3, type: "spring" }}
+                      className="text-6xl font-extrabold text-gray-900"
+                    >
+                      {headerScore ?? s.payload.score}/100
+                    </motion.div>
+                  </div>
                 </div>
-              </div>
-            )}
-            {s.type === 'msg' && (
-              <div className="bg-white/80 border border-purple-100 rounded-lg p-3 text-sm text-gray-800">
-                {s.payload}
-              </div>
-            )}
-            {s.type === 'card-salary' && (
-              <InsightCard type="salary" title="Salary" data={s.payload} collapsed />
-            )}
-            {s.type === 'card-fit' && (
-              <InsightCard type="fit" title="Fit" data={s.payload} collapsed />
-            )}
-            {s.type === 'card-keywords' && (
-              <InsightCard type="keywords" title="Keywords" data={s.payload} />
-            )}
-            {s.type === 'card-themes' && (
-              <InsightCard type="themes" title="Themes" data={s.payload} />
-            )}
-          </motion.div>
-        ))}
+              )}
+
+              {/* Score transformation with animation */}
+              {s.type === 'score-transform' && (
+                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-xl p-6">
+                  <div className="flex items-center justify-center gap-4 mb-4">
+                    <div className="text-4xl font-bold text-gray-400">{s.payload.from}</div>
+                    <div className="text-2xl text-gray-400">→</div>
+                    <motion.div
+                      key={animatingScore}
+                      initial={{ scale: 1.2, color: '#818cf8' }}
+                      animate={{ scale: 1, color: '#1e293b' }}
+                      className="text-5xl font-extrabold"
+                    >
+                      {animatingScore ?? s.payload.to}
+                    </motion.div>
+                  </div>
+
+                  {/* Subscores breakdown */}
+                  {s.payload.subscores && (
+                    <div className="grid grid-cols-2 gap-3 text-xs">
+                      <div className="bg-white/60 rounded-lg p-2">
+                        <div className="text-gray-600">Keywords</div>
+                        <div className="font-semibold text-gray-800">
+                          {s.payload.subscores.before.keywordMatch} → {s.payload.subscores.after.keywordMatch}
+                        </div>
+                      </div>
+                      <div className="bg-white/60 rounded-lg p-2">
+                        <div className="text-gray-600">Themes</div>
+                        <div className="font-semibold text-gray-800">
+                          {s.payload.subscores.before.themeAlignment} → {s.payload.subscores.after.themeAlignment}
+                        </div>
+                      </div>
+                      <div className="bg-white/60 rounded-lg p-2">
+                        <div className="text-gray-600">Experience</div>
+                        <div className="font-semibold text-gray-800">
+                          {s.payload.subscores.before.experienceRelevance} → {s.payload.subscores.after.experienceRelevance}
+                        </div>
+                      </div>
+                      <div className="bg-white/60 rounded-lg p-2">
+                        <div className="text-gray-600">Skills</div>
+                        <div className="font-semibold text-gray-800">
+                          {s.payload.subscores.before.skillOverlap} → {s.payload.subscores.after.skillOverlap}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Message bubbles */}
+              {s.type === 'msg' && (
+                <div className="bg-white/80 border border-purple-100 rounded-lg p-3 text-sm text-gray-800 leading-relaxed">
+                  {s.payload}
+                </div>
+              )}
+
+              {/* Insight cards */}
+              {s.type === 'card-salary' && (
+                <InsightCard type="salary" title="Market Context" data={s.payload} />
+              )}
+              {s.type === 'card-fit' && (
+                <InsightCard type="fit" title="Fit Analysis" data={s.payload} collapsed />
+              )}
+              {s.type === 'card-keywords' && (
+                <InsightCard type="keywords" title="ATS Keywords" data={s.payload} />
+              )}
+              {s.type === 'card-themes' && (
+                <InsightCard type="themes" title="Themes" data={s.payload} />
+              )}
+              {s.type === 'card-review' && (
+                <InsightCard type="review" title="Watch These" data={s.payload} />
+              )}
+
+              {/* Reveal CTA button */}
+              {s.type === 'reveal-cta' && (
+                <div className="flex justify-center pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // Trigger resume reveal in parent
+                      const event = new CustomEvent('reveal-resume')
+                      window.dispatchEvent(event)
+                    }}
+                    className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-8 py-3 rounded-lg text-base font-semibold shadow-lg hover:shadow-xl transition-all transform hover:scale-105"
+                  >
+                    Show Me The Résumé →
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          ))}
+        </AnimatePresence>
         <div ref={endRef} />
       </div>
 
+      {/* Next insight button */}
       {revealed < steps.length && (
-        <div className="mt-4 flex justify-end">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="mt-4 flex justify-end"
+        >
           <button
             type="button"
             onClick={revealNext}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm"
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm hover:shadow"
           >
-            Next insight →
+            Continue →
           </button>
-        </div>
+        </motion.div>
       )}
     </div>
   )
 }
-
-
