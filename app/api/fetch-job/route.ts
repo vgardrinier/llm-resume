@@ -83,7 +83,8 @@ export async function POST(request: NextRequest) {
             const desc = rawDesc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
             const company = item.hiringOrganization?.name || item.organization?.name
             const title = item.title || item.name
-            if (desc && desc.length > 80) {
+            // Google Careers and some ATS pages keep terse JSON-LD; accept shorter clean text
+            if (desc && desc.length > 40) {
               return { jobDescription: desc, companyName: company || undefined, jobTitle: title || undefined }
             }
           }
@@ -186,7 +187,8 @@ Instructions:
         extractedData = JSON.parse(jsonString)
       }
 
-      if (!extractedData.jobDescription || extractedData.jobDescription.trim().length < 50) {
+      // Loosen minimum length to handle terse job pages (e.g., Google Careers)
+      if (!extractedData.jobDescription || extractedData.jobDescription.trim().length < 40) {
         return NextResponse.json(
           { error: 'Could not extract a valid job description from this URL. The page may not contain a job posting.' },
           { status: 422 }
