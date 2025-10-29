@@ -37,7 +37,9 @@ export function UploadingNarrative({ jobDescription, companyNameHint }: Uploadin
     messages.push(name
       ? `${name} — nice pick. Ambitious team, tight hiring bar. Let's make sure you clear it.`
       : "Good pick — tight hiring bar. Let's make sure your résumé clears it.")
-    messages.push("Comparing your profile to top candidates in this role…\nAlmost there — I'm writing your personalized insights now.")
+    messages.push("Comparing your profile to top candidates in this role…")
+    messages.push("Cross-checking themes, skills, and scope against what this role values.")
+    messages.push("Almost there — writing your personalized insights now.")
     return messages
   }, [derivedCompany])
 

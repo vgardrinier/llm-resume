@@ -14,6 +14,7 @@ export default function Home() {
   const [creativeMode, setCreativeMode] = useState<'conservative' | 'balanced' | 'assertive'>('balanced')
   const [result, setResult] = useState<GenerateInsightsResponse | null>(null)
   const [loading, setLoading] = useState(false)
+  const [companyName, setCompanyName] = useState<string | null>(null)
   
   // PDF upload state
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
@@ -174,6 +175,7 @@ export default function Home() {
 
       // Auto-fill the textarea with extracted job description
       setJobDescription(data.jobDescription)
+      if (data.companyName) setCompanyName(data.companyName)
       setUrlFetchSuccess(true)
 
       // Store company info if needed (for display later)
@@ -465,7 +467,7 @@ export default function Home() {
               <div className="text-center text-gray-500 py-12">
                 {loading ? (
                   <div className="text-left">
-                    <UploadingNarrative jobDescription={jobDescription} />
+                    <UploadingNarrative jobDescription={jobDescription} companyNameHint={companyName ?? undefined} />
                   </div>
                 ) : (
                   <>
