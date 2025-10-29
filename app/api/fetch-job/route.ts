@@ -35,9 +35,22 @@ export async function POST(request: NextRequest) {
     try {
       const fetchResponse = await fetch(url, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+          'Sec-Ch-Ua': '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+          'Sec-Ch-Ua-Mobile': '?0',
+          'Sec-Ch-Ua-Platform': '"macOS"',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'none',
+          'Sec-Fetch-User': '?1',
+          'Upgrade-Insecure-Requests': '1',
         },
-        signal: AbortSignal.timeout(10000), // 10 second timeout
+        signal: AbortSignal.timeout(15000), // 15 second timeout (increased for slower sites)
       })
 
       if (!fetchResponse.ok) {
@@ -79,13 +92,47 @@ export async function POST(request: NextRequest) {
               : Array.isArray(typeVal) && typeVal.includes('JobPosting')
             if (!isJob) continue
 
-            const rawDesc = (item.description || '').toString()
-            const desc = rawDesc.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+            // Helper to clean HTML and concatenate text from various fields
+            const cleanText = (text: string | any): string => {
+              if (!text) return ''
+              const str = typeof text === 'object' ? JSON.stringify(text) : text.toString()
+              return str.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+            }
+
+            // Start with main description
+            let descParts: string[] = []
+            const mainDesc = cleanText(item.description || '')
+            if (mainDesc) descParts.push(mainDesc)
+
+            // Google Careers and some ATS pages split content across multiple fields
+            // Gather from responsibilities, qualifications, skills, etc.
+            const additionalFields = [
+              'responsibilities',
+              'qualifications',
+              'skills',
+              'jobBenefits',
+              'educationRequirements',
+              'experienceRequirements',
+              'jobLocationType',
+              'workHours'
+            ]
+
+            for (const field of additionalFields) {
+              if (item[field]) {
+                const fieldText = cleanText(item[field])
+                if (fieldText && fieldText.length >= 20) {
+                  descParts.push(fieldText)
+                }
+              }
+            }
+
+            const fullDesc = descParts.join('\n\n').trim()
             const company = item.hiringOrganization?.name || item.organization?.name
             const title = item.title || item.name
-            // Google Careers and some ATS pages keep terse JSON-LD; accept shorter clean text
-            if (desc && desc.length > 40) {
-              return { jobDescription: desc, companyName: company || undefined, jobTitle: title || undefined }
+
+            // Accept if combined description meets minimum length
+            if (fullDesc && fullDesc.length >= 40) {
+              return { jobDescription: fullDesc, companyName: company || undefined, jobTitle: title || undefined }
             }
           }
         } catch {
