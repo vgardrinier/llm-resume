@@ -62,6 +62,7 @@ export default function Home() {
     // Reset URL fetch state when URL changes to prevent stale success/error messages
     setUrlFetchSuccess(false)
     setUrlError(null)
+    setManualJobTitle('') // Clear manual entry when URL changes
   }, [jobUrl])
 
   const generateResume = async () => {
@@ -235,6 +236,7 @@ export default function Home() {
     setUrlError(null)
     setUrlLoading(true)
     setUrlFetchSuccess(false)
+    setManualJobTitle('') // Clear manual entry when starting a new URL fetch
 
     try {
       const response = await fetch('/api/fetch-job', {
@@ -256,6 +258,7 @@ export default function Home() {
       setJobDescription(data.jobDescription)
       if (data.companyName) setCompanyName(data.companyName)
       setUrlFetchSuccess(true)
+      setManualJobTitle('') // Clear manual entry on successful URL fetch
 
       // Store company info if needed (for display later)
       if (data.companyName) {
