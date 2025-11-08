@@ -30,6 +30,36 @@ export default function Home() {
   const [urlError, setUrlError] = useState<string | null>(null)
   const [urlFetchSuccess, setUrlFetchSuccess] = useState(false)
   const [manualJobTitle, setManualJobTitle] = useState('')
+  const [isJobPlatform, setIsJobPlatform] = useState(false)
+
+  // Known job platforms that require vision extraction (slower)
+  const JOB_PLATFORMS = [
+    'linkedin.com',
+    'indeed.com',
+    'glassdoor.com',
+    'monster.com',
+    'careerbuilder.com',
+    'ziprecruiter.com',
+    'simplyhired.com',
+  ]
+
+  const checkIfJobPlatform = (url: string): boolean => {
+    try {
+      const hostname = new URL(url).hostname.toLowerCase()
+      return JOB_PLATFORMS.some(platform => hostname.includes(platform))
+    } catch {
+      return false
+    }
+  }
+
+  // Update job platform detection when URL changes
+  useEffect(() => {
+    if (jobUrl.trim()) {
+      setIsJobPlatform(checkIfJobPlatform(jobUrl))
+    } else {
+      setIsJobPlatform(false)
+    }
+  }, [jobUrl])
 
   const generateResume = async () => {
     setPhase('output')
@@ -316,6 +346,13 @@ export default function Home() {
                       </button>
                     </div>
 
+                    {/* Job platform delay warning */}
+                    {isJobPlatform && !urlLoading && !urlFetchSuccess && !urlError && (
+                      <div className="text-sm text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
+                        ⏱️ LinkedIn/Indeed require advanced extraction. This may take 10-15 seconds.
+                      </div>
+                    )}
+
                     {/* Success message */}
                     {urlFetchSuccess && !urlLoading && (
                       <div className="text-sm text-green-600 bg-green-50 p-2 rounded border border-green-200">
@@ -535,6 +572,13 @@ export default function Home() {
                           )}
                         </button>
                       </div>
+                      {/* Job platform delay warning */}
+                      {isJobPlatform && !urlLoading && !urlFetchSuccess && !urlError && (
+                        <div className="text-sm text-amber-700 bg-amber-50 p-2 rounded border border-amber-200">
+                          ⏱️ LinkedIn/Indeed require advanced extraction. This may take 10-15 seconds.
+                        </div>
+                      )}
+
                       {urlFetchSuccess && !urlLoading && (
                         <div className="text-sm text-green-600 bg-green-50 p-2 rounded border border-green-200">
                           ✓ Job description extracted successfully ({jobDescription.length} characters)
