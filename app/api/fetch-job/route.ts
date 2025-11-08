@@ -38,6 +38,7 @@ function parseClaudeResponse(responseText: string): any {
     }
 
     // Find the first complete JSON object by counting braces
+    // Important: ignore braces inside string values
     const firstBrace = responseText.indexOf('{')
     if (firstBrace === -1) {
       throw new Error('No JSON object found in AI response')
@@ -45,14 +46,39 @@ function parseClaudeResponse(responseText: string): any {
 
     let braceCount = 0
     let endIndex = -1
+    let inString = false
+    let escapeNext = false
 
     for (let i = firstBrace; i < responseText.length; i++) {
-      if (responseText[i] === '{') braceCount++
-      if (responseText[i] === '}') {
-        braceCount--
-        if (braceCount === 0) {
-          endIndex = i
-          break
+      const char = responseText[i]
+
+      // Handle escape sequences
+      if (escapeNext) {
+        escapeNext = false
+        continue
+      }
+
+      if (char === '\\') {
+        escapeNext = true
+        continue
+      }
+
+      // Track string boundaries (only count unescaped quotes)
+      if (char === '"') {
+        inString = !inString
+        continue
+      }
+
+      // Only count braces when not inside a string
+      if (!inString) {
+        if (char === '{') {
+          braceCount++
+        } else if (char === '}') {
+          braceCount--
+          if (braceCount === 0) {
+            endIndex = i
+            break
+          }
         }
       }
     }

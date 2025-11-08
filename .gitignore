@@ -75,4 +75,7 @@ yarn.lock
 htmlcov/
 
 # User uploads (if any temp storage is added later)
-uploads/
+uploads/.tsbuildinfo
+
+# TypeScript build info
+*.tsbuildinfo

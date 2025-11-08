@@ -59,6 +59,9 @@ export default function Home() {
     } else {
       setIsJobPlatform(false)
     }
+    // Reset URL fetch state when URL changes to prevent stale success/error messages
+    setUrlFetchSuccess(false)
+    setUrlError(null)
   }, [jobUrl])
 
   const generateResume = async () => {
@@ -209,6 +212,7 @@ export default function Home() {
 
   const handleRemoveFile = () => {
     setUploadedFile(null)
+    setCurrentResume('')
     setParseError(null)
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
@@ -367,20 +371,20 @@ export default function Home() {
                           {urlError}
                         </div>
 
-                        {/* Manual job title fallback */}
+                        {/* Manual job description fallback */}
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                           <p className="text-sm text-blue-900 mb-2">
-                            Paste the job title and company manually — I'll still optimize your résumé intelligently.
+                            Paste the full job description manually (including responsibilities, qualifications, and requirements) — I'll optimize your résumé intelligently.
                           </p>
-                          <input
-                            type="text"
+                          <textarea
                             value={manualJobTitle}
                             onChange={(e) => {
                               setManualJobTitle(e.target.value)
                               setJobDescription(e.target.value)
                             }}
-                            placeholder="e.g., Senior Software Engineer at Google"
-                            className="w-full p-2 text-sm border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            placeholder="Paste the complete job description here, including job title, company, responsibilities, qualifications, requirements, and any other relevant details..."
+                            rows={8}
+                            className="w-full p-2 text-sm border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
                           />
                         </div>
                       </div>
@@ -591,20 +595,20 @@ export default function Home() {
                             {urlError}
                           </div>
 
-                          {/* Manual job title fallback */}
+                          {/* Manual job description fallback */}
                           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                             <p className="text-sm text-blue-900 mb-2">
-                              Paste the job title and company manually — I'll still optimize your résumé intelligently.
+                              Paste the full job description manually (including responsibilities, qualifications, and requirements) — I'll optimize your résumé intelligently.
                             </p>
-                            <input
-                              type="text"
+                            <textarea
                               value={manualJobTitle}
                               onChange={(e) => {
                                 setManualJobTitle(e.target.value)
                                 setJobDescription(e.target.value)
                               }}
-                              placeholder="e.g., Senior Software Engineer at Google"
-                              className="w-full p-2 text-sm border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                              placeholder="Paste the complete job description here, including job title, company, responsibilities, qualifications, requirements, and any other relevant details..."
+                              rows={8}
+                              className="w-full p-2 text-sm border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
                             />
                           </div>
                         </div>
