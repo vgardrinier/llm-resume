@@ -76,3 +76,6 @@ htmlcov/
 
 # User uploads (if any temp storage is added later)
 uploads/
+
+# TypeScript build info
+*.tsbuildinfo
