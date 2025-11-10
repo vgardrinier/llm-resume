@@ -17,7 +17,12 @@ export function autoPatchHallucinations(
 ): string {
   let patchedResume = generatedResume
   
-  const numericPattern = /\$[\d,]+|\d+%|\d+[KMB]|\d+\+|\d+\.\d+[KMB]?|\d+[,\d]*/g
+  // More specific pattern: only match numbers that look like metrics/quantities
+  // Excludes years (4-digit years), phone numbers, dates, etc.
+  // Matches: currency ($1,000), percentages (50%), K/M/B suffixes (10K), 
+  // plus suffixes (100+), decimals (1.5M), and comma-separated numbers (1,000+)
+  // Note: Removed broad \d+[,\d]* pattern to avoid matching years, phone numbers, etc.
+  const numericPattern = /\$[\d,]+|\d+%|\d+[KMB]|\d+\+|\d+\.\d+[KMB]?|\d{1,3}(?:,\d{3})+/g
   const originalNumbers = (originalResume.match(numericPattern) || []) as string[]
   const generatedNumbers = (generatedResume.match(numericPattern) || []) as string[]
   
@@ -28,7 +33,18 @@ export function autoPatchHallucinations(
     /\d+\s+team/i,
     /\d+\s+member/i,
     /team\s+of\s+\d+/i,
-    /\d+\s+person/i
+    /\d+\s+person/i,
+    // Exclude years (4-digit years like 2023, 2024)
+    /\b(19|20)\d{2}\b/i,
+    // Exclude dates (MM/DD/YYYY, YYYY-MM-DD, etc.)
+    /\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/i,
+    /\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}/i,
+    // Exclude phone numbers (various formats)
+    /\d{3}[\s\-\.]?\d{3}[\s\-\.]?\d{4}/,
+    /\(\d{3}\)\s?\d{3}[\s\-]?\d{4}/,
+    // Exclude version numbers (v1.0, version 2.0, etc.)
+    /version\s+\d+\.?\d*/i,
+    /v\d+\.?\d*/i
   ]
   
   generatedNumbers.forEach((num: string) => {
