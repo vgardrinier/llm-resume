@@ -93,7 +93,7 @@ export function UploadingNarrative({ jobDescription, companyNameHint }: Uploadin
             cy="32" 
             r={radius} 
             fill="none" 
-            stroke="#E5E7EB" 
+            stroke="#9CA3AF" 
             strokeWidth="4" 
           />
           <motion.circle
@@ -101,7 +101,7 @@ export function UploadingNarrative({ jobDescription, companyNameHint }: Uploadin
             cy="32" 
             r={radius} 
             fill="none"
-            stroke="#6366F1" 
+            stroke="#4F46E5" 
             strokeWidth="4" 
             strokeLinecap="round"
             strokeDasharray={`${dash} ${circumference}`}
