@@ -176,7 +176,8 @@ Return ONLY JSON:
       })
 
       // Phase 1.5: Revision capability if any category < 80
-      const needsRevision = evaluation.clarity < 80 || evaluation.relevance < 80 || evaluation.honesty < 80
+      // Use raw scores (not randomized) to ensure consistent revision logic
+      const needsRevision = rawClarity < 80 || rawRelevance < 80 || rawHonesty < 80
       
       if (needsRevision) {
         console.log('[Curator] Low scores detected, attempting revision...')

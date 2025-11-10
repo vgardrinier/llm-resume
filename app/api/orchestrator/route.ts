@@ -199,43 +199,6 @@ export async function POST(request: NextRequest) {
       resumeMd = patchedResume
     }
 
-    // Calculate fit score
-    const fitScoreStart = Date.now()
-    console.log('[Orchestrator] Calculating fit score...')
-    const fitScore = await calculateFitScore({
-      jobDescription: job_description,
-      candidateResume: candidate_resume,
-      generatedResume: resumeMd,
-      keywordsUsed: generatorData.keywords_used || [],
-      themesCovered: generatorData.themes_covered || []
-    })
-    const fitScoreTime = Date.now() - fitScoreStart
-    console.log(`[Orchestrator] Fit score calculated in ${fitScoreTime}ms`)
-
-    const normalizedScore = Math.max(1, Math.min(100, Number.isFinite(fitScore.score) ? fitScore.score : 0))
-    if (normalizedScore !== fitScore.score) {
-      console.warn('[Orchestrator] Adjusted fit score to normalized range:', { original: fitScore.score, normalized: normalizedScore })
-    }
-
-    // Calculate baseline fit score
-    const baselineStart = Date.now()
-    let baseline: FitScoreResult
-    try {
-      baseline = await calculateBaselineFitScore({
-        jobDescription: job_description,
-        originalResume: candidate_resume
-      })
-      const baselineTime = Date.now() - baselineStart
-      console.log(`[Orchestrator] Baseline fit score calculated in ${baselineTime}ms`)
-    } catch (e) {
-      console.warn('[Orchestrator] Baseline fit score failed, using estimate:', e)
-      baseline = {
-        score: Math.max(0, normalizedScore - 10),
-        breakdown: fitScore.breakdown,
-        explanation: 'Estimated baseline (scoring service unavailable)'
-      }
-    }
-
     // Use pre-extracted job metadata (already available from parallel prep)
     const { role, location, companyName } = jobMeta
 
@@ -252,18 +215,6 @@ export async function POST(request: NextRequest) {
         role,
         comment: `Typical salary in ${location}: $${salaryData.median.toLocaleString()} (range $${salaryData.low.toLocaleString()}–$${salaryData.high.toLocaleString()}).`
       }
-    }
-
-    // Fit insight (before/after)
-    const scoreAfter = normalizedScore
-    insights.fit = {
-      score_before: baseline.score,
-      score_after: Math.max(1, Math.min(100, scoreAfter)),
-      subscores: {
-        before: baseline.breakdown,
-        after: fitScore.breakdown
-      },
-      summary: fitScore.explanation || 'Unable to calculate fit score'
     }
 
     // Other insights
@@ -358,6 +309,56 @@ export async function POST(request: NextRequest) {
           }
         }
       }
+    }
+
+    // Calculate fit score AFTER all revisions are complete (including coaching-based revision)
+    // This ensures insights.fit reflects the final optimized_resume that the user receives
+    const fitScoreStart = Date.now()
+    console.log('[Orchestrator] Calculating fit score on final resume...')
+    const fitScore = await calculateFitScore({
+      jobDescription: job_description,
+      candidateResume: candidate_resume,
+      generatedResume: resumeMd,
+      keywordsUsed: generatorData.keywords_used || [],
+      themesCovered: generatorData.themes_covered || []
+    })
+    const fitScoreTime = Date.now() - fitScoreStart
+    console.log(`[Orchestrator] Fit score calculated in ${fitScoreTime}ms`)
+
+    const normalizedScore = Math.max(1, Math.min(100, Number.isFinite(fitScore.score) ? fitScore.score : 0))
+    if (normalizedScore !== fitScore.score) {
+      console.warn('[Orchestrator] Adjusted fit score to normalized range:', { original: fitScore.score, normalized: normalizedScore })
+    }
+
+    // Calculate baseline fit score
+    const baselineStart = Date.now()
+    let baseline: FitScoreResult
+    try {
+      baseline = await calculateBaselineFitScore({
+        jobDescription: job_description,
+        originalResume: candidate_resume
+      })
+      const baselineTime = Date.now() - baselineStart
+      console.log(`[Orchestrator] Baseline fit score calculated in ${baselineTime}ms`)
+    } catch (e) {
+      console.warn('[Orchestrator] Baseline fit score failed, using estimate:', e)
+      baseline = {
+        score: Math.max(0, normalizedScore - 10),
+        breakdown: fitScore.breakdown,
+        explanation: 'Estimated baseline (scoring service unavailable)'
+      }
+    }
+
+    // Fit insight (before/after) - calculated after all revisions
+    const scoreAfter = normalizedScore
+    insights.fit = {
+      score_before: baseline.score,
+      score_after: Math.max(1, Math.min(100, scoreAfter)),
+      subscores: {
+        before: baseline.breakdown,
+        after: fitScore.breakdown
+      },
+      summary: fitScore.explanation || 'Unable to calculate fit score'
     }
 
     const responsePayload = {

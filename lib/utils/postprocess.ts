@@ -33,22 +33,17 @@ export function autoPatchHallucinations(
   
   generatedNumbers.forEach((num: string) => {
     if (!originalNumbers.includes(num)) {
-      // Check if number is in an excluded context
-      const numIndex = generatedResume.indexOf(num)
-      if (numIndex !== -1) {
-        // Get surrounding context (50 chars before and after)
-        const contextStart = Math.max(0, numIndex - 50)
-        const contextEnd = Math.min(generatedResume.length, numIndex + num.length + 50)
-        const context = generatedResume.substring(contextStart, contextEnd).toLowerCase()
-        
-        // Skip if in excluded context
-        const shouldExclude = excludePatterns.some(pattern => pattern.test(context))
-        if (shouldExclude) {
-          return // Skip this number
-        }
+      // Find ALL occurrences of this number (not just the first)
+      const occurrences: number[] = []
+      let searchIndex = 0
+      while (true) {
+        const numIndex = patchedResume.indexOf(num, searchIndex)
+        if (numIndex === -1) break
+        occurrences.push(numIndex)
+        searchIndex = numIndex + 1
       }
       
-      // Replace with appropriate qualifier
+      // Determine qualifier once (same for all occurrences of this number)
       let qualifier = 'significant'
       if (num.includes('$')) qualifier = 'substantial'
       else if (num.includes('%')) qualifier = 'notable'
@@ -56,7 +51,23 @@ export function autoPatchHallucinations(
       else if (num.includes('+')) qualifier = 'notable'
       else if (num.match(/^\d+$/)) qualifier = 'multiple'
       
-      patchedResume = patchedResume.replace(num, qualifier)
+      // Process each occurrence individually (check context and replace if needed)
+      // Process in reverse order to maintain indices as we replace
+      for (let i = occurrences.length - 1; i >= 0; i--) {
+        const numIndex = occurrences[i]
+        
+        // Get surrounding context (50 chars before and after)
+        const contextStart = Math.max(0, numIndex - 50)
+        const contextEnd = Math.min(patchedResume.length, numIndex + num.length + 50)
+        const context = patchedResume.substring(contextStart, contextEnd).toLowerCase()
+        
+        // Skip if in excluded context
+        const shouldExclude = excludePatterns.some(pattern => pattern.test(context))
+        if (!shouldExclude) {
+          // Replace this occurrence (working backwards preserves indices)
+          patchedResume = patchedResume.substring(0, numIndex) + qualifier + patchedResume.substring(numIndex + num.length)
+        }
+      }
     }
   })
   
