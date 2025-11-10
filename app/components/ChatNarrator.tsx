@@ -81,7 +81,10 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
     const scoreBefore = Math.round(insights.fit.score_before ?? 0)
     const scoreAfter = Math.round(insights.fit.score_after ?? 0)
 
-    const messages = generateContextualMessages(scoreBefore, scoreAfter)
+    // Use LLM-generated coaching messages if available, otherwise fall back to templates
+    const coaching = insights.evaluation?.coaching
+    const hasCoaching = coaching?.unified && coaching.unified.trim().length > 0
+
     const build: Array<{ type: string; payload?: any }> = []
 
     // 1. INITIAL SCORE REVEAL (emotional hook)
@@ -93,15 +96,55 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
       }
     })
 
-    // 2. INITIAL REACTION (score-dependent)
-    build.push({ type: 'msg', payload: messages.initial.reaction })
-    build.push({ type: 'msg', payload: messages.initial.assessment })
+    // 2. USE LLM-GENERATED COACHING MESSAGES (personalized, natural)
+    if (hasCoaching) {
+      // Use the unified coaching message as the main narrative
+      // Split into sentences, but group related sentences together for better flow
+      const unifiedText = coaching.unified.trim()
+      
+      // Split by sentence boundaries, but keep sentences together if they're short
+      const sentences = unifiedText
+        .split(/(?<=[.!?])\s+/)
+        .map((s: string) => s.trim())
+        .filter((s: string) => s.length > 0)
+      
+      // Group sentences: if a sentence is short (< 50 chars), combine with next
+      // Otherwise, show as separate messages for natural pacing
+      const groupedMessages: string[] = []
+      for (let i = 0; i < sentences.length; i++) {
+        const current = sentences[i]
+        if (current.length < 50 && i < sentences.length - 1) {
+          // Combine short sentence with next one
+          groupedMessages.push(current + ' ' + sentences[i + 1])
+          i++ // Skip next sentence since we combined it
+        } else {
+          groupedMessages.push(current)
+        }
+      }
+      
+      // Add each grouped message
+      groupedMessages.forEach(message => {
+        build.push({ type: 'msg', payload: message })
+      })
+      
+      // Bridge: Smooth transition from coaching to score reveal
+      build.push({ type: 'msg', payload: "Let's see what changed after those improvements..." })
+    } else {
+      // Fallback to template messages if coaching not available
+      const messages = generateContextualMessages(scoreBefore, scoreAfter)
+      build.push({ type: 'msg', payload: messages.initial.reaction })
+      build.push({ type: 'msg', payload: messages.initial.assessment })
+      build.push({ type: 'msg', payload: messages.validation })
+    }
 
-    // 3. VALIDATION (builds confidence before showing transformation)
-    build.push({ type: 'msg', payload: messages.validation })
-
-    // 4. FIT SCORE TRANSFORMATION (animated reveal)
-    build.push({ type: 'msg', payload: messages.transformation.setup })
+    // 3. FIT SCORE TRANSFORMATION (animated reveal)
+    // When we have coaching, skip the templated message - just show the score card
+    // The coaching messages already provide natural context
+    if (!hasCoaching) {
+      const improvement = scoreAfter - scoreBefore
+      build.push({ type: 'msg', payload: `We tightened ${improvement} points. Doesn't sound like much, but in résumé math? It's everything.` })
+    }
+    
     build.push({
       type: 'score-transform',
       payload: {
@@ -110,40 +153,60 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
         subscores: insights.fit.subscores
       }
     })
-    build.push({ type: 'msg', payload: messages.transformation.impact })
+    
+    if (!hasCoaching) {
+      build.push({ type: 'msg', payload: 'These are the details that separate callbacks from silence.' })
+    }
 
-    // 5. SUPPORTING EVIDENCE (keywords & themes)
+    // 4. SUPPORTING EVIDENCE (keywords & themes)
+    // Remove templated intro messages - let the cards speak for themselves or use natural transitions
     if (insights.keywords && insights.keywords.length > 0) {
-      const keywordIntro = scoreBefore < 50
-        ? "Now you're hitting the terms recruiters actually scan for:"
-        : "You're now aligned with the terms that get noticed:"
-      build.push({ type: 'msg', payload: keywordIntro })
       build.push({ type: 'card-keywords', payload: insights.keywords })
     }
 
     if (insights.themes && insights.themes.length > 0) {
-      build.push({ type: 'msg', payload: 'And the storylines we emphasized:' })
       build.push({ type: 'card-themes', payload: insights.themes })
     }
 
-    // 6. SALARY CONTEXT (market reality check)
+    // 5. SALARY CONTEXT (market reality check)
     if (insights.salary) {
       const s = insights.salary
-      const salaryIntro = `Real talk on money: this role in ${s.location} pays around $${s.median.toLocaleString()}.`
-      build.push({ type: 'msg', payload: salaryIntro })
+      // More natural, less templated salary message with location fallback
+      const locationText = s.location ? ` in ${s.location}` : ''
+      const salaryLine = `For context, this role typically pays around $${s.median.toLocaleString()}${locationText}.`
+      build.push({ type: 'msg', payload: salaryLine })
       build.push({ type: 'card-salary', payload: s })
     }
 
-    // 7. WHAT TO WATCH FOR (review notes reframed)
-    if (insights.review_notes && insights.review_notes.length > 0) {
-      build.push({ type: 'msg', payload: 'Double-check these changes - they pushed the limits:' })
-      build.push({ type: 'card-review', payload: insights.review_notes })
+    // 6. REMOVED: review_notes section (was showing internal technical feedback)
+    // If we need to show honesty concerns, use the coaching.honesty message instead
+    if (hasCoaching && coaching.honesty && insights.evaluation?.honesty < 80) {
+      build.push({ type: 'msg', payload: coaching.honesty })
     }
 
-    // 8. MOTIVATING CLOSE
-    build.push({ type: 'msg', payload: messages.close })
+    // 7. MOTIVATING CLOSE
+    // When we have coaching, add an exciting closing message before reveal
+    // Only add a close message if we don't have coaching (fallback to templates)
+    if (!hasCoaching) {
+      const messages = generateContextualMessages(scoreBefore, scoreAfter)
+      build.push({ type: 'msg', payload: messages.close })
+    } else {
+      // Exciting closing message before reveal - build anticipation
+      const improvement = scoreAfter - scoreBefore
+      let closingMessage: string
+      if (improvement >= 15) {
+        closingMessage = "Ready to see your transformed résumé? This is going to look sharp."
+      } else if (improvement >= 8) {
+        closingMessage = "Alright, time to see what we built. You're going to like this."
+      } else if (scoreAfter >= 80) {
+        closingMessage = "Let's see the final result. This résumé is ready to compete."
+      } else {
+        closingMessage = "Ready to see your optimized résumé? Let's take a look."
+      }
+      build.push({ type: 'msg', payload: closingMessage })
+    }
 
-    // 9. REVEAL CTA
+    // 8. REVEAL CTA
     build.push({ type: 'reveal-cta' })
 
     setSteps(build)

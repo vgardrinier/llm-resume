@@ -257,6 +257,17 @@ export default function Home() {
       // Store extracted job description and company
       setJobDescription(data.jobDescription)
       if (data.companyName) setCompanyName(data.companyName)
+      
+      // If jobTitle and location were extracted, prepend them to job description for better extraction downstream
+      if (data.jobTitle || data.location) {
+        const prefixParts: string[] = []
+        if (data.jobTitle) prefixParts.push(`Job Title: ${data.jobTitle}`)
+        if (data.location) prefixParts.push(`Location: ${data.location}`)
+        if (prefixParts.length > 0) {
+          setJobDescription(`${prefixParts.join('\n')}\n\n${data.jobDescription}`)
+        }
+      }
+      
       setUrlFetchSuccess(true)
       setManualJobTitle('') // Clear manual entry on successful URL fetch
 

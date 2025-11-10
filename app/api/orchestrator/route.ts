@@ -2,7 +2,33 @@ import { NextRequest, NextResponse } from 'next/server'
 import { calculateFitScore, calculateBaselineFitScore, type FitScoreResult } from '@/lib/utils/fitScore'
 import { extractJobTitleAndLocation } from '@/lib/utils/salaryMCP'
 import { autoPatchHallucinations } from '@/lib/utils/postprocess'
+import { generateCoachingMessages, generateUnifiedCoachingMessage } from '@/lib/utils/coachingMessages'
 import { randomUUID } from 'crypto'
+
+/**
+ * Extract actionable goals from coaching message
+ * Returns top 1-2 specific suggestions that can be implemented
+ */
+function extractActionableGoals(coachingText: string): string {
+  // Look for sentences with actionable verbs
+  const sentences = coachingText.split(/[.!?]+/).map(s => s.trim()).filter(s => s.length > 10)
+  
+  const actionablePatterns = [
+    /(add|include|consider|try|should|could|might want to|you could|consider adding)/i,
+    /(improve|enhance|strengthen|clarify|emphasize|highlight|focus on)/i
+  ]
+  
+  const actionableSentences = sentences.filter(s => 
+    actionablePatterns.some(pattern => pattern.test(s))
+  ).slice(0, 2) // Take top 2
+  
+  if (actionableSentences.length > 0) {
+    return actionableSentences.join('. ').trim()
+  }
+  
+  // Fallback: return first 2 sentences if no clear actionables found
+  return sentences.slice(0, 2).join('. ').trim()
+}
 
 // Extract company name from job description
 function extractCompanyName(jobDescription: string): string {
@@ -245,18 +271,92 @@ export async function POST(request: NextRequest) {
     insights.themes = generatorData.themes_covered || []
     insights.optimizations = generatorData.changes_made || []
 
-    // Add evaluation insights from curator
+    // Add evaluation insights from curator with human-friendly coaching messages
     if (evaluation) {
+      // Generate contextual coaching messages using LLM (personalized, not templated)
+      const coachingStart = Date.now()
+      console.log('[Orchestrator] Generating personalized coaching messages...')
+      
+      const coachingMessages = await generateCoachingMessages(evaluation, {
+        role,
+        company: companyName,
+        location
+      }, {
+        model: 'haiku', // Use Haiku for speed, can switch to 'sonnet' for richer phrasing
+        originalResume: candidate_resume // Pass original resume so coaching can verify claims
+      })
+      
+      const coachingTime = Date.now() - coachingStart
+      console.log(`[Orchestrator] Coaching messages generated in ${coachingTime}ms`)
+
       insights.evaluation = {
+        // Raw scores (for backend/analytics)
         clarity: evaluation.clarity,
         relevance: evaluation.relevance,
         honesty: evaluation.honesty,
-        feedback: evaluation.feedback
+        // Technical feedback (for debugging - not shown to users)
+        feedback: evaluation.feedback,
+        // Human-friendly coaching messages (for user-facing chat)
+        coaching: {
+          clarity: coachingMessages.clarity,
+          relevance: coachingMessages.relevance,
+          honesty: coachingMessages.honesty,
+          unified: coachingMessages.unified // Single message combining all aspects
+        }
       }
 
-      // Add review notes if honesty score is low
-      if (evaluation.honesty < 80) {
-        insights.review_notes = [evaluation.feedback]
+      // Removed: review_notes - we now use coaching.honesty message instead
+      // The coaching messages are user-friendly and context-aware, replacing raw technical feedback
+
+      // COACHING-BASED REVISION: If coaching suggests improvements and curator didn't revise, do a second generator pass
+      // This ensures coaching suggestions (e.g., "add summary") actually get implemented
+      if (coachingMessages.unified && !evaluation.revision_applied) {
+        // Check if coaching contains actionable suggestions (not just observations)
+        const hasActionableSuggestions = /(add|include|consider|try|might|should|could|improve|enhance|strengthen|clarify|emphasize)/i.test(coachingMessages.unified)
+        
+        if (hasActionableSuggestions) {
+          console.log('[Orchestrator] Coaching suggests improvements, doing second generator pass...')
+          const revisionStart = Date.now()
+          
+          try {
+            // Extract top 1-2 actionable suggestions from coaching
+            const revisionGoals = extractActionableGoals(coachingMessages.unified)
+            
+            const revisionResponse = await fetch(`${baseUrl}/api/generator`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-generation-id': generationId,
+                'x-session-id': sessionId
+              },
+              body: JSON.stringify({
+                job_description,
+                candidate_resume,
+                creative_mode,
+                revision_goals: revisionGoals, // New: pass coaching suggestions as revision goals
+                generation_id: generationId,
+                session_id: sessionId
+              })
+            })
+
+            if (revisionResponse.ok) {
+              const revisionData = await revisionResponse.json()
+              const revisionTime = Date.now() - revisionStart
+              console.log(`[Orchestrator] Coaching-based revision completed in ${revisionTime}ms`)
+              
+              // Use revised resume if it's different and better
+              if (revisionData.resume_md && revisionData.resume_md !== resumeMd) {
+                resumeMd = revisionData.resume_md
+                console.log('[Orchestrator] Using coaching-revised resume')
+              }
+            } else {
+              console.warn('[Orchestrator] Coaching-based revision failed, using original')
+            }
+          } catch (revisionErr) {
+            console.warn('[Orchestrator] Coaching-based revision error:', revisionErr)
+            // Continue with original resume if revision fails
+          }
+        }
       }
     }
 
