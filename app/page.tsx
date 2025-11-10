@@ -379,7 +379,7 @@ export default function Home() {
                                 title="Fetch job description"
                               >
                                 {urlLoading ? (
-                                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-900 border-t-transparent"></div>
+                                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-indigo-600 border-t-transparent"></div>
                                 ) : (
                                   <Link2 className="h-4 w-4" />
                                 )}
@@ -394,7 +394,7 @@ export default function Home() {
                               title="Fetch job description"
                             >
                               {urlLoading ? (
-                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-600"></div>
+                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-indigo-600 border-t-transparent"></div>
                               ) : (
                                 <Link2 className="h-4 w-4" />
                               )}
@@ -552,7 +552,7 @@ export default function Home() {
       </motion.div>
 
       {/* Resume Modal */}
-      {result && (
+      {result && result.optimized_resume && (
         <ResumeModal
           isOpen={showResume}
           onClose={() => setShowResume(false)}

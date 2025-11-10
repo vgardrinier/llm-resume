@@ -17,6 +17,11 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
   const [showingTransformed, setShowingTransformed] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
 
+  // Safety check: if insights is invalid, return early
+  if (!insights || typeof insights !== 'object') {
+    return null
+  }
+
   // Helper: Get score range category
   const getScoreRange = (score: number): 'low' | 'mid' | 'high' => {
     if (score < 50) return 'low'
@@ -78,13 +83,14 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
 
   useEffect(() => {
     if (!insights?.fit) return
+    
+    try {
+      const scoreBefore = Math.round(insights.fit?.score_before ?? 0)
+      const scoreAfter = Math.round(insights.fit?.score_after ?? 0)
 
-    const scoreBefore = Math.round(insights.fit.score_before ?? 0)
-    const scoreAfter = Math.round(insights.fit.score_after ?? 0)
-
-    // Use LLM-generated coaching messages if available, otherwise fall back to templates
-    const coaching = insights.evaluation?.coaching
-    const hasCoaching = coaching?.unified && coaching.unified.trim().length > 0
+      // Use LLM-generated coaching messages if available, otherwise fall back to templates
+      const coaching = insights.evaluation?.coaching
+      const hasCoaching = coaching?.unified && typeof coaching.unified === 'string' && coaching.unified.trim().length > 0
 
     const build: Array<{ type: string; payload?: any }> = []
 
@@ -98,10 +104,10 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
     })
 
     // 2. USE LLM-GENERATED COACHING MESSAGES (personalized, natural)
-    if (hasCoaching) {
+    if (hasCoaching && coaching?.unified) {
       // Use the unified coaching message as the main narrative
       // Split into sentences, but group related sentences together for better flow
-      const unifiedText = coaching.unified.trim()
+      const unifiedText = String(coaching.unified).trim()
       
       // Split by sentence boundaries, but keep sentences together if they're short
       const sentences = unifiedText
@@ -207,11 +213,21 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
       build.push({ type: 'msg', payload: closingMessage })
     }
 
-    // 8. REVEAL CTA
-    build.push({ type: 'reveal-cta' })
+      // 8. REVEAL CTA
+      build.push({ type: 'reveal-cta' })
 
-    setSteps(build)
-    setRevealed(1) // Show first step immediately
+      setSteps(build)
+      setRevealed(1) // Show first step immediately
+    } catch (error) {
+      console.error('Error building chat steps:', error)
+      // Fallback: show minimal steps
+      setSteps([
+        { type: 'initial-score', payload: { score: 0, label: 'Your résumé scored' } },
+        { type: 'msg', payload: 'Processing your résumé insights...' },
+        { type: 'reveal-cta' }
+      ])
+      setRevealed(1)
+    }
   }, [insights])
 
   // Auto-advance from initial score after 1.8s
