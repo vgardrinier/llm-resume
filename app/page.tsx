@@ -70,7 +70,7 @@ export default function Home() {
     setLoading(true)
     setShowResume(false) // Reset resume visibility
     try {
-      const response = await fetch('/api/generate', {
+      const response = await fetch('/api/orchestrator', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
