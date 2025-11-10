@@ -34,7 +34,7 @@ export function Button({
       <motion.div
         className="inline-block"
         style={{
-          background: 'var(--gradient-brand)',
+          background: 'var(--gradient-brand, linear-gradient(90deg, #F5B041 0%, #A686EA 50%, #3E7BFA 100%))',
           padding: '2px',
           borderRadius: '9999px',
         }}

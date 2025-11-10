@@ -12,6 +12,7 @@ interface ResumeModalProps {
 
 export function ResumeModal({ isOpen, onClose, optimized }: ResumeModalProps) {
   const downloadMarkdown = () => {
+    if (!optimized) return
     const blob = new Blob([optimized], { type: 'text/markdown' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
@@ -23,12 +24,15 @@ export function ResumeModal({ isOpen, onClose, optimized }: ResumeModalProps) {
     URL.revokeObjectURL(url)
   }
 
+  if (!optimized) return null
+
   return (
     <AnimatePresence>
       {isOpen && (
         <>
           {/* Backdrop */}
           <motion.div
+            key="backdrop"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -39,14 +43,17 @@ export function ResumeModal({ isOpen, onClose, optimized }: ResumeModalProps) {
           
           {/* Modal */}
           <motion.div
+            key="modal"
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4"
-            onClick={(e) => e.stopPropagation()}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
           >
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div 
+              className="bg-white rounded-2xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col pointer-events-auto"
+              onClick={(e) => e.stopPropagation()}
+            >
               {/* Header */}
               <div className="flex items-center justify-between p-6 border-b border-gray-100">
                 <h2 className="text-xl font-semibold text-gray-900">Resume Preview</h2>
