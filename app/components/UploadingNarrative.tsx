@@ -84,43 +84,63 @@ export function UploadingNarrative({ jobDescription, companyNameHint }: Uploadin
   const dash = (progress / 100) * circumference
 
   return (
-    <div className="bg-gradient-to-br from-indigo-50 via-purple-50 to-blue-50 rounded-xl shadow-lg p-6">
-      <div className="flex items-start gap-4">
-        {/* Progress ring */}
-        <div className="shrink-0 relative">
-          <svg width="72" height="72" viewBox="0 0 72 72" className="drop-shadow-sm">
-            <circle cx="36" cy="36" r={radius} fill="none" stroke="#E5E7EB" strokeWidth="6" />
-            <motion.circle
-              cx="36" cy="36" r={radius} fill="none"
-              stroke="#4F46E5" strokeWidth="6" strokeLinecap="round"
-              strokeDasharray={`${dash} ${circumference}`}
-              transition={{ type: 'tween', ease: 'linear', duration: 0.2 }}
-              style={{ rotate: -90 as any }}
-            />
-          </svg>
-          <div className="absolute inset-0 flex items-center justify-center text-xs text-indigo-700 font-semibold">
-            {progress}%
-          </div>
+    <div className="flex flex-col items-center gap-6 py-8">
+      {/* Progress ring - minimal, clean */}
+      <div className="relative">
+        <svg width="64" height="64" viewBox="0 0 64 64" className="transform -rotate-90">
+          <circle 
+            cx="32" 
+            cy="32" 
+            r={radius} 
+            fill="none" 
+            stroke="#9CA3AF" 
+            strokeWidth="4" 
+          />
+          <motion.circle
+            cx="32" 
+            cy="32" 
+            r={radius} 
+            fill="none"
+            stroke="#4F46E5" 
+            strokeWidth="4" 
+            strokeLinecap="round"
+            strokeDasharray={`${dash} ${circumference}`}
+            transition={{ type: 'tween', ease: 'linear', duration: 0.2 }}
+          />
+        </svg>
+        <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-700 font-medium">
+          {progress}%
         </div>
+      </div>
 
-        {/* Narrative text */}
-        <div className="flex-1">
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={step}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.28 }}
-              className="bg-white/80 border border-purple-100 rounded-lg p-3 text-sm text-gray-800 whitespace-pre-line"
-            >
-              {beats[step]}
-            </motion.div>
-          </AnimatePresence>
-          {step === beats.length - 1 && (
-            <div className="mt-1 text-xs text-gray-500">Still working…</div>
-          )}
-        </div>
+      {/* Narrative text - clean, minimal */}
+      <div className="max-w-lg text-center">
+        <AnimatePresence mode="wait">
+          <motion.p
+            key={step}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+            className="text-base lg:text-lg text-gray-700 leading-relaxed"
+            style={{
+              fontFamily: 'system-ui, -apple-system, sans-serif',
+              fontWeight: 400,
+            }}
+          >
+            {beats[step]}
+          </motion.p>
+        </AnimatePresence>
+        {step === beats.length - 1 && (
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="mt-3 text-sm text-gray-500"
+          >
+            Still working…
+          </motion.p>
+        )}
       </div>
     </div>
   )

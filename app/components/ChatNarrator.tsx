@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { InsightCard } from './InsightCard'
+import { Button } from './Button'
 
 interface ChatNarratorProps {
   insights: any
@@ -392,17 +393,17 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
               {/* Reveal CTA button */}
               {s.type === 'reveal-cta' && (
                 <div className="flex justify-center pt-4">
-                  <button
-                    type="button"
+                  <Button
                     onClick={() => {
                       // Trigger resume reveal in parent
                       const event = new CustomEvent('reveal-resume')
                       window.dispatchEvent(event)
                     }}
-                    className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white px-8 py-3 rounded-lg text-base font-semibold shadow-lg hover:shadow-xl transition-all transform hover:scale-105"
+                    variant="gradient"
+                    className="text-base px-8 py-4"
                   >
                     Show Me The Résumé →
-                  </button>
+                  </Button>
                 </div>
               )}
             </motion.div>

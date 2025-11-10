@@ -111,7 +111,8 @@ IMPORTANT:
 - Return ONLY the JSON, no other text
 - Each message should be a standalone sentence or two
 - Make them feel conversational and human
-- No markdown, no code blocks, just raw message strings`
+- No markdown, no code blocks, just raw message strings
+- DO NOT include closing phrases like "Let me know if you have any questions" or "Feel free to ask" - end naturally without these generic closings`
 
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',

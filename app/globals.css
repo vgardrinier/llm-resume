@@ -5,6 +5,7 @@
 :root {
   --font-inter: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Noto Sans, "Apple Color Emoji", "Segoe UI Emoji";
   --font-playfair: 'Playfair Display', serif;
+  --gradient-brand: linear-gradient(90deg, #F5B041 0%, #A686EA 50%, #3E7BFA 100%);
 }
 
 body {
@@ -25,5 +26,20 @@ body {
   
   .animate-fade-in {
     animation: fade-in 0.5s ease-out forwards;
+  }
+
+  @keyframes gradient-pulse {
+    0%, 100% {
+      opacity: 1;
+      box-shadow: 0 0 0 0 rgba(165, 134, 234, 0.4);
+    }
+    50% {
+      opacity: 0.9;
+      box-shadow: 0 0 0 4px rgba(165, 134, 234, 0.1);
+    }
+  }
+
+  .animate-gradient-pulse {
+    animation: gradient-pulse 2s ease-in-out infinite;
   }
 }
