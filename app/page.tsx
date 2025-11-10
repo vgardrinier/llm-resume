@@ -255,18 +255,20 @@ export default function Home() {
       const data = await response.json()
 
       // Store extracted job description and company
-      setJobDescription(data.jobDescription)
       if (data.companyName) setCompanyName(data.companyName)
       
       // If jobTitle and location were extracted, prepend them to job description for better extraction downstream
+      // Set job description once with the final value (either with or without prepended metadata)
+      let finalJobDescription = data.jobDescription
       if (data.jobTitle || data.location) {
         const prefixParts: string[] = []
         if (data.jobTitle) prefixParts.push(`Job Title: ${data.jobTitle}`)
         if (data.location) prefixParts.push(`Location: ${data.location}`)
         if (prefixParts.length > 0) {
-          setJobDescription(`${prefixParts.join('\n')}\n\n${data.jobDescription}`)
+          finalJobDescription = `${prefixParts.join('\n')}\n\n${data.jobDescription}`
         }
       }
+      setJobDescription(finalJobDescription)
       
       setUrlFetchSuccess(true)
       setManualJobTitle('') // Clear manual entry on successful URL fetch
