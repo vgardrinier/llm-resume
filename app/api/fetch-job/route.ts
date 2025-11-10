@@ -92,7 +92,7 @@ function parseClaudeResponse(responseText: string): any {
 }
 
 // Extract from JSON-LD structured data
-function extractFromJsonLd(html: string): { jobDescription?: string; companyName?: string; jobTitle?: string } | null {
+function extractFromJsonLd(html: string): { jobDescription?: string; companyName?: string; jobTitle?: string; location?: string } | null {
   const scripts = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>[\s\S]*?<\/script>/gi) || []
   for (const script of scripts) {
     const jsonTextMatch = script.match(/<script[^>]*>[\s\S]*?<\/script>/i)
@@ -153,9 +153,26 @@ function extractFromJsonLd(html: string): { jobDescription?: string; companyName
         const fullDesc = descParts.join('\n\n').trim()
         const company = item.hiringOrganization?.name || item.organization?.name
         const title = item.title || item.name
+        // Extract location from JSON-LD structure
+        const locationObj = item.jobLocation || item.workLocation
+        let location: string | undefined = undefined
+        if (locationObj) {
+          if (typeof locationObj === 'string') {
+            location = locationObj
+          } else if (locationObj.address) {
+            const addr = locationObj.address
+            const city = addr.addressLocality || ''
+            const state = addr.addressRegion || ''
+            const country = addr.addressCountry || ''
+            const parts = [city, state, country].filter(Boolean)
+            location = parts.length > 0 ? parts.join(', ') : undefined
+          } else if (locationObj.name) {
+            location = locationObj.name
+          }
+        }
 
         if (fullDesc && fullDesc.length >= 40) {
-          return { jobDescription: fullDesc, companyName: company || undefined, jobTitle: title || undefined }
+          return { jobDescription: fullDesc, companyName: company || undefined, jobTitle: title || undefined, location }
         }
       }
     } catch {
@@ -227,13 +244,15 @@ async function extractWithVision(url: string) {
 
 1. The complete job description (all relevant text including responsibilities, qualifications, benefits, etc.)
 2. The company name
-3. The job title
+3. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
+4. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA")
 
 Please respond in JSON format:
 {
   "jobDescription": "the full job description text here",
   "companyName": "company name",
-  "jobTitle": "job title"
+  "jobTitle": "complete job title including all qualifiers",
+  "location": "city, state or city, country"
 }
 
 Instructions:
@@ -241,6 +260,8 @@ Instructions:
 - Include responsibilities, qualifications, requirements, benefits, etc.
 - Ignore navigation menus, headers, footers, ads, and other page elements
 - Keep the job description text clean and readable
+- For job title: Extract the COMPLETE title as shown (e.g., "Associate Product Manager, Recent Grad" not just "Product Manager")
+- For location: Look for city and state/country information, often shown near the job title or company name
 - If you cannot find certain fields, use null
 - Be thorough and capture as much detail as possible from the job posting`,
             },
@@ -252,7 +273,7 @@ Instructions:
     const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
     const extractedData = parseClaudeResponse(responseText)
 
-    console.log(`Vision extraction result - Job: "${extractedData.jobTitle}", Company: "${extractedData.companyName}", Description: ${extractedData.jobDescription?.length || 0} chars`)
+    console.log(`Vision extraction result - Job: "${extractedData.jobTitle}", Company: "${extractedData.companyName}", Location: "${extractedData.location}", Description: ${extractedData.jobDescription?.length || 0} chars`)
 
     if (!extractedData.jobDescription || extractedData.jobDescription.trim().length < 40) {
       return NextResponse.json(
@@ -265,6 +286,7 @@ Instructions:
       jobDescription: extractedData.jobDescription,
       companyName: extractedData.companyName || null,
       jobTitle: extractedData.jobTitle || null,
+      location: extractedData.location || null, // Include location if extracted from vision
     })
 
   } catch (error) {
@@ -315,10 +337,13 @@ async function extractWithScraping(url: string) {
   const jsonLdResult = extractFromJsonLd(htmlContent)
   if (jsonLdResult?.jobDescription) {
     console.log('Successfully extracted from JSON-LD')
+    // Try to extract location from JSON-LD if available
+    const locationFromJsonLd = jsonLdResult.location || null
     return NextResponse.json({
       jobDescription: jsonLdResult.jobDescription,
       companyName: jsonLdResult.companyName || null,
       jobTitle: jsonLdResult.jobTitle || null,
+      location: locationFromJsonLd,
     })
   }
 
@@ -329,7 +354,8 @@ async function extractWithScraping(url: string) {
 
 1. The complete job description (all relevant text including responsibilities, qualifications, benefits, etc.)
 2. The company name
-3. The job title (if available)
+3. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
+4. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA")
 
 HTML Content:
 ${htmlContent.slice(0, 50000)}
@@ -338,13 +364,16 @@ Please respond in JSON format:
 {
   "jobDescription": "the full job description text here",
   "companyName": "company name",
-  "jobTitle": "job title (if found)"
+  "jobTitle": "complete job title including all qualifiers",
+  "location": "city, state or city, country"
 }
 
 Instructions:
 - Extract ALL relevant job posting content, not just a summary
 - Remove HTML tags, navigation menus, headers, footers, and other page elements
 - Keep the job description text clean and readable
+- For job title: Extract the COMPLETE title as shown (e.g., "Associate Product Manager, Recent Grad" not just "Product Manager")
+- For location: Look for city and state/country information, often shown near the job title or company name
 - If you cannot find certain fields, use null`
 
     const message = await anthropic.messages.create({
@@ -372,6 +401,7 @@ Instructions:
       jobDescription: extractedData.jobDescription,
       companyName: extractedData.companyName || null,
       jobTitle: extractedData.jobTitle || null,
+      location: extractedData.location || null, // Include location if extracted from HTML
     })
 
   } catch (error) {

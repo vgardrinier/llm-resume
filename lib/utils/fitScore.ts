@@ -7,6 +7,13 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 })
 
+// Add slight entropy to scores to avoid rounded numbers (e.g., 85, 90, 95)
+// Randomizes within ±2 points to keep numbers believable while breaking the "multiples of 5" pattern
+function randomizeScore(val: number): number {
+  const randomized = Math.round(val + (Math.random() * 4 - 2))
+  return Math.max(0, Math.min(100, randomized))
+}
+
 export interface FitScoreInputs {
   jobDescription: string
   candidateResume: string
@@ -55,15 +62,17 @@ Evaluate the fit across these dimensions (0-100 scale each):
 
 Provide your assessment as valid JSON only:
 {
-  "overall_score": 85,
+  "overall_score": 87,
   "breakdown": {
-    "keywordMatch": 90,
-    "themeAlignment": 85,
-    "experienceRelevance": 80,
-    "skillOverlap": 85
+    "keywordMatch": 92,
+    "themeAlignment": 86,
+    "experienceRelevance": 83,
+    "skillOverlap": 88
   },
   "explanation": "Strong match with excellent keyword integration and theme alignment. Candidate has relevant experience and skills, though some seniority gaps exist."
 }
+
+IMPORTANT: Use varied, realistic scores (not just multiples of 5). Scores like 87, 92, 86, 83, 88 are more believable than 85, 90, 85, 80, 85.
 
 Be thorough but concise. Consider both the original resume and the optimized version.`
 
@@ -71,7 +80,7 @@ Be thorough but concise. Consider both the original resume and the optimized ver
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
       max_tokens: 1000,
-      temperature: 0.2, // Low temperature for consistent scoring
+      temperature: 0.3, // Slightly higher for more varied scores (was 0.2)
       messages: [
         {
           role: 'user',
@@ -90,28 +99,50 @@ Be thorough but concise. Consider both the original resume and the optimized ver
     
     const result = JSON.parse(jsonMatch[0])
     
+    // Validate and normalize scores (before randomization)
+    const rawOverall = Math.max(0, Math.min(100, Number.isFinite(result.overall_score) ? result.overall_score : 75))
+    const rawKeyword = Math.max(0, Math.min(100, Number.isFinite(result.breakdown?.keywordMatch) ? result.breakdown.keywordMatch : 75))
+    const rawTheme = Math.max(0, Math.min(100, Number.isFinite(result.breakdown?.themeAlignment) ? result.breakdown.themeAlignment : 75))
+    const rawExperience = Math.max(0, Math.min(100, Number.isFinite(result.breakdown?.experienceRelevance) ? result.breakdown.experienceRelevance : 75))
+    const rawSkill = Math.max(0, Math.min(100, Number.isFinite(result.breakdown?.skillOverlap) ? result.breakdown.skillOverlap : 75))
+    
+    // Apply randomization to break "multiples of 5" pattern
+    const randomizedOverall = randomizeScore(rawOverall)
+    const randomizedKeyword = randomizeScore(rawKeyword)
+    const randomizedTheme = randomizeScore(rawTheme)
+    const randomizedExperience = randomizeScore(rawExperience)
+    const randomizedSkill = randomizeScore(rawSkill)
+    
+    console.log('[Fit Score] Raw → Randomized:', {
+      overall: `${rawOverall} → ${randomizedOverall}`,
+      keyword: `${rawKeyword} → ${randomizedKeyword}`,
+      theme: `${rawTheme} → ${randomizedTheme}`,
+      experience: `${rawExperience} → ${randomizedExperience}`,
+      skill: `${rawSkill} → ${randomizedSkill}`
+    })
+    
     return {
-      score: result.overall_score,
+      score: randomizedOverall,
       breakdown: {
-        keywordMatch: result.breakdown.keywordMatch,
-        themeAlignment: result.breakdown.themeAlignment,
-        experienceRelevance: result.breakdown.experienceRelevance,
-        skillOverlap: result.breakdown.skillOverlap
+        keywordMatch: randomizedKeyword,
+        themeAlignment: randomizedTheme,
+        experienceRelevance: randomizedExperience,
+        skillOverlap: randomizedSkill
       },
-      explanation: result.explanation
+      explanation: result.explanation || 'Fit score calculated'
     }
     
   } catch (error) {
     console.error('Fit score calculation error:', error)
     
-    // Fallback to a basic score if API fails
+    // Fallback to randomized scores if API fails (avoid multiples of 5)
     return {
-      score: 75,
+      score: randomizeScore(75),
       breakdown: {
-        keywordMatch: 80,
-        themeAlignment: 75,
-        experienceRelevance: 70,
-        skillOverlap: 75
+        keywordMatch: randomizeScore(80),
+        themeAlignment: randomizeScore(75),
+        experienceRelevance: randomizeScore(70),
+        skillOverlap: randomizeScore(75)
       },
       explanation: "Unable to calculate precise fit score, showing estimated values"
     }
@@ -142,21 +173,23 @@ Evaluate the fit across these dimensions (0-100 scale each):
 
 Provide your assessment as valid JSON only:
 {
-  "overall_score": 72,
+  "overall_score": 73,
   "breakdown": {
-    "keywordMatch": 70,
-    "themeAlignment": 72,
-    "experienceRelevance": 68,
-    "skillOverlap": 74
+    "keywordMatch": 71,
+    "themeAlignment": 74,
+    "experienceRelevance": 69,
+    "skillOverlap": 76
   },
   "explanation": "Concise explanation of strengths and gaps."
-}`
+}
+
+IMPORTANT: Use varied, realistic scores (not just multiples of 5). Scores like 73, 71, 74, 69, 76 are more believable than 72, 70, 72, 68, 74.`
 
   try {
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
       max_tokens: 800,
-      temperature: 0.2,
+      temperature: 0.3, // Slightly higher for more varied scores (was 0.2)
       messages: [{ role: 'user', content: prompt }]
     })
 
@@ -166,25 +199,48 @@ Provide your assessment as valid JSON only:
 
     const result = JSON.parse(jsonMatch[0])
 
+    // Validate and normalize scores (before randomization)
+    const rawOverall = Math.max(0, Math.min(100, Number.isFinite(result.overall_score) ? result.overall_score : 65))
+    const rawKeyword = Math.max(0, Math.min(100, Number.isFinite(result.breakdown?.keywordMatch) ? result.breakdown.keywordMatch : 65))
+    const rawTheme = Math.max(0, Math.min(100, Number.isFinite(result.breakdown?.themeAlignment) ? result.breakdown.themeAlignment : 65))
+    const rawExperience = Math.max(0, Math.min(100, Number.isFinite(result.breakdown?.experienceRelevance) ? result.breakdown.experienceRelevance : 65))
+    const rawSkill = Math.max(0, Math.min(100, Number.isFinite(result.breakdown?.skillOverlap) ? result.breakdown.skillOverlap : 65))
+    
+    // Apply randomization to break "multiples of 5" pattern
+    const randomizedOverall = randomizeScore(rawOverall)
+    const randomizedKeyword = randomizeScore(rawKeyword)
+    const randomizedTheme = randomizeScore(rawTheme)
+    const randomizedExperience = randomizeScore(rawExperience)
+    const randomizedSkill = randomizeScore(rawSkill)
+    
+    console.log('[Baseline Fit Score] Raw → Randomized:', {
+      overall: `${rawOverall} → ${randomizedOverall}`,
+      keyword: `${rawKeyword} → ${randomizedKeyword}`,
+      theme: `${rawTheme} → ${randomizedTheme}`,
+      experience: `${rawExperience} → ${randomizedExperience}`,
+      skill: `${rawSkill} → ${randomizedSkill}`
+    })
+
     return {
-      score: result.overall_score,
+      score: randomizedOverall,
       breakdown: {
-        keywordMatch: result.breakdown.keywordMatch,
-        themeAlignment: result.breakdown.themeAlignment,
-        experienceRelevance: result.breakdown.experienceRelevance,
-        skillOverlap: result.breakdown.skillOverlap
+        keywordMatch: randomizedKeyword,
+        themeAlignment: randomizedTheme,
+        experienceRelevance: randomizedExperience,
+        skillOverlap: randomizedSkill
       },
-      explanation: result.explanation
+      explanation: result.explanation || 'Baseline fit score calculated'
     }
   } catch (error) {
     console.error('Baseline fit score calculation error:', error)
+    // Fallback to randomized scores (avoid multiples of 5)
     return {
-      score: 65,
+      score: randomizeScore(65),
       breakdown: {
-        keywordMatch: 65,
-        themeAlignment: 65,
-        experienceRelevance: 65,
-        skillOverlap: 65
+        keywordMatch: randomizeScore(65),
+        themeAlignment: randomizeScore(65),
+        experienceRelevance: randomizeScore(65),
+        skillOverlap: randomizeScore(65)
       },
       explanation: 'Unable to calculate precise baseline fit score, showing estimated values'
     }

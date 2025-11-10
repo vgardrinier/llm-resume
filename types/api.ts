@@ -44,6 +44,22 @@ export interface GenerateInsightsResponse {
     optimizations: string[]
     review_notes?: string[]
     auto_optimized?: string[]
+    evaluation?: {
+      // Raw scores (for backend/analytics)
+      clarity: number
+      relevance: number
+      honesty: number
+      // Technical feedback (for debugging)
+      feedback: string
+      // Human-friendly coaching messages (for user-facing chat)
+      // Generated dynamically by LLM for personalized, context-aware feedback
+      coaching: {
+        clarity: string
+        relevance: string
+        honesty: string
+        unified: string // Single message combining all aspects
+      }
+    }
   }
   optimized_resume: string
   raw_resume: string
