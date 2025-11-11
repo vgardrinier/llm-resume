@@ -182,8 +182,124 @@ function extractFromJsonLd(html: string): { jobDescription?: string; companyName
   return null
 }
 
+// Quick extraction: Only extract title, company, location (fast)
+async function extractQuickMetadata(url: string) {
+  let browser
+  try {
+    console.log('[FetchJob] Quick extraction: Launching browser...')
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+      ],
+    })
+
+    const page = await browser.newPage()
+    await page.setViewport({ width: 1280, height: 1024 })
+    await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
+
+    console.log(`[FetchJob] Quick extraction: Navigating to ${url}...`)
+    await page.goto(url, {
+      waitUntil: 'networkidle2',
+      timeout: 30000,
+    })
+
+    // Wait for dynamic content
+    await new Promise(resolve => setTimeout(resolve, 2000))
+
+    console.log('[FetchJob] Quick extraction: Taking screenshot...')
+    const screenshot = await page.screenshot({
+      fullPage: false, // Only visible viewport for speed
+      type: 'png',
+      encoding: 'base64',
+    }) as string
+
+    await browser.close()
+    browser = null
+
+    console.log('[FetchJob] Quick extraction: Sending to Claude Vision...')
+    const screenshotBase64 = screenshot
+
+    const message = await anthropic.messages.create({
+      model: 'claude-3-5-haiku-20241022', // Use Haiku for speed
+      max_tokens: 1000, // Much smaller since we only need 3 fields
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: {
+                type: 'base64',
+                media_type: 'image/png',
+                data: screenshotBase64,
+              },
+            },
+            {
+              type: 'text',
+              text: `You are analyzing a screenshot of a job posting webpage. Extract ONLY these 3 fields:
+
+1. The company name
+2. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
+3. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA" or "Warsaw, Poland")
+
+Please respond in JSON format:
+{
+  "companyName": "company name",
+  "jobTitle": "complete job title including all qualifiers",
+  "location": "city, state or city, country"
+}
+
+Instructions:
+- For job title: Extract the COMPLETE title as shown
+- For location: Look for city and state/country information, often shown near the job title or company name. Extract EXACTLY as written
+- If you cannot find certain fields, use null
+- DO NOT extract the job description - we only need these 3 fields`,
+            },
+          ],
+        },
+      ],
+    })
+
+    const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
+    const extractedData = parseClaudeResponse(responseText)
+
+    console.log(`[FetchJob] Quick extraction result - Job: "${extractedData.jobTitle}", Company: "${extractedData.companyName}", Location: "${extractedData.location}"`)
+
+    return NextResponse.json({
+      companyName: extractedData.companyName || null,
+      jobTitle: extractedData.jobTitle || null,
+      location: extractedData.location || null,
+      quick: true, // Flag to indicate this is a quick extraction
+    })
+
+  } catch (error) {
+    if (browser) {
+      try {
+        await browser.close()
+      } catch (e) {
+        console.error('Error closing browser:', e)
+      }
+    }
+
+    console.error('[FetchJob] Quick extraction error:', error)
+    // Fall back to full extraction if quick fails
+    return null
+  }
+}
+
 // Vision-based extraction for job platforms (slow but reliable)
-async function extractWithVision(url: string) {
+async function extractWithVision(url: string, quick: boolean = false) {
+  // If quick mode, use quick extraction
+  if (quick) {
+    const quickResult = await extractQuickMetadata(url)
+    if (quickResult) return quickResult
+    // If quick fails, fall through to full extraction
+  }
+
   let browser
   try {
     console.log('Launching browser for vision extraction...')
@@ -292,6 +408,14 @@ Instructions:
       )
     }
 
+    const jdLength = extractedData.jobDescription.length
+    console.log(`[FetchJob] ✅ Full JD extraction completed: ${jdLength} characters`, {
+      jobTitle: extractedData.jobTitle || 'N/A',
+      company: extractedData.companyName || 'N/A',
+      location: extractedData.location || 'N/A',
+      method: 'vision',
+    })
+
     return NextResponse.json({
       jobDescription: extractedData.jobDescription,
       companyName: extractedData.companyName || null,
@@ -317,11 +441,11 @@ Instructions:
 }
 
 // Scrape with JS rendering using Firecrawl API
-async function extractWithFirecrawl(url: string) {
+async function extractWithFirecrawl(url: string, quick: boolean = false) {
   const apiKey = process.env.FIRECRAWL_API_KEY
   if (!apiKey) {
     console.log('FIRECRAWL_API_KEY not set, falling back to vision extraction')
-    return await extractWithVision(url)
+    return await extractWithVision(url, quick)
   }
 
   try {
@@ -356,6 +480,18 @@ async function extractWithFirecrawl(url: string) {
 
     // Try JSON-LD extraction first
     const jsonLdResult = extractFromJsonLd(data.data?.html || '')
+    
+    // If quick mode and we have metadata, return early
+    if (quick && jsonLdResult && (jsonLdResult.companyName || jsonLdResult.jobTitle || jsonLdResult.location)) {
+      console.log('[FetchJob] Quick extraction: Returning metadata from JSON-LD')
+      return NextResponse.json({
+        companyName: jsonLdResult.companyName || null,
+        jobTitle: jsonLdResult.jobTitle || null,
+        location: jsonLdResult.location || null,
+        quick: true,
+      })
+    }
+    
     if (jsonLdResult?.jobDescription && jsonLdResult.jobDescription.length > 100) {
       console.log('Successfully extracted from JSON-LD via Firecrawl')
       return NextResponse.json({
@@ -364,6 +500,44 @@ async function extractWithFirecrawl(url: string) {
         jobTitle: jsonLdResult.jobTitle || null,
         location: jsonLdResult.location || null,
       })
+    }
+    
+    // If quick mode, try a fast extraction with smaller prompt
+    if (quick) {
+      const quickPrompt = `Extract ONLY these 3 fields from this job posting:
+
+1. Company name
+2. Full job title
+3. Location (city, state/country)
+
+Content:
+${htmlContent.slice(0, 5000)}
+
+Respond in JSON:
+{
+  "companyName": "...",
+  "jobTitle": "...",
+  "location": "..."
+}`
+
+      const quickMessage = await anthropic.messages.create({
+        model: 'claude-3-5-haiku-20241022',
+        max_tokens: 500,
+        messages: [{ role: 'user', content: quickPrompt }],
+      })
+
+      const quickResponseText = quickMessage.content[0].type === 'text' ? quickMessage.content[0].text : ''
+      const quickData = parseClaudeResponse(quickResponseText)
+      
+      if (quickData.companyName || quickData.jobTitle || quickData.location) {
+        console.log('[FetchJob] Quick extraction: Returning metadata from Claude')
+        return NextResponse.json({
+          companyName: quickData.companyName || null,
+          jobTitle: quickData.jobTitle || null,
+          location: quickData.location || null,
+          quick: true,
+        })
+      }
     }
 
     // Use Claude to parse the scraped content
@@ -416,7 +590,12 @@ Instructions:
     }
 
     const jobDescLength = extractedData.jobDescription.length
-    console.log(`Firecrawl + Claude extraction successful - ${jobDescLength} chars`)
+    console.log(`[FetchJob] ✅ Full JD extraction completed: ${jobDescLength} characters`, {
+      jobTitle: extractedData.jobTitle || 'N/A',
+      company: extractedData.companyName || 'N/A',
+      location: extractedData.location || 'N/A',
+      method: 'firecrawl',
+    })
     
     // Warn if job description seems truncated
     if (jobDescLength > 0 && jobDescLength < 500) {
@@ -432,12 +611,12 @@ Instructions:
   } catch (error) {
     console.error('Firecrawl extraction error:', error)
     // Fall back to vision extraction
-    return await extractWithVision(url)
+    return await extractWithVision(url, quick)
   }
 }
 
 // HTML scraping for company websites (fast, but limited for JS-rendered content)
-async function extractWithScraping(url: string) {
+async function extractWithScraping(url: string, quick: boolean = false) {
   let htmlContent: string
 
   try {
@@ -475,17 +654,35 @@ async function extractWithScraping(url: string) {
     
     if (textContent.length < 1000 || !hasJobKeywords) {
       console.log(`[FetchJob] Initial HTML too short (${textContent.length} chars) or missing job keywords, likely JS-rendered. Using Firecrawl...`)
-      return await extractWithFirecrawl(url)
+      return await extractWithFirecrawl(url, quick)
     }
   } catch (error) {
     console.error('Initial fetch failed, trying Firecrawl:', error)
-    return await extractWithFirecrawl(url)
+    return await extractWithFirecrawl(url, quick)
   }
 
   // Try JSON-LD extraction first (fastest)
   const jsonLdResult = extractFromJsonLd(htmlContent)
+  
+  // If quick mode and we have metadata, return early
+  if (quick && jsonLdResult && (jsonLdResult.companyName || jsonLdResult.jobTitle || jsonLdResult.location)) {
+    console.log('[FetchJob] Quick extraction: Returning metadata from JSON-LD')
+    return NextResponse.json({
+      companyName: jsonLdResult.companyName || null,
+      jobTitle: jsonLdResult.jobTitle || null,
+      location: jsonLdResult.location || null,
+      quick: true,
+    })
+  }
+  
   if (jsonLdResult?.jobDescription) {
-    console.log('Successfully extracted from JSON-LD')
+    const jdLength = jsonLdResult.jobDescription.length
+    console.log(`[FetchJob] ✅ Full JD extraction completed: ${jdLength} characters`, {
+      jobTitle: jsonLdResult.jobTitle || 'N/A',
+      company: jsonLdResult.companyName || 'N/A',
+      location: jsonLdResult.location || 'N/A',
+      method: 'json-ld',
+    })
     // Try to extract location from JSON-LD if available
     const locationFromJsonLd = jsonLdResult.location || null
     return NextResponse.json({
@@ -494,6 +691,49 @@ async function extractWithScraping(url: string) {
       jobTitle: jsonLdResult.jobTitle || null,
       location: locationFromJsonLd,
     })
+  }
+  
+  // If quick mode, try a fast extraction with smaller prompt
+  if (quick) {
+    const htmlSlice = htmlContent.slice(0, 5000)
+    const quickPrompt = `Extract ONLY these 3 fields from this HTML:
+
+1. Company name
+2. Full job title
+3. Location (city, state/country)
+
+HTML:
+${htmlSlice}
+
+Respond in JSON:
+{
+  "companyName": "...",
+  "jobTitle": "...",
+  "location": "..."
+}`
+
+    try {
+      const quickMessage = await anthropic.messages.create({
+        model: 'claude-3-5-haiku-20241022',
+        max_tokens: 500,
+        messages: [{ role: 'user', content: quickPrompt }],
+      })
+
+      const quickResponseText = quickMessage.content[0].type === 'text' ? quickMessage.content[0].text : ''
+      const quickData = parseClaudeResponse(quickResponseText)
+      
+      if (quickData.companyName || quickData.jobTitle || quickData.location) {
+        console.log('[FetchJob] Quick extraction: Returning metadata from Claude')
+        return NextResponse.json({
+          companyName: quickData.companyName || null,
+          jobTitle: quickData.jobTitle || null,
+          location: quickData.location || null,
+          quick: true,
+        })
+      }
+    } catch (quickError) {
+      console.warn('[FetchJob] Quick extraction failed, falling back to full extraction:', quickError)
+    }
   }
 
   // Fallback to Claude HTML parsing
@@ -556,15 +796,19 @@ Instructions:
     }
 
     const jobDescLength = extractedData.jobDescription.length
-    console.log(`[FetchJob] HTML + Claude extraction successful - ${jobDescLength} chars`)
-    console.log(`[FetchJob] Extracted job title: "${extractedData.jobTitle}", company: "${extractedData.companyName}", location: "${extractedData.location || 'not found'}"`)
+    console.log(`[FetchJob] ✅ Full JD extraction completed: ${jobDescLength} characters`, {
+      jobTitle: extractedData.jobTitle || 'N/A',
+      company: extractedData.companyName || 'N/A',
+      location: extractedData.location || 'N/A',
+      method: 'html-scraping',
+    })
     
     // Warn if job description seems truncated
     if (jobDescLength > 0 && jobDescLength < 1000) {
       console.warn(`[FetchJob] WARNING: Extracted job description is very short (${jobDescLength} chars). May be truncated or page may be JS-rendered.`)
       console.warn(`[FetchJob] Consider using Firecrawl for JS-rendered pages. Falling back to Firecrawl...`)
       // Try Firecrawl as fallback for short extractions
-      return await extractWithFirecrawl(url)
+      return await extractWithFirecrawl(url, quick)
     }
 
     return NextResponse.json({
@@ -585,11 +829,34 @@ Instructions:
 
 export async function POST(request: NextRequest) {
   try {
-    const { url } = await request.json()
+    // Parse request body with better error handling
+    let body
+    try {
+      body = await request.json()
+    } catch (parseError) {
+      console.error('[FetchJob] JSON parse error:', parseError)
+      return NextResponse.json(
+        { error: 'Invalid request body. Expected JSON with "url" field.' },
+        { status: 400 }
+      )
+    }
+
+    const { url, quick } = body || {}
 
     if (!url || typeof url !== 'string') {
+      console.error('[FetchJob] Missing or invalid URL:', { url, type: typeof url, body })
       return NextResponse.json(
-        { error: 'URL is required' },
+        { error: 'URL is required and must be a string' },
+        { status: 400 }
+      )
+    }
+
+    // Trim and validate URL format
+    const trimmedUrl = url.trim()
+    if (!trimmedUrl) {
+      console.error('[FetchJob] Empty URL after trimming')
+      return NextResponse.json(
+        { error: 'URL cannot be empty' },
         { status: 400 }
       )
     }
@@ -597,31 +864,43 @@ export async function POST(request: NextRequest) {
     // Validate URL format
     let validUrl: URL
     try {
-      validUrl = new URL(url)
+      validUrl = new URL(trimmedUrl)
       if (!['http:', 'https:'].includes(validUrl.protocol)) {
         throw new Error('Invalid protocol')
       }
     } catch (error) {
+      console.error('[FetchJob] URL validation error:', { url: trimmedUrl, error })
       return NextResponse.json(
         { error: 'Invalid URL format. Please enter a valid URL starting with http:// or https://' },
         { status: 400 }
       )
     }
 
+    const quickMode = quick === true
+    if (quickMode) {
+      console.log(`[FetchJob] Quick extraction mode enabled for: ${trimmedUrl}`)
+    }
+
     // Determine extraction strategy based on URL
-    const useVision = isJobPlatform(url)
+    const useVision = isJobPlatform(trimmedUrl)
 
     if (useVision) {
-      console.log(`Detected job platform URL, using vision extraction: ${url}`)
-      return await extractWithVision(url)
+      console.log(`Detected job platform URL, using vision extraction: ${trimmedUrl}`)
+      return await extractWithVision(trimmedUrl, quickMode)
     } else {
-      console.log(`Company website detected, attempting HTML scraping: ${url}`)
-      return await extractWithScraping(url)
+      console.log(`Company website detected, attempting HTML scraping: ${trimmedUrl}`)
+      return await extractWithScraping(trimmedUrl, quickMode)
     }
   } catch (error) {
-    console.error('Unexpected error:', error)
+    console.error('[FetchJob] Unexpected error:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+    })
     return NextResponse.json(
-      { error: 'An unexpected error occurred' },
+      { 
+        error: 'An unexpected error occurred while fetching the job description',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     )
   }

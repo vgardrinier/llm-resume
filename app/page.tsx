@@ -10,6 +10,8 @@ import { ResumeModal } from '@/app/components/ResumeModal'
 import { HeroTitle } from '@/app/components/HeroTitle'
 import { Navbar } from '@/app/components/Navbar'
 import { Button } from '@/app/components/Button'
+import { ErrorAlert } from '@/app/components/ErrorAlert'
+import { Tooltip } from '@/app/components/Tooltip'
 import { AnimatePresence, motion } from 'framer-motion'
 
 export default function Home() {
@@ -18,6 +20,7 @@ export default function Home() {
   const [creativeMode, setCreativeMode] = useState<'conservative' | 'balanced' | 'assertive'>('balanced')
   const [result, setResult] = useState<GenerateInsightsResponse | null>(null)
   const [loading, setLoading] = useState(false)
+  const [generationError, setGenerationError] = useState<string | null>(null)
   const [companyName, setCompanyName] = useState<string | null>(null)
   const [showResume, setShowResume] = useState(false)
   const [phase, setPhase] = useState<'input' | 'output'>('input')
@@ -35,6 +38,70 @@ export default function Home() {
   const [manualJobTitle, setManualJobTitle] = useState('')
   const [isJobPlatform, setIsJobPlatform] = useState(false)
   const [isInputFocused, setIsInputFocused] = useState(false)
+  // Quick extraction state
+  const [quickMetadata, setQuickMetadata] = useState<{ companyName?: string | null; jobTitle?: string | null; location?: string | null } | null>(null)
+  const [fullJdPromise, setFullJdPromise] = useState<Promise<string> | null>(null)
+
+  // Helper function to get country flag emoji from location string
+  const getCountryFlag = (location: string | null | undefined): string => {
+    if (!location) return ''
+    
+    const locationLower = location.toLowerCase()
+    
+    // Common country mappings
+    const countryMap: { [key: string]: string } = {
+      'usa': '🇺🇸',
+      'united states': '🇺🇸',
+      'us': '🇺🇸',
+      'uk': '🇬🇧',
+      'united kingdom': '🇬🇧',
+      'canada': '🇨🇦',
+      'germany': '🇩🇪',
+      'france': '🇫🇷',
+      'spain': '🇪🇸',
+      'italy': '🇮🇹',
+      'netherlands': '🇳🇱',
+      'poland': '🇵🇱',
+      'portugal': '🇵🇹',
+      'sweden': '🇸🇪',
+      'norway': '🇳🇴',
+      'denmark': '🇩🇰',
+      'finland': '🇫🇮',
+      'switzerland': '🇨🇭',
+      'austria': '🇦🇹',
+      'belgium': '🇧🇪',
+      'ireland': '🇮🇪',
+      'australia': '🇦🇺',
+      'new zealand': '🇳🇿',
+      'japan': '🇯🇵',
+      'china': '🇨🇳',
+      'india': '🇮🇳',
+      'singapore': '🇸🇬',
+      'south korea': '🇰🇷',
+      'brazil': '🇧🇷',
+      'mexico': '🇲🇽',
+      'argentina': '🇦🇷',
+      'south africa': '🇿🇦',
+      'israel': '🇮🇱',
+      'uae': '🇦🇪',
+      'united arab emirates': '🇦🇪',
+    }
+    
+    // Check if location contains a country name
+    for (const [country, flag] of Object.entries(countryMap)) {
+      if (locationLower.includes(country)) {
+        return ` ${flag}`
+      }
+    }
+    
+    // Check for US states (common pattern: "City, ST")
+    const usStatePattern = /\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b/i
+    if (usStatePattern.test(location)) {
+      return ' 🇺🇸'
+    }
+    
+    return ''
+  }
 
   // Known job platforms that require vision extraction (slower)
   const JOB_PLATFORMS = [
@@ -67,6 +134,8 @@ export default function Home() {
     setUrlFetchSuccess(false)
     setUrlError(null)
     setManualJobTitle('') // Clear manual entry when URL changes
+    setQuickMetadata(null)
+    setFullJdPromise(null)
   }, [jobUrl])
 
   const generateResume = async () => {
@@ -74,14 +143,29 @@ export default function Home() {
     setLoading(true)
     setShowResume(false) // Reset resume visibility
     try {
+      // If we have a background full JD extraction promise, wait for it
+      let finalJobDescription = jobDescription
+      if (fullJdPromise) {
+        console.log('[Frontend] Waiting for full JD extraction to complete...')
+        const fullJd = await fullJdPromise
+        if (fullJd) {
+          finalJobDescription = fullJd
+          setJobDescription(fullJd)
+          console.log('[Frontend] Full JD extraction completed, using it for analysis')
+        } else {
+          console.warn('[Frontend] Full JD extraction failed, using existing job description')
+        }
+      }
+
       // Debug: Log inputs before API call
       console.log('[Frontend] Starting resume generation', {
         step: 'start',
-        hasJob: !!jobDescription,
+        hasJob: !!finalJobDescription,
         hasResume: !!currentResume,
-        jobLength: jobDescription?.length || 0,
+        jobLength: finalJobDescription?.length || 0,
         resumeLength: currentResume?.length || 0,
         creativeMode,
+        waitedForFullJd: !!fullJdPromise,
       })
 
       const response = await fetch('/api/orchestrator', {
@@ -90,7 +174,7 @@ export default function Home() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          job_description: jobDescription,
+          job_description: finalJobDescription,
           candidate_resume: currentResume,
           creative_mode: creativeMode,
         }),
@@ -104,7 +188,25 @@ export default function Home() {
           statusText: response.statusText,
           error: errorData,
         })
-        throw new Error('Failed to generate resume')
+        
+        // Provide user-friendly error messages based on status code
+        let userMessage = 'Failed to generate resume. Please try again.'
+        if (response.status === 400) {
+          // Check if it's a job description length issue
+          if (errorData.error?.includes('incomplete') || errorData.error?.includes('minimum')) {
+            userMessage = errorData.error + (errorData.details ? ` ${errorData.details}` : '')
+          } else {
+            userMessage = errorData.error || 'Invalid request. Please check your inputs and try again.'
+          }
+        } else if (response.status === 429) {
+          userMessage = 'Too many requests. Please wait a moment and try again.'
+        } else if (response.status === 500) {
+          userMessage = errorData.error || 'Our servers encountered an issue. Please try again in a moment.'
+        } else if (response.status >= 500) {
+          userMessage = 'Service temporarily unavailable. Please try again shortly.'
+        }
+        
+        throw new Error(userMessage)
       }
 
       const data: GenerateInsightsResponse = await response.json()
@@ -121,9 +223,22 @@ export default function Home() {
       })
       
       setResult(data)
+      setGenerationError(null) // Clear any previous errors on success
     } catch (error) {
       console.error('Error generating resume:', error)
-      alert('Failed to generate resume. Please try again.')
+      
+      // Handle different error types with user-friendly messages
+      let errorMessage = 'Failed to generate resume. Please try again.'
+      
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        errorMessage = 'Network error. Please check your connection and try again.'
+      } else if (error instanceof Error) {
+        errorMessage = error.message
+      }
+      
+      setGenerationError(errorMessage)
+      // Reset phase to input so user can try again
+      setPhase('input')
     } finally {
       setLoading(false)
     }
@@ -145,6 +260,9 @@ export default function Home() {
     setCurrentResume('')
     setParseError(null)
     setParseLoading(false)
+    setGenerationError(null)
+    setQuickMetadata(null)
+    setFullJdPromise(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
     try {
       const { pathname, search } = window.location
@@ -249,7 +367,7 @@ export default function Home() {
     return Math.round(bytes / (1024 * 1024)) + ' MB'
   }
 
-  // Job URL fetching
+  // Job URL fetching with quick extraction
   const handleFetchJobFromUrl = async () => {
     if (!jobUrl.trim()) {
       setUrlError('Please enter a valid URL')
@@ -260,35 +378,97 @@ export default function Home() {
     setUrlLoading(true)
     setUrlFetchSuccess(false)
     setManualJobTitle('') // Clear manual entry when starting a new URL fetch
+    setQuickMetadata(null)
+    setFullJdPromise(null)
 
     try {
-      const response = await fetch('/api/fetch-job', {
+      // Step 1: Quick extraction (title, company, location)
+      console.log('[Frontend] Starting quick extraction...')
+      const quickResponse = await fetch('/api/fetch-job', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ url: jobUrl }),
+        body: JSON.stringify({ url: jobUrl, quick: true }),
       })
 
-      if (!response.ok) {
-        const errorData = await response.json()
+      if (!quickResponse.ok) {
+        const errorData = await quickResponse.json()
         throw new Error(errorData.error || 'Failed to fetch job description')
       }
 
-      const data = await response.json()
-
-      // Store extracted job description and company
-      if (data.companyName) setCompanyName(data.companyName)
+      const quickData = await quickResponse.json()
       
-      // If jobTitle and location were extracted, prepend them to job description for better extraction downstream
-      // Set job description once with the final value (either with or without prepended metadata)
-      let finalJobDescription = data.jobDescription
-      if (data.jobTitle || data.location) {
+      // If quick extraction returned metadata, store it and show Analyze button
+      if (quickData.quick && (quickData.companyName || quickData.jobTitle || quickData.location)) {
+        console.log('[Frontend] Quick extraction successful:', quickData)
+        setQuickMetadata({
+          companyName: quickData.companyName,
+          jobTitle: quickData.jobTitle,
+          location: quickData.location,
+        })
+        
+        if (quickData.companyName) setCompanyName(quickData.companyName)
+        
+        // Start full JD extraction in background
+        const fullExtractionPromise = fetch('/api/fetch-job', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ url: jobUrl, quick: false }),
+        })
+          .then(async (response) => {
+            if (!response.ok) {
+              const errorData = await response.json()
+              throw new Error(errorData.error || 'Failed to fetch full job description')
+            }
+            const fullData = await response.json()
+            
+            // Log successful full JD extraction
+            const jdLength = fullData.jobDescription?.length || 0
+            console.log(`[Frontend] ✅ Full JD extraction completed in background: ${jdLength} characters`, {
+              jobTitle: fullData.jobTitle || quickMetadata?.jobTitle || 'N/A',
+              company: fullData.companyName || quickMetadata?.companyName || 'N/A',
+              location: fullData.location || quickMetadata?.location || 'N/A',
+            })
+            
+            // Build final job description with metadata prepended
+            let finalJobDescription = fullData.jobDescription
+            if (fullData.jobTitle || fullData.location) {
+              const prefixParts: string[] = []
+              if (fullData.jobTitle) prefixParts.push(`Job Title: ${fullData.jobTitle}`)
+              if (fullData.location) prefixParts.push(`Location: ${fullData.location}`)
+              if (prefixParts.length > 0) {
+                finalJobDescription = `${prefixParts.join('\n')}\n\n${fullData.jobDescription}`
+              }
+            }
+            
+            return finalJobDescription
+          })
+          .catch((error) => {
+            console.error('[Frontend] ❌ Full JD extraction error:', error)
+            // Return empty string if full extraction fails - we'll use what we have
+            return ''
+          })
+        
+        setFullJdPromise(fullExtractionPromise)
+        setUrlFetchSuccess(true)
+        setUrlLoading(false)
+        return
+      }
+
+      // Fallback: If quick extraction didn't work or returned full data, use it
+      console.log('[Frontend] Quick extraction returned full data or failed, using directly')
+      if (quickData.companyName) setCompanyName(quickData.companyName)
+      
+      let finalJobDescription = quickData.jobDescription || ''
+      if (quickData.jobTitle || quickData.location) {
         const prefixParts: string[] = []
-        if (data.jobTitle) prefixParts.push(`Job Title: ${data.jobTitle}`)
-        if (data.location) prefixParts.push(`Location: ${data.location}`)
-        if (prefixParts.length > 0) {
-          finalJobDescription = `${prefixParts.join('\n')}\n\n${data.jobDescription}`
+        if (quickData.jobTitle) prefixParts.push(`Job Title: ${quickData.jobTitle}`)
+        if (quickData.location) prefixParts.push(`Location: ${quickData.location}`)
+        if (prefixParts.length > 0 && finalJobDescription) {
+          finalJobDescription = `${prefixParts.join('\n')}\n\n${finalJobDescription}`
         }
       }
       setJobDescription(finalJobDescription)
@@ -297,8 +477,8 @@ export default function Home() {
       setManualJobTitle('') // Clear manual entry on successful URL fetch
 
       // Store company info if needed (for display later)
-      if (data.companyName) {
-        console.log('Company detected:', data.companyName)
+      if (quickData.companyName) {
+        console.log('Company detected:', quickData.companyName)
       }
 
     } catch (error) {
@@ -310,7 +490,6 @@ export default function Home() {
         ? "Couldn't load that page. Some sites block scraping—try a different link."
         : "Couldn't extract the job details from that link. Please try another URL."
       setUrlError(friendly)
-    } finally {
       setUrlLoading(false)
     }
   }
@@ -323,7 +502,7 @@ export default function Home() {
       {/* Main content - centered vertically and horizontally */}
       {/* Background image transition */}
       <motion.div
-        className="flex-1 w-full flex flex-col justify-center items-center overflow-y-auto relative"
+        className="flex-1 w-full flex flex-col md:justify-center items-center overflow-y-auto relative"
         initial={false}
         animate={{
           opacity: 1,
@@ -348,7 +527,13 @@ export default function Home() {
           }}
         >
           <div
-            className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat md:bg-contain"
+            style={{
+              backgroundImage: 'url(/rightfit_background_mobile.png)',
+            }}
+          />
+          <div
+            className="hidden md:block absolute inset-0 bg-cover bg-center bg-no-repeat"
             style={{
               backgroundImage: 'url(/rightfit_background_wide.png)',
             }}
@@ -365,13 +550,19 @@ export default function Home() {
           }}
         >
           <div
-            className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat md:bg-contain"
+            style={{
+              backgroundImage: 'url(/rightfit_background_mobile.png)',
+            }}
+          />
+          <div
+            className="hidden md:block absolute inset-0 bg-cover bg-center bg-no-repeat"
             style={{
               backgroundImage: 'url(/rightfit_background2.png)',
             }}
           />
         </motion.div>
-        <div className="w-full max-w-3xl flex flex-col items-center">
+        <div className="w-full max-w-3xl flex flex-col items-center md:items-center pt-6 md:pt-0">
           {/* Hero Title with AnimatePresence for smooth fade-out */}
           <AnimatePresence>
             {phase === 'input' && (
@@ -380,8 +571,8 @@ export default function Home() {
                 initial={{ opacity: 0, y: 0 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                className="mb-1 lg:mb-2 w-full flex justify-center"
+                transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
+                className="mb-6 md:mb-8 w-full flex justify-center px-4 md:px-0"
               >
                 <HeroTitle isInputFocused={isInputFocused} />
               </motion.div>
@@ -389,40 +580,52 @@ export default function Home() {
           </AnimatePresence>
 
           {/* Main content area */}
-          <div className="w-full flex flex-col justify-start">
+          <div className="w-full flex flex-col justify-start px-4 md:px-0 pb-24 md:pb-0">
             <AnimatePresence mode="wait">
               {phase === 'input' ? (
                 <motion.div
                   key="input-phase"
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20, scale: 0.98 }}
-                  transition={{ duration: 0.4, ease: "easeOut" }}
-                  className="w-full"
+                  transition={{ duration: 0.6, ease: [0.25, 0.1, 0.25, 1] }}
+                  className="w-full py-6"
                 >
+                  {/* Generation error alert */}
+                  {generationError && (
+                    <div className="mb-4">
+                      <ErrorAlert
+                        message={generationError}
+                        onDismiss={() => setGenerationError(null)}
+                        onRetry={generateResume}
+                        variant="error"
+                      />
+                    </div>
+                  )}
+
                   {/* Floating capsule */}
-                  <div className="backdrop-blur-sm bg-white/50 border border-gray-200 shadow-default rounded-2xl px-6 py-5 lg:px-8 lg:py-6 space-y-3">
-                    {/* Row 1: Job URL and Resume Upload - Horizontal on desktop, stacked on mobile */}
-                    <div className="flex flex-col lg:flex-row gap-3">
+                  <div className="backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.05)] rounded-2xl px-4 py-4 md:px-6 md:py-5 lg:px-8 lg:py-6 space-y-3">
+                    {/* Desktop: URL Input and Upload side by side, Mobile: stacked */}
+                    <div className="flex flex-col md:flex-row gap-2">
                       {/* Job URL Input */}
-                      <div className="flex-1">
-                        <div className="flex gap-2">
-                          <input
-                            type="url"
-                            value={jobUrl}
-                            onChange={(e) => setJobUrl(e.target.value)}
-                            onFocus={() => setIsInputFocused(true)}
-                            onBlur={() => setIsInputFocused(false)}
-                            placeholder="Paste job link here"
-                            className="flex-1 h-12 px-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all hover:border-gray-400 backdrop-blur-sm bg-white/60 placeholder:text-gray-500 text-gray-900 text-sm font-serif"
-                            disabled={urlLoading}
-                          />
+                      <div className="flex gap-2 flex-1">
+                        <input
+                          type="url"
+                          value={jobUrl}
+                          onChange={(e) => setJobUrl(e.target.value)}
+                          onFocus={() => setIsInputFocused(true)}
+                          onBlur={() => setIsInputFocused(false)}
+                          placeholder="Paste job link here"
+                          className="flex-1 min-h-[56px] px-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all hover:border-gray-400 backdrop-blur-sm bg-white/60 placeholder:text-gray-500 text-gray-900 text-sm md:text-base font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
+                          disabled={urlLoading}
+                        />
+                        <Tooltip content="Fetch job description" position="top" delay={200}>
                           <button
                             type="button"
                             onClick={handleFetchJobFromUrl}
                             disabled={urlLoading || !jobUrl.trim()}
-                            className="h-12 w-12 rounded-xl bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white flex items-center justify-center transition-all flex-shrink-0"
-                            title="Fetch job description"
+                            className="min-h-[56px] min-w-[56px] rounded-xl bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white flex items-center justify-center transition-all flex-shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
+                            aria-label="Fetch job description"
                           >
                             {urlLoading ? (
                               <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
@@ -430,24 +633,26 @@ export default function Home() {
                               <Link2 className="h-4 w-4" />
                             )}
                           </button>
-                        </div>
+                        </Tooltip>
                       </div>
 
-                      {/* Resume Upload */}
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={handleUploadClick}
-                          disabled={parseLoading}
-                          className="h-12 w-12 rounded-xl bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 text-white border border-gray-900 flex items-center justify-center transition-all flex-shrink-0"
-                          title="Upload Resume (PDF)"
-                        >
-                          {parseLoading ? (
-                            <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
-                          ) : (
-                            <Upload className="h-5 w-5" />
-                          )}
-                        </button>
+                      {/* Resume Upload - Desktop: next to URL, Mobile: below */}
+                      <div className="flex gap-2 md:flex-shrink-0">
+                        <Tooltip content="Upload résumé (PDF)" position="top" delay={200}>
+                          <button
+                            type="button"
+                            onClick={handleUploadClick}
+                            disabled={parseLoading}
+                            className="min-h-[56px] min-w-[56px] rounded-xl bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 text-white border border-gray-900 flex items-center justify-center transition-all flex-shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
+                            aria-label="Upload résumé PDF"
+                          >
+                            {parseLoading ? (
+                              <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                            ) : (
+                              <Upload className="h-5 w-5" />
+                            )}
+                          </button>
+                        </Tooltip>
                         
                         {/* Hidden file input */}
                         <input
@@ -458,15 +663,15 @@ export default function Home() {
                           className="hidden"
                         />
                         
-                        {/* File status display */}
-                        <div className="flex-1 min-w-0 flex items-center">
+                        {/* File status display - Desktop: next to icon, Mobile: below */}
+                        <div className="flex-1 min-w-0 flex items-center md:hidden">
                           {uploadedFile && currentResume && !parseLoading ? (
-                            <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-lg border border-gray-200 truncate w-full font-serif">
+                            <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-xl border border-gray-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
                               ✓ {uploadedFile.name}
                             </div>
                           ) : parseError ? (
-                            <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-lg border border-gray-200 truncate w-full font-serif">
-                              {parseError}
+                            <div className="text-xs text-red-900 backdrop-blur-sm bg-red-50/80 px-3 py-2 rounded-xl border border-red-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
+                              ⚠️ {parseError}
                             </div>
                           ) : (
                             <span className="text-xs text-gray-500 font-serif">Upload résumé (PDF)</span>
@@ -475,8 +680,23 @@ export default function Home() {
                       </div>
                     </div>
 
+                    {/* Mobile: Upload text below icon */}
+                    <div className="md:hidden flex justify-center">
+                      {uploadedFile && currentResume && !parseLoading ? (
+                        <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-xl border border-gray-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
+                          ✓ {uploadedFile.name}
+                        </div>
+                      ) : parseError ? (
+                        <div className="text-xs text-red-900 backdrop-blur-sm bg-red-50/80 px-3 py-2 rounded-xl border border-red-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
+                          ⚠️ {parseError}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-500 font-serif">Upload résumé (PDF)</span>
+                      )}
+                    </div>
+
                     {/* Helper text and status messages */}
-                    <div className="space-y-2 -mt-2">
+                    <div className="space-y-2">
                       {!urlError && !urlFetchSuccess && (
                         <div className="flex items-center gap-2">
                           <div className="flex items-center gap-1.5">
@@ -501,29 +721,39 @@ export default function Home() {
                         </div>
                       )}
 
-                      {/* Job platform delay warning */}
+                      {/* Job platform delay warning - Hidden on mobile */}
                       {isJobPlatform && !urlLoading && !urlFetchSuccess && !urlError && (
-                        <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-lg border border-gray-200 font-serif">
+                        <div className="hidden md:block text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-xl border border-gray-200 font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
                           ⏱️ LinkedIn/Indeed require advanced extraction. This may take 10-15 seconds.
                         </div>
                       )}
 
                       {/* Success message */}
                       {urlFetchSuccess && !urlLoading && (
-                        <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-lg border border-gray-200 font-serif">
-                          ✓ Job description extracted successfully ({jobDescription.length} characters)
+                        <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-xl border border-gray-200 font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
+                          {quickMetadata && !jobDescription ? (
+                            <>
+                              ✓ {quickMetadata.jobTitle || 'Job'} {quickMetadata.companyName ? `- ${quickMetadata.companyName}` : ''}{getCountryFlag(quickMetadata.location)}
+                            </>
+                          ) : (
+                            <>✓ Job description extracted successfully ({jobDescription.length} characters)</>
+                          )}
                         </div>
                       )}
 
                       {/* Error message with manual fallback */}
                       {urlError && (
                         <div className="space-y-3">
-                          <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-lg border border-gray-200 font-serif">
-                            {urlError}
-                          </div>
+                          <ErrorAlert
+                            message={urlError}
+                            onDismiss={() => setUrlError(null)}
+                            onRetry={handleFetchJobFromUrl}
+                            variant="warning"
+                            className="text-sm"
+                          />
 
                           {/* Manual job description fallback */}
-                          <div className="backdrop-blur-sm bg-white/60 border border-gray-200 rounded-lg p-3">
+                          <div className="backdrop-blur-sm bg-white/60 border border-gray-200 rounded-xl p-3 shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
                             <p className="text-xs text-gray-900 mb-2 font-serif">
                               Paste the full job description manually (including responsibilities, qualifications, and requirements) — I'll tailor your résumé to match what they're looking for.
                             </p>
@@ -537,19 +767,25 @@ export default function Home() {
                               onBlur={() => setIsInputFocused(false)}
                               placeholder="Paste the complete job description here..."
                               rows={6}
-                              className="w-full p-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 resize-y backdrop-blur-sm bg-white/60 text-gray-900 placeholder:text-gray-500 font-serif"
+                              className="w-full p-3 text-sm md:text-base border border-gray-300 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-gray-900 resize-y backdrop-blur-sm bg-white/60 text-gray-900 placeholder:text-gray-500 font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
                             />
+                            {/* Warning for short descriptions */}
+                            {manualJobTitle.trim().length > 0 && manualJobTitle.trim().length < 200 && (
+                              <div className="text-xs text-amber-700 bg-amber-50/80 px-3 py-2 rounded-lg border border-amber-200 font-serif">
+                                💡 Tip: For best results, include the full job description with responsibilities, qualifications, and requirements.
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
                     </div>
 
-                    {/* CTA Button - Centered, elegant design */}
-                    <div className="flex justify-center pt-2">
+                    {/* CTA Button - Hidden on mobile (shown as sticky bottom button) */}
+                    <div className="hidden md:flex justify-center pt-6">
                       <Button
                         onClick={generateResume}
-                        disabled={!jobDescription || !currentResume || loading}
-                        variant={jobDescription && currentResume && !loading ? 'gradient' : 'primary'}
+                        disabled={(!jobDescription && !quickMetadata) || !currentResume || loading}
+                        variant={(jobDescription || quickMetadata) && currentResume && !loading ? 'gradient' : 'primary'}
                         loading={loading}
                         loadingText="Analyzing..."
                         className="text-base px-8 py-4"
@@ -565,10 +801,22 @@ export default function Home() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.4, ease: "easeOut" }}
+                  transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
                   className="w-full flex justify-center"
                 >
                   <div className="w-full max-w-3xl px-0 sm:px-4 py-6 sm:py-8 mx-auto my-8">
+                    {/* Error state */}
+                    {generationError && !loading && (
+                      <div className="mb-6">
+                        <ErrorAlert
+                          message={generationError}
+                          onDismiss={() => setGenerationError(null)}
+                          onRetry={generateResume}
+                          variant="error"
+                        />
+                      </div>
+                    )}
+                    
                     {/* Loading state */}
                     {loading && !result && (
                       <UploadingNarrative jobDescription={jobDescription} companyNameHint={companyName ?? undefined} />
@@ -598,6 +846,28 @@ export default function Home() {
           </div>
         </div>
       </motion.div>
+
+      {/* Sticky bottom button for mobile */}
+      {phase === 'input' && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 20 }}
+          transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
+          className="fixed bottom-4 left-4 right-4 z-50 md:hidden"
+        >
+          <Button
+            onClick={generateResume}
+            disabled={(!jobDescription && !quickMetadata) || !currentResume || loading}
+            variant={(jobDescription || quickMetadata) && currentResume && !loading ? 'gradient' : 'primary'}
+            loading={loading}
+            loadingText="Analyzing..."
+            className="w-full text-lg font-medium shadow-lg"
+          >
+            Analyze My Résumé
+          </Button>
+        </motion.div>
+      )}
 
       {/* Resume Modal */}
       {result && result.optimized_resume && (

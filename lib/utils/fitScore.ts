@@ -46,10 +46,15 @@ export async function calculateFitScore(inputs: FitScoreInputs): Promise<FitScor
     themesCount: themesCovered?.length || 0,
   })
   
+  // Check if job description is too short (likely incomplete)
+  const isJobDescriptionIncomplete = jobDescription.trim().length < 200
+  
   const fitScorePrompt = `You are an expert recruiter and hiring manager evaluating how well a candidate's resume matches a job description.
 
 JOB DESCRIPTION:
 ${jobDescription}
+
+${isJobDescriptionIncomplete ? '\n⚠️ NOTE: The job description appears incomplete or very brief. Please evaluate based on available information and note this limitation in your explanation.\n' : ''}
 
 ORIGINAL CANDIDATE RESUME:
 ${candidateResume}
@@ -69,6 +74,10 @@ Evaluate the fit across these dimensions (0-100 scale each):
 3. EXPERIENCE RELEVANCE (0-100): How relevant is the candidate's experience to the role requirements? Consider seniority level, industry, company size, and role type.
 
 4. SKILL OVERLAP (0-100): How well do the candidate's technical and soft skills match what's needed for this role?
+
+${isJobDescriptionIncomplete ? 'IMPORTANT: Since the job description is incomplete, base your evaluation on:\n- The keywords and themes that were extracted\n- General industry/role expectations\n- The candidate\'s overall qualifications\n- Note the limitation in your explanation\n' : ''}
+
+CRITICAL: You MUST respond with valid JSON only. Do not include any explanatory text outside the JSON object. If the job description is incomplete, still provide scores based on available information.
 
 Provide your assessment as valid JSON only:
 {
@@ -108,14 +117,39 @@ Be thorough but concise. Consider both the original resume and the optimized ver
       responsePreview: responseText?.substring(0, 200),
     })
     
-    // Parse the JSON response
-    const jsonMatch = responseText.match(/\{[\s\S]*\}/)
+    // Parse the JSON response - try multiple strategies
+    let jsonMatch = responseText.match(/\{[\s\S]*\}/)
+    
+    // If no JSON found, try extracting from code blocks
+    if (!jsonMatch) {
+      const codeBlockMatch = responseText.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/)
+      if (codeBlockMatch) {
+        jsonMatch = codeBlockMatch
+      }
+    }
+    
+    // If still no JSON, try finding JSON after common prefixes
+    if (!jsonMatch) {
+      const afterPrefixMatch = responseText.match(/(?:Here|Here's|Assessment|Evaluation|Result)[\s\S]*?(\{[\s\S]*\})/i)
+      if (afterPrefixMatch) {
+        jsonMatch = afterPrefixMatch
+      }
+    }
+    
     if (!jsonMatch) {
       console.error('[Fit Score] No JSON found in response', {
         step: 'fit_score_parse_error',
         responseLength: responseText?.length || 0,
         responsePreview: responseText?.substring(0, 500),
+        jobDescriptionLength: jobDescription?.length || 0,
+        isJobDescriptionIncomplete: (jobDescription?.trim().length || 0) < 200,
       })
+      
+      // If job description is incomplete, provide a more helpful error
+      if ((jobDescription?.trim().length || 0) < 200) {
+        throw new Error('Job description is incomplete. Please provide the full job posting with responsibilities, qualifications, and requirements.')
+      }
+      
       throw new Error('No JSON found in fit score response')
     }
     
