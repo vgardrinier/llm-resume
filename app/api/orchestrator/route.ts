@@ -373,15 +373,6 @@ export async function POST(request: NextRequest) {
         isFinite: Number.isFinite(fitScore.score),
       })
     }
-    
-    // Debug: Log final fit score before returning
-    console.log('[Orchestrator] Final fit score', {
-      step: 'fit_score_final',
-      rawScore: fitScore.score,
-      normalizedScore: normalizedScore,
-      scoreBefore: baseline.score,
-      scoreAfter: normalizedScore,
-    })
 
     // Calculate baseline fit score
     const baselineStart = Date.now()
@@ -401,6 +392,15 @@ export async function POST(request: NextRequest) {
         explanation: 'Estimated baseline (scoring service unavailable)'
       }
     }
+    
+    // Debug: Log final fit score after baseline is calculated
+    console.log('[Orchestrator] Final fit score', {
+      step: 'fit_score_final',
+      rawScore: fitScore.score,
+      normalizedScore: normalizedScore,
+      scoreBefore: baseline.score,
+      scoreAfter: normalizedScore,
+    })
 
     // Fit insight (before/after) - calculated after all revisions
     const scoreAfter = normalizedScore
