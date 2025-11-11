@@ -65,7 +65,7 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
       messages.transformation.setup = `We tightened ${improvement} points. Doesn't sound like much, but in résumé math? It's everything.`
       messages.transformation.impact = "These are the details that separate callbacks from silence."
     } else {
-      messages.transformation.setup = `We moved you ${improvement} points. Small number, high leverage.`
+      messages.transformation.setup = `We moved you ${improvement} points. Small number, big difference.`
       messages.transformation.impact = rangeAfter === 'high' ? "You were already strong — now you're undeniable." : "Every point counts when you're this close."
     }
 
@@ -110,10 +110,30 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
       const unifiedText = String(coaching.unified).trim()
       
       // Split by sentence boundaries, but keep sentences together if they're short
-      const sentences = unifiedText
-        .split(/(?<=[.!?])\s+/)
-        .map((s: string) => s.trim())
-        .filter((s: string) => s.length > 0)
+      // Use a regex that works in all browsers (avoid lookbehind assertions)
+      // Match sentences ending with . ! or ? followed by whitespace or end of string
+      const sentenceRegex = /([^.!?]*[.!?]+)\s*/g
+      const sentences: string[] = []
+      let match
+      let lastIndex = 0
+      while ((match = sentenceRegex.exec(unifiedText)) !== null) {
+        const sentence = match[1].trim()
+        if (sentence.length > 0) {
+          sentences.push(sentence)
+        }
+        lastIndex = sentenceRegex.lastIndex
+      }
+      // If there's remaining text after the last sentence (no ending punctuation), add it
+      if (lastIndex < unifiedText.length) {
+        const remaining = unifiedText.substring(lastIndex).trim()
+        if (remaining.length > 0) {
+          sentences.push(remaining)
+        }
+      }
+      // If regex didn't match anything (no sentence endings), use the whole text
+      if (sentences.length === 0) {
+        sentences.push(unifiedText)
+      }
       
       // Group sentences: if a sentence is short (< 50 chars), combine with next
       // Otherwise, show as separate messages for natural pacing
@@ -202,13 +222,13 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
       const improvement = scoreAfter - scoreBefore
       let closingMessage: string
       if (improvement >= 15) {
-        closingMessage = "Ready to see your transformed résumé? This is going to look sharp."
+        closingMessage = "Ready to see your updated résumé? This is going to look sharp."
       } else if (improvement >= 8) {
         closingMessage = "Alright, time to see what we built. You're going to like this."
       } else if (scoreAfter >= 80) {
         closingMessage = "Let's see the final result. This résumé is ready to compete."
       } else {
-        closingMessage = "Ready to see your optimized résumé? Let's take a look."
+        closingMessage = "Ready to see your updated résumé? Let's take a look."
       }
       build.push({ type: 'msg', payload: closingMessage })
     }
@@ -304,7 +324,7 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
   }, [revealed, steps])
 
   return (
-    <div className="bg-gradient-to-br from-orange-50 via-purple-50 to-blue-50 rounded-xl shadow-xl p-6 relative">
+    <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-default p-6 relative">
       <div className="space-y-3">
         <AnimatePresence mode="sync">
           {steps.slice(0, revealed).map((s, idx) => (
@@ -317,8 +337,8 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
               {/* Initial score reveal - updates during transformation */}
               {s.type === 'initial-score' && (
                 <div className="flex items-center justify-center">
-                  <div className="text-center bg-white border-2 border-indigo-200 rounded-2xl shadow-lg px-8 py-10 w-full">
-                    <div className="text-gray-600 text-sm mb-2">
+                  <div className="text-center bg-white/90 backdrop-blur-sm border border-gray-200 rounded-2xl shadow-default px-8 py-10 w-full">
+                    <div className="text-gray-600 text-sm mb-2 font-sans">
                       {showingTransformed ? 'Your improved résumé scored' : 'Your résumé scored'}
                     </div>
                     <motion.div
@@ -326,7 +346,8 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
                       initial={{ scale: 0.8, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
                       transition={{ duration: 0.3, type: "spring" }}
-                      className="text-6xl font-extrabold text-gray-900"
+                      className="text-6xl font-semibold text-gray-900"
+                      style={{ fontFamily: 'var(--font-playfair), serif' }}
                     >
                       {headerScore ?? s.payload.score}/100
                     </motion.div>
@@ -336,15 +357,16 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
 
               {/* Score transformation with animation */}
               {s.type === 'score-transform' && (
-                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-xl p-6">
+                <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-2xl p-6">
                   <div className="flex items-center justify-center gap-4 mb-4">
-                    <div className="text-4xl font-bold text-gray-400">{s.payload.from}</div>
+                    <div className="text-4xl font-semibold text-gray-400" style={{ fontFamily: 'var(--font-playfair), serif' }}>{s.payload.from}</div>
                     <div className="text-2xl text-gray-400">→</div>
                     <motion.div
                       key={animatingScore}
-                      initial={{ scale: 1.2, color: '#818cf8' }}
+                      initial={{ scale: 1.2, color: '#1e293b' }}
                       animate={{ scale: 1, color: '#1e293b' }}
-                      className="text-5xl font-extrabold"
+                      className="text-5xl font-semibold"
+                      style={{ fontFamily: 'var(--font-playfair), serif' }}
                     >
                       {animatingScore ?? s.payload.to}
                     </motion.div>
@@ -353,27 +375,27 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
                   {/* Subscores breakdown */}
                   {s.payload.subscores && (
                     <div className="grid grid-cols-2 gap-3 text-xs">
-                      <div className="bg-white/60 rounded-lg p-2">
-                        <div className="text-gray-600">Keywords</div>
-                        <div className="font-semibold text-gray-800">
+                      <div className="bg-gray-50 rounded-lg p-2 border border-gray-100">
+                        <div className="text-gray-600 font-sans">Keywords</div>
+                        <div className="font-semibold text-gray-800 font-sans">
                           {s.payload.subscores.before.keywordMatch} → {s.payload.subscores.after.keywordMatch}
                         </div>
                       </div>
-                      <div className="bg-white/60 rounded-lg p-2">
-                        <div className="text-gray-600">Themes</div>
-                        <div className="font-semibold text-gray-800">
+                      <div className="bg-gray-50 rounded-lg p-2 border border-gray-100">
+                        <div className="text-gray-600 font-sans">Themes</div>
+                        <div className="font-semibold text-gray-800 font-sans">
                           {s.payload.subscores.before.themeAlignment} → {s.payload.subscores.after.themeAlignment}
                         </div>
                       </div>
-                      <div className="bg-white/60 rounded-lg p-2">
-                        <div className="text-gray-600">Experience</div>
-                        <div className="font-semibold text-gray-800">
+                      <div className="bg-gray-50 rounded-lg p-2 border border-gray-100">
+                        <div className="text-gray-600 font-sans">Experience</div>
+                        <div className="font-semibold text-gray-800 font-sans">
                           {s.payload.subscores.before.experienceRelevance} → {s.payload.subscores.after.experienceRelevance}
                         </div>
                       </div>
-                      <div className="bg-white/60 rounded-lg p-2">
-                        <div className="text-gray-600">Skills</div>
-                        <div className="font-semibold text-gray-800">
+                      <div className="bg-gray-50 rounded-lg p-2 border border-gray-100">
+                        <div className="text-gray-600 font-sans">Skills</div>
+                        <div className="font-semibold text-gray-800 font-sans">
                           {s.payload.subscores.before.skillOverlap} → {s.payload.subscores.after.skillOverlap}
                         </div>
                       </div>
@@ -384,7 +406,7 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
 
               {/* Message bubbles */}
               {s.type === 'msg' && (
-                <div className="bg-white/80 border border-purple-100 rounded-lg p-3 text-sm text-gray-800 leading-relaxed">
+                <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg p-3 text-sm text-gray-800 leading-relaxed font-sans">
                   {s.payload}
                 </div>
               )}
@@ -438,7 +460,7 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
           <button
             type="button"
             onClick={revealNext}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm hover:shadow"
+            className="bg-gray-900 hover:bg-gray-800 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm hover:shadow font-sans"
           >
             Continue →
           </button>

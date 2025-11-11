@@ -27,10 +27,10 @@ export function FitReveal({ score, onDone }: FitRevealProps) {
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         exit={{ opacity: 0, y: -8 }}
-        transition={{ duration: 0.35 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
         className="flex items-center justify-center"
       >
-        <div className="text-center bg-gradient-to-br from-indigo-50 via-purple-50 to-blue-50 border border-indigo-100 rounded-2xl shadow-xl px-8 py-10 w-full">
+        <div className="text-center bg-gradient-to-br from-indigo-50 via-purple-50 to-blue-50 border border-indigo-100 rounded-2xl shadow-default px-8 py-10 w-full">
           <div className="text-5xl font-extrabold text-gray-900 mb-2">
             {clamped}/100
           </div>
