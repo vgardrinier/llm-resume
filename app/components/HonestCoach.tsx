@@ -103,7 +103,7 @@ export function HonestCoach({
   if (!showChat) return null
 
   return (
-    <div className="bg-gradient-to-br from-orange-50 via-purple-50 to-blue-50 rounded-xl shadow-xl p-6 mb-6">
+    <div className="bg-gradient-to-br from-orange-50 via-purple-50 to-blue-50 rounded-2xl shadow-default p-6 mb-6">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">

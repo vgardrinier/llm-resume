@@ -316,33 +316,61 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
+    <div className="flex-1 flex flex-col">
       {/* Navbar */}
       <Navbar jobUrl={jobUrl} uploadedFileName={uploadedFile?.name} />
 
       {/* Main content - centered vertically and horizontally */}
-      {/* Gradient background transition for main content */}
+      {/* Background image transition */}
       <motion.div
-        className="flex-1 w-full flex flex-col justify-center items-center overflow-y-auto"
+        className="flex-1 w-full flex flex-col justify-center items-center overflow-y-auto relative"
         initial={false}
-        animate={
-          phase === 'input'
-            ? { background: 'white', opacity: 1 }
-            : {
-                background:
-                  'linear-gradient(to bottom, rgba(245,176,65,0.10), rgba(166,134,234,0.10) 50%, rgba(62,123,250,0.10) 100%)',
-                opacity: 1,
-              }
-        }
+        animate={{
+          opacity: 1,
+        }}
         transition={{
-          background: { duration: 0.6, ease: [0.25, 0.1, 0.25, 1] },
-          opacity: { duration: 0.4 },
+          opacity: { duration: 0.4, ease: "easeOut" },
         }}
         style={{
           minHeight: '100vh',
           width: '100%',
         }}
       >
+        {/* Background images with smooth transition */}
+        <motion.div
+          className="fixed inset-0 -z-10"
+          initial={false}
+          animate={{
+            opacity: phase === 'input' ? 1 : 0,
+          }}
+          transition={{
+            opacity: { duration: 0.6, ease: [0.25, 0.1, 0.25, 1] },
+          }}
+        >
+          <div
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+            style={{
+              backgroundImage: 'url(/rightfit_background_wide.png)',
+            }}
+          />
+        </motion.div>
+        <motion.div
+          className="fixed inset-0 -z-10"
+          initial={false}
+          animate={{
+            opacity: phase === 'output' ? 1 : 0,
+          }}
+          transition={{
+            opacity: { duration: 0.6, ease: [0.25, 0.1, 0.25, 1] },
+          }}
+        >
+          <div
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+            style={{
+              backgroundImage: 'url(/rightfit_background2.png)',
+            }}
+          />
+        </motion.div>
         <div className="w-full max-w-3xl flex flex-col items-center">
           {/* Hero Title with AnimatePresence for smooth fade-out */}
           <AnimatePresence>
@@ -353,7 +381,7 @@ export default function Home() {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-                className="mb-5 lg:mb-6 w-full flex justify-center"
+                className="mb-1 lg:mb-2 w-full flex justify-center"
               >
                 <HeroTitle isInputFocused={isInputFocused} />
               </motion.div>
@@ -369,11 +397,11 @@ export default function Home() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20, scale: 0.98 }}
-                  transition={{ duration: 0.5, ease: [0.25, 0.1, 0.25, 1] }}
+                  transition={{ duration: 0.4, ease: "easeOut" }}
                   className="w-full"
                 >
                   {/* Floating capsule */}
-                  <div className="bg-white border border-gray-100 shadow-sm rounded-2xl px-6 py-5 lg:px-8 lg:py-6 space-y-3">
+                  <div className="backdrop-blur-sm bg-white/50 border border-gray-200 shadow-default rounded-2xl px-6 py-5 lg:px-8 lg:py-6 space-y-3">
                     {/* Row 1: Job URL and Resume Upload - Horizontal on desktop, stacked on mobile */}
                     <div className="flex flex-col lg:flex-row gap-3">
                       {/* Job URL Input */}
@@ -386,49 +414,22 @@ export default function Home() {
                             onFocus={() => setIsInputFocused(true)}
                             onBlur={() => setIsInputFocused(false)}
                             placeholder="Paste job link here"
-                            className="flex-1 h-12 px-4 border border-gray-200 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all hover:border-gray-300 bg-white/80 placeholder:text-gray-400 text-sm"
+                            className="flex-1 h-12 px-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all hover:border-gray-400 backdrop-blur-sm bg-white/60 placeholder:text-gray-500 text-gray-900 text-sm font-serif"
                             disabled={urlLoading}
                           />
-                          {jobUrl.trim() && !urlLoading ? (
-                            <motion.div
-                              className="inline-block flex-shrink-0"
-                              style={{
-                                background: 'var(--gradient-brand)',
-                                padding: '2px',
-                                borderRadius: '12px',
-                              }}
-                              whileHover={{ scale: 1.05 }}
-                              whileTap={{ scale: 0.95 }}
-                            >
-                              <button
-                                type="button"
-                                onClick={handleFetchJobFromUrl}
-                                disabled={urlLoading}
-                                className="h-12 w-12 rounded-xl bg-white text-gray-900 flex items-center justify-center transition-all"
-                                title="Fetch job description"
-                              >
-                                {urlLoading ? (
-                                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-indigo-600 border-t-transparent"></div>
-                                ) : (
-                                  <Link2 className="h-4 w-4" />
-                                )}
-                              </button>
-                            </motion.div>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={handleFetchJobFromUrl}
-                              disabled={urlLoading || !jobUrl.trim()}
-                              className="h-12 w-12 rounded-xl bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 disabled:cursor-not-allowed text-gray-700 flex items-center justify-center transition-all flex-shrink-0"
-                              title="Fetch job description"
-                            >
-                              {urlLoading ? (
-                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-indigo-600 border-t-transparent"></div>
-                              ) : (
-                                <Link2 className="h-4 w-4" />
-                              )}
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={handleFetchJobFromUrl}
+                            disabled={urlLoading || !jobUrl.trim()}
+                            className="h-12 w-12 rounded-xl bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white flex items-center justify-center transition-all flex-shrink-0"
+                            title="Fetch job description"
+                          >
+                            {urlLoading ? (
+                              <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                            ) : (
+                              <Link2 className="h-4 w-4" />
+                            )}
+                          </button>
                         </div>
                       </div>
 
@@ -438,11 +439,11 @@ export default function Home() {
                           type="button"
                           onClick={handleUploadClick}
                           disabled={parseLoading}
-                          className="h-12 w-12 rounded-xl bg-gray-100 hover:bg-gray-200 disabled:bg-gray-50 text-gray-700 border border-gray-200 flex items-center justify-center transition-all flex-shrink-0"
+                          className="h-12 w-12 rounded-xl bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 text-white border border-gray-900 flex items-center justify-center transition-all flex-shrink-0"
                           title="Upload Resume (PDF)"
                         >
                           {parseLoading ? (
-                            <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-600"></div>
+                            <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
                           ) : (
                             <Upload className="h-5 w-5" />
                           )}
@@ -460,38 +461,56 @@ export default function Home() {
                         {/* File status display */}
                         <div className="flex-1 min-w-0 flex items-center">
                           {uploadedFile && currentResume && !parseLoading ? (
-                            <div className="text-xs text-green-600 bg-green-50 px-3 py-2 rounded-lg border border-green-200 truncate w-full">
+                            <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-lg border border-gray-200 truncate w-full font-serif">
                               ✓ {uploadedFile.name}
                             </div>
                           ) : parseError ? (
-                            <div className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-200 truncate w-full">
+                            <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-lg border border-gray-200 truncate w-full font-serif">
                               {parseError}
                             </div>
                           ) : (
-                            <span className="text-xs text-gray-400">Upload résumé (PDF)</span>
+                            <span className="text-xs text-gray-500 font-serif">Upload résumé (PDF)</span>
                           )}
                         </div>
                       </div>
                     </div>
 
                     {/* Helper text and status messages */}
-                    <div className="space-y-2 -mt-1">
+                    <div className="space-y-2 -mt-2">
                       {!urlError && !urlFetchSuccess && (
-                        <p className="text-xs text-gray-400">
-                          LinkedIn, Indeed, Glassdoor, or any company career page
-                        </p>
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-1.5">
+                            <img 
+                              src="/linkedin_icon.png" 
+                              alt="LinkedIn" 
+                              className="h-3.5 w-auto"
+                              style={{ objectFit: 'contain' }}
+                            />
+                            <img 
+                              src="https://cdn.simpleicons.org/indeed/003A9B" 
+                              alt="Indeed" 
+                              className="h-3.5 w-3.5"
+                            />
+                            <img 
+                              src="https://cdn.simpleicons.org/glassdoor/0CAA41" 
+                              alt="Glassdoor" 
+                              className="h-3.5 w-3.5"
+                            />
+                          </div>
+                          <span className="text-xs text-gray-500 font-serif">or any company career page</span>
+                        </div>
                       )}
 
                       {/* Job platform delay warning */}
                       {isJobPlatform && !urlLoading && !urlFetchSuccess && !urlError && (
-                        <div className="text-xs text-amber-700 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
+                        <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-lg border border-gray-200 font-serif">
                           ⏱️ LinkedIn/Indeed require advanced extraction. This may take 10-15 seconds.
                         </div>
                       )}
 
                       {/* Success message */}
                       {urlFetchSuccess && !urlLoading && (
-                        <div className="text-xs text-green-600 bg-green-50 px-3 py-2 rounded-lg border border-green-200">
+                        <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-lg border border-gray-200 font-serif">
                           ✓ Job description extracted successfully ({jobDescription.length} characters)
                         </div>
                       )}
@@ -499,14 +518,14 @@ export default function Home() {
                       {/* Error message with manual fallback */}
                       {urlError && (
                         <div className="space-y-3">
-                          <div className="text-xs text-red-600 bg-red-50 px-3 py-2 rounded-lg border border-red-200">
+                          <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-lg border border-gray-200 font-serif">
                             {urlError}
                           </div>
 
                           {/* Manual job description fallback */}
-                          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                            <p className="text-xs text-blue-900 mb-2">
-                              Paste the full job description manually (including responsibilities, qualifications, and requirements) — I'll optimize your résumé intelligently.
+                          <div className="backdrop-blur-sm bg-white/60 border border-gray-200 rounded-lg p-3">
+                            <p className="text-xs text-gray-900 mb-2 font-serif">
+                              Paste the full job description manually (including responsibilities, qualifications, and requirements) — I'll tailor your résumé to match what they're looking for.
                             </p>
                             <textarea
                               value={manualJobTitle}
@@ -518,7 +537,7 @@ export default function Home() {
                               onBlur={() => setIsInputFocused(false)}
                               placeholder="Paste the complete job description here..."
                               rows={6}
-                              className="w-full p-3 text-sm border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y bg-white"
+                              className="w-full p-3 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-900 focus:border-gray-900 resize-y backdrop-blur-sm bg-white/60 text-gray-900 placeholder:text-gray-500 font-serif"
                             />
                           </div>
                         </div>
@@ -546,7 +565,7 @@ export default function Home() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
-                  transition={{ duration: 0.5, ease: [0.25, 0.1, 0.25, 1] }}
+                  transition={{ duration: 0.4, ease: "easeOut" }}
                   className="w-full flex justify-center"
                 >
                   <div className="w-full max-w-3xl px-0 sm:px-4 py-6 sm:py-8 mx-auto my-8">
@@ -565,7 +584,7 @@ export default function Home() {
                           <button
                             type="button"
                             onClick={startOver}
-                            className="w-full text-center text-gray-600 hover:text-gray-800 underline text-sm transition-colors"
+                            className="w-full text-center text-gray-600 hover:text-gray-800 underline text-sm transition-colors font-serif"
                           >
                             Start over
                           </button>

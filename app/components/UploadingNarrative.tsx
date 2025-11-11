@@ -85,62 +85,61 @@ export function UploadingNarrative({ jobDescription, companyNameHint }: Uploadin
 
   return (
     <div className="flex flex-col items-center gap-6 py-8">
-      {/* Progress ring - minimal, clean */}
-      <div className="relative">
-        <svg width="64" height="64" viewBox="0 0 64 64" className="transform -rotate-90">
-          <circle 
-            cx="32" 
-            cy="32" 
-            r={radius} 
-            fill="none" 
-            stroke="#9CA3AF" 
-            strokeWidth="4" 
-          />
-          <motion.circle
-            cx="32" 
-            cy="32" 
-            r={radius} 
-            fill="none"
-            stroke="#4F46E5" 
-            strokeWidth="4" 
-            strokeLinecap="round"
-            strokeDasharray={`${dash} ${circumference}`}
-            transition={{ type: 'tween', ease: 'linear', duration: 0.2 }}
-          />
-        </svg>
-        <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-700 font-medium">
-          {progress}%
+      {/* Glass container for better readability */}
+      <div className="backdrop-blur-sm bg-white/50 border border-gray-200 rounded-2xl shadow-default px-8 py-8 max-w-lg w-full">
+        {/* Progress ring - minimal, clean */}
+        <div className="relative flex justify-center mb-6">
+          <svg width="64" height="64" viewBox="0 0 64 64" className="transform -rotate-90">
+            <circle 
+              cx="32" 
+              cy="32" 
+              r={radius} 
+              fill="none" 
+              stroke="#9CA3AF" 
+              strokeWidth="4" 
+            />
+            <motion.circle
+              cx="32" 
+              cy="32" 
+              r={radius} 
+              fill="none"
+              stroke="#1e293b" 
+              strokeWidth="4" 
+              strokeLinecap="round"
+              strokeDasharray={`${dash} ${circumference}`}
+              transition={{ type: 'tween', ease: 'linear', duration: 0.2 }}
+            />
+          </svg>
+          <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-900 font-medium font-serif">
+            {progress}%
+          </div>
         </div>
-      </div>
 
-      {/* Narrative text - clean, minimal */}
-      <div className="max-w-lg text-center">
-        <AnimatePresence mode="wait">
-          <motion.p
-            key={step}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.3, ease: [0.25, 0.1, 0.25, 1] }}
-            className="text-base lg:text-lg text-gray-700 leading-relaxed"
-            style={{
-              fontFamily: 'system-ui, -apple-system, sans-serif',
-              fontWeight: 400,
-            }}
-          >
-            {beats[step]}
-          </motion.p>
-        </AnimatePresence>
-        {step === beats.length - 1 && (
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.2 }}
-            className="mt-3 text-sm text-gray-500"
-          >
-            Still working…
-          </motion.p>
-        )}
+        {/* Narrative text - clean, minimal */}
+        <div className="text-center">
+          <AnimatePresence mode="wait">
+            <motion.p
+              key={step}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.4, ease: "easeOut" }}
+              className="text-base lg:text-lg text-gray-900 leading-relaxed font-serif"
+            >
+              {beats[step]}
+            </motion.p>
+          </AnimatePresence>
+          {step === beats.length - 1 && (
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="mt-3 text-sm text-gray-600 font-serif"
+            >
+              Still working…
+            </motion.p>
+          )}
+        </div>
       </div>
     </div>
   )

@@ -18,6 +18,31 @@ interface SalaryLookupRequest {
 
 // Extract job title and location using AI-powered extraction
 export async function extractJobTitleAndLocation(jobDescription: string): Promise<{ role: string; location: string }> {
+  // Log input length for debugging
+  const jobDescLength = jobDescription?.length || 0
+  console.log(`[SalaryMCP] Extracting role/location from job description (${jobDescLength} chars)`)
+  
+  // Check if location is already prepended (from fetch-job API)
+  const locationMatch = jobDescription.match(/^Location:\s*(.+?)(?:\n|$)/i)
+  const jobTitleMatch = jobDescription.match(/^Job Title:\s*(.+?)(?:\n|$)/i)
+  
+  if (locationMatch && jobTitleMatch) {
+    const extractedLocation = locationMatch[1].trim()
+    const extractedRole = jobTitleMatch[1].trim()
+    console.log(`[SalaryMCP] Found prepended location: "${extractedLocation}" and job title: "${extractedRole}"`)
+    return { role: extractedRole, location: extractedLocation }
+  }
+  
+  // Intelligently truncate job description for location extraction
+  // Location info is typically in the first 2000 characters (title, header, location field)
+  // This prevents token limit issues while preserving location information
+  const locationRelevantPortion = jobDescription.slice(0, 2000)
+  const wasTruncated = jobDescLength > 2000
+  
+  if (wasTruncated) {
+    console.log(`[SalaryMCP] Job description truncated from ${jobDescLength} to 2000 chars for location extraction`)
+  }
+
   try {
     // Use Anthropic API to extract job title and location intelligently
     const anthropic = new (await import('@anthropic-ai/sdk')).default({
@@ -26,18 +51,21 @@ export async function extractJobTitleAndLocation(jobDescription: string): Promis
 
     const response = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307',
-      max_tokens: 200,
+      max_tokens: 500, // Increased from 200 to ensure complete response
       temperature: 0.1,
       messages: [{
         role: 'user',
         content: `Extract the job title and location from this job description. Return ONLY a JSON object with "role" and "location" fields.
 
-Job Description: "${jobDescription}"
+Job Description: "${locationRelevantPortion}"
 
 Examples:
 - "Senior Software Engineer at Google in Mountain View, CA" → {"role": "Senior Software Engineer", "location": "Mountain View, CA"}
 - "Product Manager, ChatGPT Growth at OpenAI in San Francisco" → {"role": "Product Manager", "location": "San Francisco"}
 - "Project Manager Real Estate Developments, March 2018 in Düsseldorf, Germany" → {"role": "Project Manager", "location": "Düsseldorf, Germany"}
+- "Software Engineer at Company in Warsaw, Poland" → {"role": "Software Engineer", "location": "Warsaw, Poland"}
+
+CRITICAL: Extract the location EXACTLY as written in the job description. Do not guess or assume. If location is "Warsaw" or "Warsaw, Poland", return that exactly - do NOT substitute with "Berlin" or any other city.
 
 Return only the JSON, no other text.`
       }]
@@ -45,16 +73,35 @@ Return only the JSON, no other text.`
 
     const content = response.content[0]
     if (content.type === 'text') {
-      const extracted = JSON.parse(content.text.trim())
-      console.log(`AI Extracted: "${extracted.role}" in "${extracted.location}" from job description`)
-      return extracted
+      const responseText = content.text.trim()
+      console.log(`[SalaryMCP] AI response received (${responseText.length} chars): ${responseText.substring(0, 200)}`)
+      
+      try {
+        const extracted = JSON.parse(responseText)
+        console.log(`[SalaryMCP] AI Extracted: "${extracted.role}" in "${extracted.location}"`)
+        
+        // Validate extraction - check for common hallucinations
+        if (extracted.location && extracted.location.toLowerCase().includes('berlin') && 
+            jobDescription.toLowerCase().includes('warsaw') && !jobDescription.toLowerCase().includes('berlin')) {
+          console.warn(`[SalaryMCP] WARNING: AI hallucinated Berlin but job description mentions Warsaw!`)
+          // Force re-extraction with stronger prompt
+          throw new Error('Location hallucination detected')
+        }
+        
+        return extracted
+      } catch (parseError) {
+        console.error('[SalaryMCP] Failed to parse AI response as JSON:', parseError)
+        console.error('[SalaryMCP] Raw response:', responseText)
+        throw parseError
+      }
     }
   } catch (error) {
-    console.error('AI extraction failed, falling back to pattern matching:', error)
+    console.error('[SalaryMCP] AI extraction failed, falling back to pattern matching:', error)
   }
 
   // Fallback to simple pattern matching if AI fails
   const text = jobDescription.toLowerCase()
+  console.log(`[SalaryMCP] Using fallback pattern matching on job description (${text.length} chars)`)
   
   // Simple role extraction
   let detectedRole = 'Software Engineer'
@@ -66,9 +113,13 @@ Return only the JSON, no other text.`
     detectedRole = 'Senior ' + detectedRole
   }
   
-  // Simple location extraction
+  // Simple location extraction - ADD WARSAW and prioritize exact matches
   let detectedLocation = 'San Francisco'
-  if (text.includes('düsseldorf') || text.includes('dusseldorf')) {
+  
+  // Check for Warsaw FIRST (before other European cities to avoid conflicts)
+  if (text.includes('warsaw')) {
+    detectedLocation = 'Warsaw, Poland'
+  } else if (text.includes('düsseldorf') || text.includes('dusseldorf')) {
     detectedLocation = 'Düsseldorf, Germany'
   } else if (text.includes('berlin')) {
     detectedLocation = 'Berlin, Germany'
@@ -80,7 +131,7 @@ Return only the JSON, no other text.`
     detectedLocation = 'New York, NY'
   }
   
-  console.log(`Fallback extracted: "${detectedRole}" in "${detectedLocation}" from job description`)
+  console.log(`[SalaryMCP] Fallback extracted: "${detectedRole}" in "${detectedLocation}"`)
   return { role: detectedRole, location: detectedLocation }
 }
 

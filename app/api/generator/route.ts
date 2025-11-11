@@ -148,12 +148,22 @@ export async function POST(request: NextRequest) {
     console.log('[Generator] AI-extracted job focus:', jobFocusKeywords)
 
     // Lookup salary data for context
-    console.log('[Generator] Looking up salary data...')
+    console.log('[Generator] Looking up salary data...', {
+      jobDescriptionLength: job_description?.length || 0,
+      jobDescriptionPreview: job_description?.substring(0, 200) || 'N/A'
+    })
     const { role, location } = await extractJobTitleAndLocation(job_description)
+    console.log('[Generator] Extracted role/location:', { role, location, jobDescriptionLength: job_description?.length || 0 })
     const salaryData = await lookupSalary({ role, location })
     const salaryContext = salaryData ? generateSalaryContext(salaryData) : ''
     console.log('[Generator] Salary lookup result:', salaryData ? `${salaryData.median.toLocaleString()} median for ${role} in ${location}` : 'No data found')
 
+    // Log full job description length before building prompt
+    console.log('[Generator] Building system prompt with full job description', {
+      jobDescriptionLength: job_description?.length || 0,
+      resumeLength: candidate_resume?.length || 0
+    })
+    
     // Build the system prompt
     const systemPrompt = `You are a professional résumé optimizer specializing in technical and product roles.
 

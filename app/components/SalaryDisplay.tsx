@@ -62,7 +62,7 @@ export function SalaryDisplay({ salaryData }: SalaryDisplayProps) {
       </div>
       
       <div className="mt-3 text-xs text-green-700 bg-green-100 rounded p-2">
-        💡 <strong>Smart Investment:</strong> For $9, you're investing 0.005% of this role's annual salary to optimize your résumé.
+        💡 For $9, you're spending 0.005% of this role's annual salary to improve your résumé.
       </div>
     </div>
   )

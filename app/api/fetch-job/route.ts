@@ -225,7 +225,7 @@ async function extractWithVision(url: string) {
 
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
-      max_tokens: 4000,
+      max_tokens: 32000, // Increased to ensure full job description extraction (no truncation)
       messages: [
         {
           role: 'user',
@@ -245,7 +245,7 @@ async function extractWithVision(url: string) {
 1. The complete job description (all relevant text including responsibilities, qualifications, benefits, etc.)
 2. The company name
 3. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
-4. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA")
+4. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA" or "Warsaw, Poland")
 
 Please respond in JSON format:
 {
@@ -261,9 +261,13 @@ Instructions:
 - Ignore navigation menus, headers, footers, ads, and other page elements
 - Keep the job description text clean and readable
 - For job title: Extract the COMPLETE title as shown (e.g., "Associate Product Manager, Recent Grad" not just "Product Manager")
-- For location: Look for city and state/country information, often shown near the job title or company name
+- For location: Look for city and state/country information, often shown near the job title or company name. Extract EXACTLY as written (e.g., if it says "Warsaw, Poland", return that exactly - do NOT substitute with "Berlin" or any other city)
 - If you cannot find certain fields, use null
-- Be thorough and capture as much detail as possible from the job posting`,
+- Be thorough and capture as much detail as possible from the job posting
+- CRITICAL: The jobDescription field must contain the FULL job description, not a summary. If the description is long, include all of it.
+- DO NOT truncate, summarize, or abbreviate the job description. Extract every word, sentence, and paragraph.
+- If the job description is 2000+ characters, you MUST include all 2000+ characters in your response.
+- Use the full token allowance if needed - completeness is more important than brevity.`,
             },
           ],
         },
@@ -273,7 +277,13 @@ Instructions:
     const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
     const extractedData = parseClaudeResponse(responseText)
 
-    console.log(`Vision extraction result - Job: "${extractedData.jobTitle}", Company: "${extractedData.companyName}", Location: "${extractedData.location}", Description: ${extractedData.jobDescription?.length || 0} chars`)
+    const jobDescLength = extractedData.jobDescription?.length || 0
+    console.log(`Vision extraction result - Job: "${extractedData.jobTitle}", Company: "${extractedData.companyName}", Location: "${extractedData.location}", Description: ${jobDescLength} chars`)
+    
+    // Warn if job description seems truncated (less than 500 chars is suspiciously short)
+    if (jobDescLength > 0 && jobDescLength < 500) {
+      console.warn(`[FetchJob] WARNING: Extracted job description is very short (${jobDescLength} chars). May be truncated.`)
+    }
 
     if (!extractedData.jobDescription || extractedData.jobDescription.trim().length < 40) {
       return NextResponse.json(
@@ -362,7 +372,7 @@ async function extractWithFirecrawl(url: string) {
 1. The complete job description (all relevant text including responsibilities, qualifications, benefits, etc.)
 2. The company name
 3. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
-4. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA")
+4. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA" or "Warsaw, Poland")
 
 Webpage Content:
 ${htmlContent.slice(0, 80000)}
@@ -380,12 +390,16 @@ Instructions:
 - Remove navigation menus, headers, footers, and other page elements
 - Keep the job description text clean and readable
 - For job title: Extract the COMPLETE title as shown
-- For location: Look for city and state/country information
+- For location: Look for city and state/country information. Extract EXACTLY as written (e.g., if it says "Warsaw, Poland", return that exactly - do NOT substitute with "Berlin" or any other city)
+- CRITICAL: The jobDescription field must contain the FULL job description, not a summary. If the description is long, include all of it.
+- DO NOT truncate, summarize, or abbreviate the job description. Extract every word, sentence, and paragraph.
+- If the job description is 2000+ characters, you MUST include all 2000+ characters in your response.
+- Use the full token allowance if needed - completeness is more important than brevity.
 - If you cannot find certain fields, use null`
 
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
-      max_tokens: 4000,
+      max_tokens: 32000, // Increased to ensure full job description extraction (no truncation)
       messages: [
         {
           role: 'user',
@@ -401,7 +415,13 @@ Instructions:
       throw new Error('Could not extract valid job description from Firecrawl content')
     }
 
-    console.log(`Firecrawl + Claude extraction successful - ${extractedData.jobDescription.length} chars`)
+    const jobDescLength = extractedData.jobDescription.length
+    console.log(`Firecrawl + Claude extraction successful - ${jobDescLength} chars`)
+    
+    // Warn if job description seems truncated
+    if (jobDescLength > 0 && jobDescLength < 500) {
+      console.warn(`[FetchJob] WARNING: Extracted job description is very short (${jobDescLength} chars). May be truncated.`)
+    }
     return NextResponse.json({
       jobDescription: extractedData.jobDescription,
       companyName: extractedData.companyName || null,
@@ -438,17 +458,23 @@ async function extractWithScraping(url: string) {
     }
 
     htmlContent = await fetchResponse.text()
+    console.log(`[FetchJob] Fetched HTML content: ${htmlContent.length} chars`)
     
     // Check if we got a minimal HTML shell (likely JS-rendered content)
     // If HTML is too short or doesn't contain job-related keywords, use Firecrawl
     const textContent = htmlContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+    console.log(`[FetchJob] Extracted text content length: ${textContent.length} chars`)
+    
     const hasJobKeywords = htmlContent.toLowerCase().includes('job') || 
                           htmlContent.toLowerCase().includes('position') || 
                           htmlContent.toLowerCase().includes('career') ||
-                          htmlContent.toLowerCase().includes('opportunity')
+                          htmlContent.toLowerCase().includes('opportunity') ||
+                          htmlContent.toLowerCase().includes('responsibilities') ||
+                          htmlContent.toLowerCase().includes('qualifications') ||
+                          htmlContent.toLowerCase().includes('requirements')
     
-    if (textContent.length < 500 || !hasJobKeywords) {
-      console.log(`Initial HTML too short (${textContent.length} chars) or missing job keywords, likely JS-rendered. Using Firecrawl...`)
+    if (textContent.length < 1000 || !hasJobKeywords) {
+      console.log(`[FetchJob] Initial HTML too short (${textContent.length} chars) or missing job keywords, likely JS-rendered. Using Firecrawl...`)
       return await extractWithFirecrawl(url)
     }
   } catch (error) {
@@ -473,15 +499,19 @@ async function extractWithScraping(url: string) {
   // Fallback to Claude HTML parsing
   try {
     console.log('JSON-LD not found, using Claude to parse HTML...')
+    // Increase HTML slice limit to ensure we capture full content
+    const htmlSlice = htmlContent.slice(0, 200000) // Increased from 50000 to capture more content
+    console.log(`[FetchJob] Sending ${htmlSlice.length} chars of HTML to Claude (original: ${htmlContent.length} chars)`)
+    
     const extractionPrompt = `You are a job posting parser. Extract the following information from this HTML content:
 
 1. The complete job description (all relevant text including responsibilities, qualifications, benefits, etc.)
 2. The company name
 3. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
-4. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA")
+4. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA" or "Warsaw, Poland")
 
 HTML Content:
-${htmlContent.slice(0, 50000)}
+${htmlSlice}
 
 Please respond in JSON format:
 {
@@ -496,12 +526,16 @@ Instructions:
 - Remove HTML tags, navigation menus, headers, footers, and other page elements
 - Keep the job description text clean and readable
 - For job title: Extract the COMPLETE title as shown (e.g., "Associate Product Manager, Recent Grad" not just "Product Manager")
-- For location: Look for city and state/country information, often shown near the job title or company name
+- For location: Look for city and state/country information, often shown near the job title or company name. Extract EXACTLY as written (e.g., if it says "Warsaw, Poland", return that exactly - do NOT substitute with "Berlin" or any other city)
+- CRITICAL: The jobDescription field must contain the FULL job description, not a summary. If the description is long, include all of it.
+- DO NOT truncate, summarize, or abbreviate the job description. Extract every word, sentence, and paragraph.
+- If the job description is 2000+ characters, you MUST include all 2000+ characters in your response.
+- Use the full token allowance if needed - completeness is more important than brevity.
 - If you cannot find certain fields, use null`
 
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
-      max_tokens: 4000,
+      max_tokens: 32000, // Increased to ensure full job description extraction (no truncation)
       messages: [
         {
           role: 'user',
@@ -511,6 +545,7 @@ Instructions:
     })
 
     const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
+    console.log(`[FetchJob] Claude response length: ${responseText.length} chars`)
     const extractedData = parseClaudeResponse(responseText)
 
     if (!extractedData.jobDescription || extractedData.jobDescription.trim().length < 40) {
@@ -518,6 +553,18 @@ Instructions:
         { error: 'Could not extract a valid job description from this URL. The page may not contain a job posting.' },
         { status: 422 }
       )
+    }
+
+    const jobDescLength = extractedData.jobDescription.length
+    console.log(`[FetchJob] HTML + Claude extraction successful - ${jobDescLength} chars`)
+    console.log(`[FetchJob] Extracted job title: "${extractedData.jobTitle}", company: "${extractedData.companyName}", location: "${extractedData.location || 'not found'}"`)
+    
+    // Warn if job description seems truncated
+    if (jobDescLength > 0 && jobDescLength < 1000) {
+      console.warn(`[FetchJob] WARNING: Extracted job description is very short (${jobDescLength} chars). May be truncated or page may be JS-rendered.`)
+      console.warn(`[FetchJob] Consider using Firecrawl for JS-rendered pages. Falling back to Firecrawl...`)
+      // Try Firecrawl as fallback for short extractions
+      return await extractWithFirecrawl(url)
     }
 
     return NextResponse.json({

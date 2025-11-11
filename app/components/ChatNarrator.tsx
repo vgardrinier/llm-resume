@@ -324,7 +324,7 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
   }, [revealed, steps])
 
   return (
-    <div className="bg-gradient-to-br from-orange-50 via-purple-50 to-blue-50 rounded-2xl shadow-default p-6 relative">
+    <div className="bg-white/95 backdrop-blur-sm rounded-2xl shadow-default p-6 relative">
       <div className="space-y-3">
         <AnimatePresence mode="sync">
           {steps.slice(0, revealed).map((s, idx) => (
@@ -337,8 +337,8 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
               {/* Initial score reveal - updates during transformation */}
               {s.type === 'initial-score' && (
                 <div className="flex items-center justify-center">
-                  <div className="text-center bg-white border-2 border-indigo-200 rounded-2xl shadow-default px-8 py-10 w-full">
-                    <div className="text-gray-600 text-sm mb-2">
+                  <div className="text-center bg-white/90 backdrop-blur-sm border border-gray-200 rounded-2xl shadow-default px-8 py-10 w-full">
+                    <div className="text-gray-600 text-sm mb-2 font-sans">
                       {showingTransformed ? 'Your improved résumé scored' : 'Your résumé scored'}
                     </div>
                     <motion.div
@@ -346,7 +346,8 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
                       initial={{ scale: 0.8, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
                       transition={{ duration: 0.3, type: "spring" }}
-                      className="text-6xl font-extrabold text-gray-900"
+                      className="text-6xl font-semibold text-gray-900"
+                      style={{ fontFamily: 'var(--font-playfair), serif' }}
                     >
                       {headerScore ?? s.payload.score}/100
                     </motion.div>
@@ -356,15 +357,16 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
 
               {/* Score transformation with animation */}
               {s.type === 'score-transform' && (
-                <div className="bg-gradient-to-r from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-2xl p-6">
+                <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-2xl p-6">
                   <div className="flex items-center justify-center gap-4 mb-4">
-                    <div className="text-4xl font-bold text-gray-400">{s.payload.from}</div>
+                    <div className="text-4xl font-semibold text-gray-400" style={{ fontFamily: 'var(--font-playfair), serif' }}>{s.payload.from}</div>
                     <div className="text-2xl text-gray-400">→</div>
                     <motion.div
                       key={animatingScore}
-                      initial={{ scale: 1.2, color: '#818cf8' }}
+                      initial={{ scale: 1.2, color: '#1e293b' }}
                       animate={{ scale: 1, color: '#1e293b' }}
-                      className="text-5xl font-extrabold"
+                      className="text-5xl font-semibold"
+                      style={{ fontFamily: 'var(--font-playfair), serif' }}
                     >
                       {animatingScore ?? s.payload.to}
                     </motion.div>
@@ -373,27 +375,27 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
                   {/* Subscores breakdown */}
                   {s.payload.subscores && (
                     <div className="grid grid-cols-2 gap-3 text-xs">
-                      <div className="bg-white/60 rounded-lg p-2">
-                        <div className="text-gray-600">Keywords</div>
-                        <div className="font-semibold text-gray-800">
+                      <div className="bg-gray-50 rounded-lg p-2 border border-gray-100">
+                        <div className="text-gray-600 font-sans">Keywords</div>
+                        <div className="font-semibold text-gray-800 font-sans">
                           {s.payload.subscores.before.keywordMatch} → {s.payload.subscores.after.keywordMatch}
                         </div>
                       </div>
-                      <div className="bg-white/60 rounded-lg p-2">
-                        <div className="text-gray-600">Themes</div>
-                        <div className="font-semibold text-gray-800">
+                      <div className="bg-gray-50 rounded-lg p-2 border border-gray-100">
+                        <div className="text-gray-600 font-sans">Themes</div>
+                        <div className="font-semibold text-gray-800 font-sans">
                           {s.payload.subscores.before.themeAlignment} → {s.payload.subscores.after.themeAlignment}
                         </div>
                       </div>
-                      <div className="bg-white/60 rounded-lg p-2">
-                        <div className="text-gray-600">Experience</div>
-                        <div className="font-semibold text-gray-800">
+                      <div className="bg-gray-50 rounded-lg p-2 border border-gray-100">
+                        <div className="text-gray-600 font-sans">Experience</div>
+                        <div className="font-semibold text-gray-800 font-sans">
                           {s.payload.subscores.before.experienceRelevance} → {s.payload.subscores.after.experienceRelevance}
                         </div>
                       </div>
-                      <div className="bg-white/60 rounded-lg p-2">
-                        <div className="text-gray-600">Skills</div>
-                        <div className="font-semibold text-gray-800">
+                      <div className="bg-gray-50 rounded-lg p-2 border border-gray-100">
+                        <div className="text-gray-600 font-sans">Skills</div>
+                        <div className="font-semibold text-gray-800 font-sans">
                           {s.payload.subscores.before.skillOverlap} → {s.payload.subscores.after.skillOverlap}
                         </div>
                       </div>
@@ -404,7 +406,7 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
 
               {/* Message bubbles */}
               {s.type === 'msg' && (
-                <div className="bg-white/80 border border-purple-100 rounded-lg p-3 text-sm text-gray-800 leading-relaxed">
+                <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg p-3 text-sm text-gray-800 leading-relaxed font-sans">
                   {s.payload}
                 </div>
               )}
@@ -458,7 +460,7 @@ export function ChatNarrator({ insights }: ChatNarratorProps) {
           <button
             type="button"
             onClick={revealNext}
-            className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm hover:shadow"
+            className="bg-gray-900 hover:bg-gray-800 text-white px-5 py-2 rounded-lg text-sm font-medium transition-colors shadow-sm hover:shadow font-sans"
           >
             Continue →
           </button>
