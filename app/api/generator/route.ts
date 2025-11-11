@@ -102,7 +102,25 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { job_description, candidate_resume, creative_mode = 'balanced', revision_goals } = body
 
+    // Debug: Log start with input validation
+    console.log('[Generator] Request received', {
+      step: 'start',
+      hasJob: !!job_description,
+      hasResume: !!candidate_resume,
+      jobLength: job_description?.length || 0,
+      resumeLength: candidate_resume?.length || 0,
+      creativeMode: creative_mode,
+      hasRevisionGoals: !!revision_goals,
+    })
+
     if (!job_description || !candidate_resume) {
+      console.error('[Generator] Missing required inputs', {
+        step: 'validation_failed',
+        hasJob: !!job_description,
+        hasResume: !!candidate_resume,
+        jobType: typeof job_description,
+        resumeType: typeof candidate_resume,
+      })
       return NextResponse.json(
         { error: 'Job description and candidate resume are required' },
         { status: 400 }

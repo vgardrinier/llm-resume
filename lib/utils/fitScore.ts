@@ -36,6 +36,16 @@ export interface FitScoreResult {
 export async function calculateFitScore(inputs: FitScoreInputs): Promise<FitScoreResult> {
   const { jobDescription, candidateResume, generatedResume, keywordsUsed, themesCovered } = inputs
   
+  // Debug: Log inputs
+  console.log('[Fit Score] Starting calculation', {
+    step: 'fit_score_start',
+    jobLength: jobDescription?.length || 0,
+    originalResumeLength: candidateResume?.length || 0,
+    generatedResumeLength: generatedResume?.length || 0,
+    keywordsCount: keywordsUsed?.length || 0,
+    themesCount: themesCovered?.length || 0,
+  })
+  
   const fitScorePrompt = `You are an expert recruiter and hiring manager evaluating how well a candidate's resume matches a job description.
 
 JOB DESCRIPTION:
@@ -91,13 +101,43 @@ Be thorough but concise. Consider both the original resume and the optimized ver
 
     const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
     
+    // Debug: Log API response
+    console.log('[Fit Score] API response received', {
+      step: 'fit_score_api_response',
+      responseLength: responseText?.length || 0,
+      responsePreview: responseText?.substring(0, 200),
+    })
+    
     // Parse the JSON response
     const jsonMatch = responseText.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
+      console.error('[Fit Score] No JSON found in response', {
+        step: 'fit_score_parse_error',
+        responseLength: responseText?.length || 0,
+        responsePreview: responseText?.substring(0, 500),
+      })
       throw new Error('No JSON found in fit score response')
     }
     
-    const result = JSON.parse(jsonMatch[0])
+    let result
+    try {
+      result = JSON.parse(jsonMatch[0])
+    } catch (parseError) {
+      console.error('[Fit Score] JSON parse error', {
+        step: 'fit_score_json_parse_error',
+        error: parseError instanceof Error ? parseError.message : 'Unknown error',
+        jsonMatch: jsonMatch[0]?.substring(0, 500),
+      })
+      throw parseError
+    }
+    
+    // Debug: Log parsed result
+    console.log('[Fit Score] Parsed result', {
+      step: 'fit_score_parsed',
+      overallScore: result.overall_score,
+      breakdown: result.breakdown,
+      hasExplanation: !!result.explanation,
+    })
     
     // Validate and normalize scores (before randomization)
     const rawOverall = Math.max(0, Math.min(100, Number.isFinite(result.overall_score) ? result.overall_score : 75))
@@ -133,11 +173,24 @@ Be thorough but concise. Consider both the original resume and the optimized ver
     }
     
   } catch (error) {
-    console.error('Fit score calculation error:', error)
+    console.error('[Fit Score] Calculation error', {
+      step: 'fit_score_error',
+      error: error instanceof Error ? error.message : 'Unknown error',
+      errorStack: error instanceof Error ? error.stack : undefined,
+      jobLength: jobDescription?.length || 0,
+      originalResumeLength: candidateResume?.length || 0,
+      generatedResumeLength: generatedResume?.length || 0,
+    })
     
     // Fallback to randomized scores if API fails (avoid multiples of 5)
+    const fallbackScore = randomizeScore(75)
+    console.warn('[Fit Score] Using fallback score', {
+      step: 'fit_score_fallback',
+      fallbackScore: fallbackScore,
+    })
+    
     return {
-      score: randomizeScore(75),
+      score: fallbackScore,
       breakdown: {
         keywordMatch: randomizeScore(80),
         themeAlignment: randomizeScore(75),
@@ -155,6 +208,13 @@ export async function calculateBaselineFitScore(params: {
   originalResume: string
 }): Promise<FitScoreResult> {
   const { jobDescription, originalResume } = params
+  
+  // Debug: Log inputs
+  console.log('[Baseline Fit Score] Starting calculation', {
+    step: 'baseline_fit_score_start',
+    jobLength: jobDescription?.length || 0,
+    originalResumeLength: originalResume?.length || 0,
+  })
 
   const prompt = `You are an expert recruiter and hiring manager evaluating how well a candidate's resume matches a job description.
 
@@ -194,10 +254,43 @@ IMPORTANT: Use varied, realistic scores (not just multiples of 5). Scores like 7
     })
 
     const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
+    
+    // Debug: Log API response
+    console.log('[Baseline Fit Score] API response received', {
+      step: 'baseline_fit_score_api_response',
+      responseLength: responseText?.length || 0,
+      responsePreview: responseText?.substring(0, 200),
+    })
+    
     const jsonMatch = responseText.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) throw new Error('No JSON found in baseline fit score response')
+    if (!jsonMatch) {
+      console.error('[Baseline Fit Score] No JSON found in response', {
+        step: 'baseline_fit_score_parse_error',
+        responseLength: responseText?.length || 0,
+        responsePreview: responseText?.substring(0, 500),
+      })
+      throw new Error('No JSON found in baseline fit score response')
+    }
 
-    const result = JSON.parse(jsonMatch[0])
+    let result
+    try {
+      result = JSON.parse(jsonMatch[0])
+    } catch (parseError) {
+      console.error('[Baseline Fit Score] JSON parse error', {
+        step: 'baseline_fit_score_json_parse_error',
+        error: parseError instanceof Error ? parseError.message : 'Unknown error',
+        jsonMatch: jsonMatch[0]?.substring(0, 500),
+      })
+      throw parseError
+    }
+    
+    // Debug: Log parsed result
+    console.log('[Baseline Fit Score] Parsed result', {
+      step: 'baseline_fit_score_parsed',
+      overallScore: result.overall_score,
+      breakdown: result.breakdown,
+      hasExplanation: !!result.explanation,
+    })
 
     // Validate and normalize scores (before randomization)
     const rawOverall = Math.max(0, Math.min(100, Number.isFinite(result.overall_score) ? result.overall_score : 65))
@@ -232,10 +325,23 @@ IMPORTANT: Use varied, realistic scores (not just multiples of 5). Scores like 7
       explanation: result.explanation || 'Baseline fit score calculated'
     }
   } catch (error) {
-    console.error('Baseline fit score calculation error:', error)
+    console.error('[Baseline Fit Score] Calculation error', {
+      step: 'baseline_fit_score_error',
+      error: error instanceof Error ? error.message : 'Unknown error',
+      errorStack: error instanceof Error ? error.stack : undefined,
+      jobLength: jobDescription?.length || 0,
+      originalResumeLength: originalResume?.length || 0,
+    })
+    
     // Fallback to randomized scores (avoid multiples of 5)
+    const fallbackScore = randomizeScore(65)
+    console.warn('[Baseline Fit Score] Using fallback score', {
+      step: 'baseline_fit_score_fallback',
+      fallbackScore: fallbackScore,
+    })
+    
     return {
-      score: randomizeScore(65),
+      score: fallbackScore,
       breakdown: {
         keywordMatch: randomizeScore(65),
         themeAlignment: randomizeScore(65),

@@ -306,7 +306,117 @@ Instructions:
   }
 }
 
-// HTML scraping for company websites (fast)
+// Scrape with JS rendering using Firecrawl API
+async function extractWithFirecrawl(url: string) {
+  const apiKey = process.env.FIRECRAWL_API_KEY
+  if (!apiKey) {
+    console.log('FIRECRAWL_API_KEY not set, falling back to vision extraction')
+    return await extractWithVision(url)
+  }
+
+  try {
+    console.log(`Using Firecrawl to scrape ${url}...`)
+    const response = await fetch('https://api.firecrawl.dev/v0/scrape', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        url: url,
+        pageOptions: {
+          waitFor: 3000, // Wait 3s for JS to render
+        },
+      }),
+      signal: AbortSignal.timeout(30000),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Firecrawl API error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    const htmlContent = data.data?.markdown || data.data?.content || ''
+    
+    if (!htmlContent || htmlContent.length < 100) {
+      throw new Error('Firecrawl returned insufficient content')
+    }
+
+    console.log(`Firecrawl extracted ${htmlContent.length} characters`)
+
+    // Try JSON-LD extraction first
+    const jsonLdResult = extractFromJsonLd(data.data?.html || '')
+    if (jsonLdResult?.jobDescription && jsonLdResult.jobDescription.length > 100) {
+      console.log('Successfully extracted from JSON-LD via Firecrawl')
+      return NextResponse.json({
+        jobDescription: jsonLdResult.jobDescription,
+        companyName: jsonLdResult.companyName || null,
+        jobTitle: jsonLdResult.jobTitle || null,
+        location: jsonLdResult.location || null,
+      })
+    }
+
+    // Use Claude to parse the scraped content
+    const extractionPrompt = `You are a job posting parser. Extract the following information from this scraped webpage content:
+
+1. The complete job description (all relevant text including responsibilities, qualifications, benefits, etc.)
+2. The company name
+3. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
+4. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA")
+
+Webpage Content:
+${htmlContent.slice(0, 80000)}
+
+Please respond in JSON format:
+{
+  "jobDescription": "the full job description text here",
+  "companyName": "company name",
+  "jobTitle": "complete job title including all qualifiers",
+  "location": "city, state or city, country"
+}
+
+Instructions:
+- Extract ALL relevant job posting content, not just a summary
+- Remove navigation menus, headers, footers, and other page elements
+- Keep the job description text clean and readable
+- For job title: Extract the COMPLETE title as shown
+- For location: Look for city and state/country information
+- If you cannot find certain fields, use null`
+
+    const message = await anthropic.messages.create({
+      model: 'claude-3-7-sonnet-20250219',
+      max_tokens: 4000,
+      messages: [
+        {
+          role: 'user',
+          content: extractionPrompt,
+        },
+      ],
+    })
+
+    const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
+    const extractedData = parseClaudeResponse(responseText)
+
+    if (!extractedData.jobDescription || extractedData.jobDescription.trim().length < 40) {
+      throw new Error('Could not extract valid job description from Firecrawl content')
+    }
+
+    console.log(`Firecrawl + Claude extraction successful - ${extractedData.jobDescription.length} chars`)
+    return NextResponse.json({
+      jobDescription: extractedData.jobDescription,
+      companyName: extractedData.companyName || null,
+      jobTitle: extractedData.jobTitle || null,
+      location: extractedData.location || null,
+    })
+
+  } catch (error) {
+    console.error('Firecrawl extraction error:', error)
+    // Fall back to vision extraction
+    return await extractWithVision(url)
+  }
+}
+
+// HTML scraping for company websites (fast, but limited for JS-rendered content)
 async function extractWithScraping(url: string) {
   let htmlContent: string
 
@@ -328,9 +438,22 @@ async function extractWithScraping(url: string) {
     }
 
     htmlContent = await fetchResponse.text()
+    
+    // Check if we got a minimal HTML shell (likely JS-rendered content)
+    // If HTML is too short or doesn't contain job-related keywords, use Firecrawl
+    const textContent = htmlContent.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+    const hasJobKeywords = htmlContent.toLowerCase().includes('job') || 
+                          htmlContent.toLowerCase().includes('position') || 
+                          htmlContent.toLowerCase().includes('career') ||
+                          htmlContent.toLowerCase().includes('opportunity')
+    
+    if (textContent.length < 500 || !hasJobKeywords) {
+      console.log(`Initial HTML too short (${textContent.length} chars) or missing job keywords, likely JS-rendered. Using Firecrawl...`)
+      return await extractWithFirecrawl(url)
+    }
   } catch (error) {
-    console.error('Scraping failed, falling back to vision:', error)
-    return await extractWithVision(url)
+    console.error('Initial fetch failed, trying Firecrawl:', error)
+    return await extractWithFirecrawl(url)
   }
 
   // Try JSON-LD extraction first (fastest)
