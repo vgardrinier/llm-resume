@@ -62,7 +62,26 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { job_description, candidate_resume, creative_mode = 'balanced' } = body
 
+    // Debug: Log start with input validation
+    console.log('[Orchestrator] Request received', {
+      step: 'start',
+      generation_id: generationId,
+      session_id: sessionId,
+      hasJob: !!job_description,
+      hasResume: !!candidate_resume,
+      jobLength: job_description?.length || 0,
+      resumeLength: candidate_resume?.length || 0,
+      creativeMode: creative_mode,
+    })
+
     if (!job_description || !candidate_resume) {
+      console.error('[Orchestrator] Missing required inputs', {
+        step: 'validation_failed',
+        hasJob: !!job_description,
+        hasResume: !!candidate_resume,
+        jobType: typeof job_description,
+        resumeType: typeof candidate_resume,
+      })
       return NextResponse.json(
         { error: 'Job description and candidate resume are required' },
         { status: 400 }
@@ -127,7 +146,15 @@ export async function POST(request: NextRequest) {
     const generatorStart = Date.now()
     const generatorData = await generatorResponse.json()
     const generatorTime = Date.now() - generatorStart
-    console.log(`[Orchestrator] Generator completed in ${generatorTime}ms`)
+    console.log(`[Orchestrator] Generator completed in ${generatorTime}ms`, {
+      step: 'generator_complete',
+      hasResumeMd: !!generatorData.resume_md,
+      resumeMdLength: generatorData.resume_md?.length || 0,
+      hasKeywords: !!generatorData.keywords_used,
+      keywordsCount: generatorData.keywords_used?.length || 0,
+      hasThemes: !!generatorData.themes_covered,
+      themesCount: generatorData.themes_covered?.length || 0,
+    })
 
     // Step 2: Call curator
     const curatorStart = Date.now()
@@ -314,7 +341,14 @@ export async function POST(request: NextRequest) {
     // Calculate fit score AFTER all revisions are complete (including coaching-based revision)
     // This ensures insights.fit reflects the final optimized_resume that the user receives
     const fitScoreStart = Date.now()
-    console.log('[Orchestrator] Calculating fit score on final resume...')
+    console.log('[Orchestrator] Calculating fit score on final resume...', {
+      step: 'fit_score_start',
+      jobLength: job_description?.length || 0,
+      originalResumeLength: candidate_resume?.length || 0,
+      generatedResumeLength: resumeMd?.length || 0,
+      keywordsCount: generatorData.keywords_used?.length || 0,
+      themesCount: generatorData.themes_covered?.length || 0,
+    })
     const fitScore = await calculateFitScore({
       jobDescription: job_description,
       candidateResume: candidate_resume,
@@ -323,12 +357,31 @@ export async function POST(request: NextRequest) {
       themesCovered: generatorData.themes_covered || []
     })
     const fitScoreTime = Date.now() - fitScoreStart
-    console.log(`[Orchestrator] Fit score calculated in ${fitScoreTime}ms`)
+    console.log(`[Orchestrator] Fit score calculated in ${fitScoreTime}ms`, {
+      step: 'fit_score_complete',
+      fitScore: fitScore.score,
+      breakdown: fitScore.breakdown,
+      explanation: fitScore.explanation?.substring(0, 100),
+    })
 
     const normalizedScore = Math.max(1, Math.min(100, Number.isFinite(fitScore.score) ? fitScore.score : 0))
     if (normalizedScore !== fitScore.score) {
-      console.warn('[Orchestrator] Adjusted fit score to normalized range:', { original: fitScore.score, normalized: normalizedScore })
+      console.warn('[Orchestrator] Adjusted fit score to normalized range:', { 
+        step: 'fit_score_normalized',
+        original: fitScore.score, 
+        normalized: normalizedScore,
+        isFinite: Number.isFinite(fitScore.score),
+      })
     }
+    
+    // Debug: Log final fit score before returning
+    console.log('[Orchestrator] Final fit score', {
+      step: 'fit_score_final',
+      rawScore: fitScore.score,
+      normalizedScore: normalizedScore,
+      scoreBefore: baseline.score,
+      scoreAfter: normalizedScore,
+    })
 
     // Calculate baseline fit score
     const baselineStart = Date.now()
@@ -392,7 +445,16 @@ export async function POST(request: NextRequest) {
     }
 
     const totalTime = Date.now() - overallStart
-    console.log(`[Orchestrator] Process complete in ${totalTime}ms. Returning combined response.`)
+    console.log(`[Orchestrator] Process complete in ${totalTime}ms. Returning combined response.`, {
+      step: 'complete',
+      generation_id: generationId,
+      session_id: sessionId,
+      totalTimeMs: totalTime,
+      fitScoreAfter: insights.fit?.score_after,
+      fitScoreBefore: insights.fit?.score_before,
+      hasOptimizedResume: !!responsePayload.optimized_resume,
+      optimizedResumeLength: responsePayload.optimized_resume?.length || 0,
+    })
 
     return NextResponse.json(responsePayload)
 

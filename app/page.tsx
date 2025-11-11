@@ -74,6 +74,16 @@ export default function Home() {
     setLoading(true)
     setShowResume(false) // Reset resume visibility
     try {
+      // Debug: Log inputs before API call
+      console.log('[Frontend] Starting resume generation', {
+        step: 'start',
+        hasJob: !!jobDescription,
+        hasResume: !!currentResume,
+        jobLength: jobDescription?.length || 0,
+        resumeLength: currentResume?.length || 0,
+        creativeMode,
+      })
+
       const response = await fetch('/api/orchestrator', {
         method: 'POST',
         headers: {
@@ -87,10 +97,29 @@ export default function Home() {
       })
 
       if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        console.error('[Frontend] API error response', {
+          step: 'api_error',
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData,
+        })
         throw new Error('Failed to generate resume')
       }
 
       const data: GenerateInsightsResponse = await response.json()
+      
+      // Debug: Log API response
+      console.log('[Frontend] API response received', {
+        step: 'api_response',
+        hasInsights: !!data.insights,
+        hasFitScore: !!data.insights?.fit,
+        fitScoreBefore: data.insights?.fit?.score_before,
+        fitScoreAfter: data.insights?.fit?.score_after,
+        hasOptimizedResume: !!data.optimized_resume,
+        optimizedResumeLength: data.optimized_resume?.length || 0,
+      })
+      
       setResult(data)
     } catch (error) {
       console.error('Error generating resume:', error)
