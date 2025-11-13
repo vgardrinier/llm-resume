@@ -19,7 +19,7 @@ export function Button({
   disabled,
   ...props
 }: ButtonProps) {
-  const baseStyles = 'px-6 py-3 rounded-full font-medium text-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed relative font-serif'
+  const baseStyles = 'px-6 py-3 md:py-3 min-h-[56px] rounded-xl font-medium text-sm md:text-base transition-all disabled:opacity-50 disabled:cursor-not-allowed relative font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]'
   
   const variantStyles = {
     primary: 'bg-white text-gray-900 border-2 border-gray-900 hover:bg-gray-50',
@@ -27,7 +27,7 @@ export function Button({
     gradient: 'bg-white text-gray-900',
   }
 
-  // Gradient variant now uses black background instead of gradient border
+  // Gradient variant uses black background (when activated)
   const isGradient = variant === 'gradient'
   
   if (isGradient) {

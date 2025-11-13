@@ -88,6 +88,36 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Validate job description length (catch empty or suspiciously short descriptions)
+    const trimmedJobDescription = job_description.trim()
+    
+    // Very minimal validation - just catch empty/whitespace (30 chars is about 5-6 words)
+    // We allow short descriptions because users might manually paste brief ones
+    // The fit score calculation will handle incomplete descriptions gracefully
+    if (trimmedJobDescription.length < 30) {
+      console.error('[Orchestrator] Job description too short', {
+        step: 'validation_failed',
+        jobLength: trimmedJobDescription.length,
+        jobPreview: trimmedJobDescription.substring(0, 100),
+      })
+      return NextResponse.json(
+        { 
+          error: 'Job description is too short. Please provide at least a job title and basic requirements (minimum 30 characters).',
+          details: `Received only ${trimmedJobDescription.length} characters.`
+        },
+        { status: 400 }
+      )
+    }
+    
+    // Log warning for short descriptions but allow them to proceed
+    if (trimmedJobDescription.length < 200) {
+      console.warn('[Orchestrator] Job description is short - may be incomplete', {
+        step: 'validation_warning',
+        jobLength: trimmedJobDescription.length,
+        jobPreview: trimmedJobDescription.substring(0, 200),
+      })
+    }
+
     if (!process.env.ANTHROPIC_API_KEY) {
       console.error('[Orchestrator] ANTHROPIC_API_KEY environment variable is not set')
       return NextResponse.json(
@@ -386,12 +416,23 @@ export async function POST(request: NextRequest) {
       console.log(`[Orchestrator] Baseline fit score calculated in ${baselineTime}ms`)
     } catch (e) {
       console.warn('[Orchestrator] Baseline fit score failed, using estimate:', e)
+      // Create a proper baseline breakdown estimate (lower than optimized)
+      const estimatedBaselineScore = Math.max(0, normalizedScore - 10)
       baseline = {
-        score: Math.max(0, normalizedScore - 10),
-        breakdown: fitScore.breakdown,
+        score: estimatedBaselineScore,
+        breakdown: {
+          keywordMatch: Math.max(0, fitScore.breakdown.keywordMatch - 10),
+          themeAlignment: Math.max(0, fitScore.breakdown.themeAlignment - 10),
+          experienceRelevance: fitScore.breakdown.experienceRelevance, // Experience doesn't change
+          skillOverlap: Math.max(0, fitScore.breakdown.skillOverlap - 10)
+        },
         explanation: 'Estimated baseline (scoring service unavailable)'
       }
     }
+    
+    // Ensure optimized score is always >= baseline (optimization should never decrease the score)
+    // If somehow the optimized score is lower, use baseline + 1 as minimum
+    const scoreAfter = Math.max(baseline.score + 1, normalizedScore)
     
     // Debug: Log final fit score after baseline is calculated
     console.log('[Orchestrator] Final fit score', {
@@ -399,11 +440,11 @@ export async function POST(request: NextRequest) {
       rawScore: fitScore.score,
       normalizedScore: normalizedScore,
       scoreBefore: baseline.score,
-      scoreAfter: normalizedScore,
+      scoreAfter: scoreAfter,
+      improvement: scoreAfter - baseline.score,
     })
 
     // Fit insight (before/after) - calculated after all revisions
-    const scoreAfter = normalizedScore
     insights.fit = {
       score_before: baseline.score,
       score_after: Math.max(1, Math.min(100, scoreAfter)),

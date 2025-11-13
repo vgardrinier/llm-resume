@@ -11,7 +11,9 @@ interface HeroTitleProps {
 const headline = "Recruiters keep skipping your résumé?"
 const subtitle = "We'll help you fix it."
 const words = headline.split(' ')
-const lineHeight = 'text-3xl lg:text-5xl xl:text-6xl'
+// More gradual scaling: mobile -> tablet -> desktop
+const lineHeight = 'text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl'
+const subtitleSize = 'text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl'
 const STAGGER_DELAY_MS = 100
 const TRANSITION_DURATION_MS = 400
 
@@ -45,16 +47,16 @@ export function HeroTitle({ isInputFocused = false, animated = true }: HeroTitle
   }, [animated, prefersReducedMotion, mounted])
 
   return (
-    <div className="text-center pb-4 lg:pb-6">
+    <div className="text-center pb-4 md:pb-6">
       {/* Hero Title */}
       <div 
         className="relative flex flex-col items-center justify-start"
-        style={{ minHeight: '180px' }}
+        style={{ minHeight: 'auto' }}
       >
         {/* Fixed height container to prevent layout shift */}
         <div 
-          className="w-full max-w-full px-4 flex flex-col items-center justify-center"
-          style={{ minHeight: '180px' }}
+          className="w-full max-w-full flex flex-col items-center justify-center"
+          style={{ minHeight: 'auto' }}
         >
           {/* Headline with staggered word reveal */}
           <h1 
@@ -88,7 +90,7 @@ export function HeroTitle({ isInputFocused = false, animated = true }: HeroTitle
 
           {/* Subtitle - fades in after headline completes */}
           <p
-            className={`text-xl lg:text-2xl xl:text-3xl font-semibold tracking-tight text-gray-900 font-serif mt-4 transition-opacity duration-[400ms] ease-out ${
+            className={`${subtitleSize} font-semibold tracking-tight text-gray-900 font-serif mt-4 transition-opacity duration-[400ms] ease-out ${
               shouldAnimate && !showSubtitle ? 'opacity-0' : 'opacity-100'
             } ${isInputFocused ? 'opacity-40' : ''}`}
             style={{

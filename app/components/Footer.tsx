@@ -9,7 +9,7 @@ export function Footer() {
         <div className="flex justify-center">
           <Link
             href="/about"
-            className="text-sm text-gray-400 hover:text-gray-600 transition-colors font-serif"
+            className="text-base text-gray-400 hover:text-gray-600 transition-colors font-serif"
           >
             About
           </Link>
