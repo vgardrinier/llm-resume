@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { Upload, Link2 } from 'lucide-react'
-import { ParseResumeResponse, GenerateInsightsResponse } from '@/types/api'
+import { ParseResumeResponse, GenerateInsightsResponse, StructuredResumeResponse } from '@/types/api'
 import { ChatNarrator } from '@/app/components/ChatNarrator'
 import { UploadingNarrative } from '@/app/components/UploadingNarrative'
 import { InsightCard } from '@/app/components/InsightCard'
@@ -12,6 +12,7 @@ import { Navbar } from '@/app/components/Navbar'
 import { Button } from '@/app/components/Button'
 import { ErrorAlert } from '@/app/components/ErrorAlert'
 import { Tooltip } from '@/app/components/Tooltip'
+import { ResumeWorkspace } from '@/app/components/ResumeWorkspace'
 import { AnimatePresence, motion } from 'framer-motion'
 
 export default function Home() {
@@ -19,7 +20,9 @@ export default function Home() {
   const [currentResume, setCurrentResume] = useState('')
   const [creativeMode, setCreativeMode] = useState<'conservative' | 'balanced' | 'assertive'>('balanced')
   const [result, setResult] = useState<GenerateInsightsResponse | null>(null)
+  const [structuredResult, setStructuredResult] = useState<StructuredResumeResponse | null>(null)
   const [loading, setLoading] = useState(false)
+  const [useStructuredFlow, setUseStructuredFlow] = useState(true) // Feature flag for new flow
   const [generationError, setGenerationError] = useState<string | null>(null)
   const [companyName, setCompanyName] = useState<string | null>(null)
   const [showResume, setShowResume] = useState(false)
@@ -168,7 +171,10 @@ export default function Home() {
         waitedForFullJd: !!fullJdPromise,
       })
 
-      const response = await fetch('/api/orchestrator', {
+      // Choose API endpoint based on feature flag
+      const apiEndpoint = useStructuredFlow ? '/api/orchestrator-structured' : '/api/orchestrator'
+
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -188,7 +194,7 @@ export default function Home() {
           statusText: response.statusText,
           error: errorData,
         })
-        
+
         // Provide user-friendly error messages based on status code
         let userMessage = 'Failed to generate resume. Please try again.'
         if (response.status === 400) {
@@ -205,24 +211,40 @@ export default function Home() {
         } else if (response.status >= 500) {
           userMessage = 'Service temporarily unavailable. Please try again shortly.'
         }
-        
+
         throw new Error(userMessage)
       }
 
-      const data: GenerateInsightsResponse = await response.json()
-      
-      // Debug: Log API response
-      console.log('[Frontend] API response received', {
-        step: 'api_response',
-        hasInsights: !!data.insights,
-        hasFitScore: !!data.insights?.fit,
-        fitScoreBefore: data.insights?.fit?.score_before,
-        fitScoreAfter: data.insights?.fit?.score_after,
-        hasOptimizedResume: !!data.optimized_resume,
-        optimizedResumeLength: data.optimized_resume?.length || 0,
-      })
-      
-      setResult(data)
+      // Parse response based on which flow we're using
+      if (useStructuredFlow) {
+        const data: StructuredResumeResponse = await response.json()
+
+        console.log('[Frontend] Structured API response received', {
+          step: 'api_response',
+          hasOptimizedResume: !!data.optimizedResume,
+          changesCount: data.changes?.length || 0,
+          hasAnalysis: !!data.analysis,
+          fitScoreBefore: data.analysis?.fitScoreBefore,
+          fitScoreAfter: data.analysis?.fitScoreAfter,
+        })
+
+        setStructuredResult(data)
+      } else {
+        const data: GenerateInsightsResponse = await response.json()
+
+        console.log('[Frontend] Legacy API response received', {
+          step: 'api_response',
+          hasInsights: !!data.insights,
+          hasFitScore: !!data.insights?.fit,
+          fitScoreBefore: data.insights?.fit?.score_before,
+          fitScoreAfter: data.insights?.fit?.score_after,
+          hasOptimizedResume: !!data.optimized_resume,
+          optimizedResumeLength: data.optimized_resume?.length || 0,
+        })
+
+        setResult(data)
+      }
+
       setGenerationError(null) // Clear any previous errors on success
     } catch (error) {
       console.error('Error generating resume:', error)
@@ -249,6 +271,7 @@ export default function Home() {
     setLoading(false)
     setShowResume(false)
     setResult(null)
+    setStructuredResult(null)
     setCompanyName(null)
     setJobDescription('')
     setJobUrl('')
@@ -409,7 +432,7 @@ export default function Home() {
         })
         
         if (quickData.companyName) setCompanyName(quickData.companyName)
-        
+
         // Start full JD extraction in background
         const fullExtractionPromise = fetch('/api/fetch-job', {
           method: 'POST',
@@ -451,7 +474,7 @@ export default function Home() {
             // Return empty string if full extraction fails - we'll use what we have
             return ''
           })
-        
+
         setFullJdPromise(fullExtractionPromise)
         setUrlFetchSuccess(true)
         setUrlLoading(false)
@@ -543,7 +566,7 @@ export default function Home() {
           className="fixed inset-0 -z-10"
           initial={false}
           animate={{
-            opacity: phase === 'output' ? 1 : 0,
+            opacity: phase === 'output' || structuredResult ? 1 : 0,
           }}
           transition={{
             opacity: { duration: 0.6, ease: [0.25, 0.1, 0.25, 1] },
@@ -562,7 +585,7 @@ export default function Home() {
             }}
           />
         </motion.div>
-        <div className="w-full max-w-3xl flex flex-col items-center md:items-center pt-6 md:pt-0">
+        <div className={`w-full ${structuredResult ? 'max-w-none' : 'max-w-3xl'} flex flex-col items-center md:items-center pt-6 md:pt-0`}>
           {/* Hero Title with AnimatePresence for smooth fade-out */}
           <AnimatePresence>
             {phase === 'input' && (
@@ -638,16 +661,34 @@ export default function Home() {
 
                       {/* Resume Upload - Desktop: next to URL, Mobile: below */}
                       <div className="flex gap-2 md:flex-shrink-0">
-                        <Tooltip content="Upload résumé (PDF)" position="top" delay={200}>
+                        <Tooltip content={uploadedFile && currentResume ? "Résumé uploaded successfully" : "Upload résumé (PDF)"} position="top" delay={200}>
                           <button
                             type="button"
                             onClick={handleUploadClick}
                             disabled={parseLoading}
-                            className="min-h-[56px] min-w-[56px] rounded-xl bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 text-white border border-gray-900 flex items-center justify-center transition-all flex-shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
+                            className={`min-h-[56px] min-w-[56px] rounded-xl text-white border flex items-center justify-center transition-all flex-shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.05)] ${
+                              uploadedFile && currentResume && !parseLoading
+                                ? 'bg-green-600 hover:bg-green-700 border-green-600'
+                                : parseLoading
+                                ? 'bg-gray-300 border-gray-300'
+                                : 'bg-gray-900 hover:bg-gray-800 border-gray-900'
+                            }`}
                             aria-label="Upload résumé PDF"
                           >
                             {parseLoading ? (
                               <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                            ) : uploadedFile && currentResume ? (
+                              <motion.svg
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                                className="h-5 w-5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </motion.svg>
                             ) : (
                               <Upload className="h-5 w-5" />
                             )}
@@ -665,34 +706,66 @@ export default function Home() {
                         
                         {/* File status display - Desktop: next to icon, Mobile: below */}
                         <div className="flex-1 min-w-0 flex items-center md:hidden">
-                          {uploadedFile && currentResume && !parseLoading ? (
-                            <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-xl border border-gray-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
-                              ✓ {uploadedFile.name}
-                            </div>
-                          ) : parseError ? (
-                            <div className="text-xs text-red-900 backdrop-blur-sm bg-red-50/80 px-3 py-2 rounded-xl border border-red-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
-                              ⚠️ {parseError}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-gray-500 font-serif">Upload résumé (PDF)</span>
-                          )}
+                          <AnimatePresence mode="wait">
+                            {uploadedFile && currentResume && !parseLoading ? (
+                              <motion.div
+                                key="success"
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 10 }}
+                                transition={{ duration: 0.3 }}
+                                className="text-xs text-green-900 backdrop-blur-sm bg-green-50/80 px-3 py-2 rounded-xl border border-green-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
+                              >
+                                ✓ {uploadedFile.name}
+                              </motion.div>
+                            ) : parseError ? (
+                              <motion.div
+                                key="error"
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 10 }}
+                                transition={{ duration: 0.3 }}
+                                className="text-xs text-red-900 backdrop-blur-sm bg-red-50/80 px-3 py-2 rounded-xl border border-red-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
+                              >
+                                ⚠️ {parseError}
+                              </motion.div>
+                            ) : (
+                              <span className="text-xs text-gray-500 font-serif">Upload résumé (PDF)</span>
+                            )}
+                          </AnimatePresence>
                         </div>
                       </div>
                     </div>
 
                     {/* Mobile: Upload text below icon */}
                     <div className="md:hidden flex justify-center">
-                      {uploadedFile && currentResume && !parseLoading ? (
-                        <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-xl border border-gray-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
-                          ✓ {uploadedFile.name}
-                        </div>
-                      ) : parseError ? (
-                        <div className="text-xs text-red-900 backdrop-blur-sm bg-red-50/80 px-3 py-2 rounded-xl border border-red-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
-                          ⚠️ {parseError}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-500 font-serif">Upload résumé (PDF)</span>
-                      )}
+                      <AnimatePresence mode="wait">
+                        {uploadedFile && currentResume && !parseLoading ? (
+                          <motion.div
+                            key="success-mobile"
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            transition={{ duration: 0.3 }}
+                            className="text-xs text-green-900 backdrop-blur-sm bg-green-50/80 px-3 py-2 rounded-xl border border-green-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
+                          >
+                            ✓ {uploadedFile.name}
+                          </motion.div>
+                        ) : parseError ? (
+                          <motion.div
+                            key="error-mobile"
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            transition={{ duration: 0.3 }}
+                            className="text-xs text-red-900 backdrop-blur-sm bg-red-50/80 px-3 py-2 rounded-xl border border-red-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
+                          >
+                            ⚠️ {parseError}
+                          </motion.div>
+                        ) : (
+                          <span className="text-xs text-gray-500 font-serif">Upload résumé (PDF)</span>
+                        )}
+                      </AnimatePresence>
                     </div>
 
                     {/* Helper text and status messages */}
@@ -804,42 +877,53 @@ export default function Home() {
                   transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
                   className="w-full flex justify-center"
                 >
-                  <div className="w-full max-w-3xl px-0 sm:px-4 py-6 sm:py-8 mx-auto my-8">
-                    {/* Error state */}
-                    {generationError && !loading && (
-                      <div className="mb-6">
-                        <ErrorAlert
-                          message={generationError}
-                          onDismiss={() => setGenerationError(null)}
-                          onRetry={generateResume}
-                          variant="error"
-                        />
-                      </div>
-                    )}
-                    
-                    {/* Loading state */}
-                    {loading && !result && (
-                      <UploadingNarrative jobDescription={jobDescription} companyNameHint={companyName ?? undefined} />
-                    )}
+                  {/* Structured Results (full-width workspace) */}
+                  {structuredResult && (
+                    <ResumeWorkspace
+                      data={structuredResult}
+                      onStartOver={startOver}
+                    />
+                  )}
 
-                    {/* Results */}
-                    {result && (
-                      <div className="space-y-6">
-                        <ChatNarrator insights={result.insights} />
-
-                        {/* Start Over button */}
-                        <div className="pt-6 border-t border-gray-100">
-                          <button
-                            type="button"
-                            onClick={startOver}
-                            className="w-full text-center text-gray-600 hover:text-gray-800 underline text-sm transition-colors font-serif"
-                          >
-                            Start over
-                          </button>
+                  {/* Legacy/Loading States (constrained width) */}
+                  {!structuredResult && (
+                    <div className="w-full max-w-3xl px-0 sm:px-4 py-6 sm:py-8 mx-auto my-8">
+                      {/* Error state */}
+                      {generationError && !loading && (
+                        <div className="mb-6">
+                          <ErrorAlert
+                            message={generationError}
+                            onDismiss={() => setGenerationError(null)}
+                            onRetry={generateResume}
+                            variant="error"
+                          />
                         </div>
-                      </div>
-                    )}
-                  </div>
+                      )}
+
+                      {/* Loading state */}
+                      {loading && !result && (
+                        <UploadingNarrative jobDescription={jobDescription} companyNameHint={companyName ?? undefined} />
+                      )}
+
+                      {/* Legacy Results (old chat narrator) */}
+                      {result && (
+                        <div className="space-y-6">
+                          <ChatNarrator insights={result.insights} />
+
+                          {/* Start Over button */}
+                          <div className="pt-6 border-t border-gray-100">
+                            <button
+                              type="button"
+                              onClick={startOver}
+                              className="w-full text-center text-gray-600 hover:text-gray-800 underline text-sm transition-colors font-serif"
+                            >
+                              Start over
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

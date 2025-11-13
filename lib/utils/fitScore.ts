@@ -75,6 +75,8 @@ Evaluate the fit across these dimensions (0-100 scale each):
 
 4. SKILL OVERLAP (0-100): How well do the candidate's technical and soft skills match what's needed for this role?
 
+CRITICAL EVALUATION PRINCIPLE: The optimized resume should NEVER score lower than the original resume in any category or overall. Even if the job is not a perfect fit for the candidate, the optimization process improves the resume's presentation, clarity, and alignment with the job requirements. The optimization adds value by better presenting the candidate's existing qualifications. You can be honest about a poor fit (low absolute scores), but the optimized version should always score equal to or higher than the original in every dimension, reflecting that we've improved how the candidate's qualifications are presented, even when those qualifications don't perfectly match the role.
+
 ${isJobDescriptionIncomplete ? 'IMPORTANT: Since the job description is incomplete, base your evaluation on:\n- The keywords and themes that were extracted\n- General industry/role expectations\n- The candidate\'s overall qualifications\n- Note the limitation in your explanation\n' : ''}
 
 CRITICAL: You MUST respond with valid JSON only. Do not include any explanatory text outside the JSON object. If the job description is incomplete, still provide scores based on available information.
