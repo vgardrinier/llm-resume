@@ -54,8 +54,47 @@ export async function POST(request: NextRequest) {
     // Construct base URL for internal API calls
     const baseUrl = request.nextUrl.origin || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
 
-    // Call structured generator
+    // Step 1: Curator-Analyzer (Sonnet) - Generate analysis with constraints
+    const analyzerStart = Date.now()
+    console.log('[Orchestrator-Structured] Step 1: Calling curator-analyzer to generate analysis...')
+    const analyzerResponse = await fetch(`${baseUrl}/api/curator-structured`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-generation-id': generationId,
+        'x-session-id': sessionId
+      },
+      body: JSON.stringify({
+        mode: 'analyze',
+        originalResume: candidate_resume,
+        jobDescription: job_description
+      })
+    })
+
+    let analysisData
+    let analyzerTime: number
+
+    if (!analyzerResponse.ok) {
+      const errorData = await analyzerResponse.json()
+      analyzerTime = Date.now() - analyzerStart
+      console.error(`[Orchestrator-Structured] Analyzer failed after ${analyzerTime}ms:`, errorData)
+      console.warn('[Orchestrator-Structured] Continuing without analysis constraints')
+      analysisData = null
+    } else {
+      const analyzerResult = await analyzerResponse.json()
+      analyzerTime = Date.now() - analyzerStart
+      analysisData = analyzerResult.analysis
+      console.log(`[Orchestrator-Structured] Analyzer completed in ${analyzerTime}ms`, {
+        step: 'analyzer_complete',
+        hasAnalysis: !!analysisData,
+        hasConstraints: !!analysisData?.constraints,
+        cannotInventCount: analysisData?.constraints?.cannot_invent?.length || 0
+      })
+    }
+
+    // Step 2: Generator (Haiku) - Generate changes following analysis constraints
     const generatorStart = Date.now()
+    console.log('[Orchestrator-Structured] Step 2: Calling generator with analysis constraints...')
     const generatorResponse = await fetch(`${baseUrl}/api/generator-structured`, {
       method: 'POST',
       headers: {
@@ -67,6 +106,7 @@ export async function POST(request: NextRequest) {
         job_description,
         candidate_resume,
         creative_mode,
+        analysis: analysisData, // Pass analysis with constraints to generator
         generation_id: generationId,
         session_id: sessionId
       })
@@ -90,9 +130,9 @@ export async function POST(request: NextRequest) {
       hasAnalysis: !!generatorData.analysis,
     })
 
-    // Step 2: Call curator to validate changes
+    // Step 3: Curator-Validator (Sonnet) - Validate changes against original analysis
     const curatorStart = Date.now()
-    console.log('[Orchestrator-Structured] Step 2: Calling curator to validate changes...')
+    console.log('[Orchestrator-Structured] Step 3: Calling curator-validator to validate changes...')
     const curatorResponse = await fetch(`${baseUrl}/api/curator-structured`, {
       method: 'POST',
       headers: {
@@ -101,11 +141,12 @@ export async function POST(request: NextRequest) {
         'x-session-id': sessionId
       },
       body: JSON.stringify({
+        mode: 'validate',
         changes: generatorData.changes,
         optimizedResume: generatorData.optimizedResume,
         originalResume: candidate_resume,
         jobDescription: job_description,
-        analysis: generatorData.analysis
+        analysis: generatorData.analysis || analysisData // Use generator's analysis or fallback to original
       })
     })
 
@@ -143,9 +184,20 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // Use validated resume if curator provided one, otherwise use original
+    const finalOptimizedResume = curatorData.validatedOptimizedResume || generatorData.optimizedResume
+    
+    // Log if curator modified the resume structure
+    if (curatorData.validatedOptimizedResume) {
+      console.log('[Orchestrator-Structured] Using curator-validated resume structure', {
+        step: 'curator_resume_validation',
+        feedback: curatorData.feedback
+      })
+    }
+
     // Convert structured resume to markdown for fit score calculation
     // (fit score system expects markdown text)
-    const resumeMarkdown = convertStructuredResumeToMarkdown(generatorData.optimizedResume)
+    const resumeMarkdown = convertStructuredResumeToMarkdown(finalOptimizedResume)
 
     // Calculate fit scores (before and after)
     const fitScoreStart = Date.now()
@@ -251,8 +303,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Build complete analysis with adjusted fit scores
+    // Use the original analysis from curator-analyzer (single source of truth)
+    // Add fit scores which are calculated separately
     const completeAnalysis = {
-      ...generatorData.analysis,
+      ...analysisData, // Original analysis from curator-analyzer (the source of truth)
       fitScoreBefore: Math.max(1, Math.min(100, baseline.score)),
       fitScoreAfter: Math.max(1, Math.min(100, adjustedOverall)),
       subscores: {
@@ -261,9 +315,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Build final response using VALIDATED changes from curator
+    // Build final response using VALIDATED changes and resume from curator
     const response: StructuredResumeResponse = {
-      optimizedResume: generatorData.optimizedResume,
+      optimizedResume: finalOptimizedResume, // Use curator-validated resume if available
       changes: curatorData.validatedChanges, // Use curator-validated changes
       analysis: completeAnalysis,
       salary: generatorData.salary_data ? {
@@ -283,8 +337,10 @@ export async function POST(request: NextRequest) {
         },
         timing: {
           total_ms: Date.now() - overallStart,
+          analyzer_ms: analyzerTime || 0,
           generator_ms: generatorTime,
-          curator_ms: curatorTime
+          curator_ms: curatorTime,
+          fitScore_ms: fitScoreTime
         }
       }
     }
@@ -294,9 +350,17 @@ export async function POST(request: NextRequest) {
       step: 'complete',
       generation_id: generationId,
       totalTimeMs: totalTime,
+      totalTimeSeconds: (totalTime / 1000).toFixed(1),
       fitScoreAfter: response.analysis.fitScoreAfter,
       fitScoreBefore: response.analysis.fitScoreBefore,
       changesCount: response.changes.length,
+      timingBreakdown: {
+        analyzer: `${analyzerTime || 0}ms (${((analyzerTime || 0) / 1000).toFixed(1)}s)`,
+        generator: `${generatorTime}ms (${(generatorTime / 1000).toFixed(1)}s)`,
+        curator: `${curatorTime}ms (${(curatorTime / 1000).toFixed(1)}s)`,
+        fitScore: `${fitScoreTime}ms (${(fitScoreTime / 1000).toFixed(1)}s)`,
+        total: `${totalTime}ms (${(totalTime / 1000).toFixed(1)}s)`
+      }
     })
 
     return NextResponse.json(response)

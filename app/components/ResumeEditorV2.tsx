@@ -20,11 +20,13 @@ interface ResumeEditorProps {
 type ChangeIndex = {
   bySectionAndBullet: Map<string, ResumeChange[]>
   bySection: Map<string, ResumeChange[]>
+  byEducationEntry: Map<string, ResumeChange[]>
 }
 
 function indexChanges(changes: ResumeChange[]): ChangeIndex {
   const bySectionAndBullet = new Map<string, ResumeChange[]>()
   const bySection = new Map<string, ResumeChange[]>()
+  const byEducationEntry = new Map<string, ResumeChange[]>()
 
   changes.forEach(change => {
     // Index by section only (for summary, skills, etc.)
@@ -42,9 +44,12 @@ function indexChanges(changes: ResumeChange[]): ChangeIndex {
       }
       bySectionAndBullet.get(bulletKey)!.push(change)
     }
+
+    // NOTE: Education changes are not indexed - education should never be modified
+    // We keep the byEducationEntry map for type consistency but it will always be empty
   })
 
-  return { bySectionAndBullet, bySection }
+  return { bySectionAndBullet, bySection, byEducationEntry }
 }
 
 export function ResumeEditor({
@@ -78,48 +83,120 @@ export function ResumeEditor({
       return <span className="text-gray-700 font-sans">{originalText}</span>
     }
 
-    // For now, show original text with change overlays
-    // TODO: Implement proper word-level diff
+    // Filter out rejected changes for display
+    const activeChanges = changes.filter(c => getChangeStatus(c.id) !== 'rejected')
+    const rejectedChanges = changes.filter(c => getChangeStatus(c.id) === 'rejected')
+    
+    // If all changes are rejected, show original
+    if (activeChanges.length === 0) {
+      return <span className="text-gray-700 font-sans">{originalText}</span>
+    }
+
+    // If all changes are accepted, show the last accepted suggestion (or merge them)
+    const allAccepted = activeChanges.every(c => getChangeStatus(c.id) === 'accepted')
+    if (allAccepted && activeChanges.length > 0) {
+      // Show the most recent accepted change's suggested text
+      return <span className="text-gray-700 font-sans">{activeChanges[activeChanges.length - 1].suggested}</span>
+    }
+
+    // For pending changes, show original text with a single highlight overlay
+    // When multiple changes exist on the same line, show a count badge
+    const pendingChanges = activeChanges.filter(c => getChangeStatus(c.id) === 'pending')
+    
+    if (pendingChanges.length === 0) {
+      // All active changes are accepted, show the last one
+      return <span className="text-gray-700 font-sans">{activeChanges[activeChanges.length - 1].suggested}</span>
+    }
+
+    // Show original text with highlight, and handle multiple changes
+    const hasMultipleChanges = pendingChanges.length > 1
+    
     return (
-      <div className="relative inline">
-        {changes.map(change => {
-          const status = getChangeStatus(change.id)
-
-          // If rejected, show original only
-          if (status === 'rejected') {
-            return (
-              <span key={change.id} className="text-gray-700 font-sans">
-                {change.original || originalText}
-              </span>
-            )
-          }
-
-          // If accepted, show suggested
-          if (status === 'accepted') {
-            return (
-              <span key={change.id} className="text-gray-700 font-sans">
-                {change.suggested}
-              </span>
-            )
-          }
-
-          // If pending, show original with overlay suggestion
-          return (
-            <ChangeOverlay
-              key={change.id}
-              change={change}
-              status={status}
-              isHovered={hoveredChange === change.id}
-              onHover={() => setHoveredChange(change.id)}
-              onLeave={() => setHoveredChange(null)}
-              onAccept={() => onAcceptChange(change.id)}
-              onReject={() => onRejectChange(change.id)}
-            />
-          )
-        })}
-      </div>
+      <span className="relative inline-block group">
+        {/* Show original text with highlight when there are pending changes */}
+        <span
+          className={`
+            text-gray-700 font-sans
+            bg-yellow-50/80 border-b-2 border-yellow-500 px-0.5 rounded-sm cursor-pointer
+          `}
+        >
+          {originalText}
+        </span>
+        {/* Show count badge when multiple changes are on the same line */}
+        {hasMultipleChanges && (
+          <span className="ml-2 inline-flex items-center justify-center w-5 h-5 rounded-full bg-yellow-500 text-white text-xs font-semibold font-sans">
+            {pendingChanges.length}
+          </span>
+        )}
+        {/* Render tooltip for the first pending change (or all if multiple) */}
+        {pendingChanges.length > 0 && (
+          <ChangeOverlay
+            change={pendingChanges[0]}
+            allChanges={pendingChanges}
+            status={getChangeStatus(pendingChanges[0].id)}
+            isHovered={hoveredChange === pendingChanges[0].id || pendingChanges.some(c => hoveredChange === c.id)}
+            onHover={() => setHoveredChange(pendingChanges[0].id)}
+            onLeave={() => setHoveredChange(null)}
+            onAccept={(changeId) => onAcceptChange(changeId)}
+            onReject={(changeId) => onRejectChange(changeId)}
+            multipleChanges={hasMultipleChanges}
+          />
+        )}
+      </span>
     )
   }
+
+  // Helper: Check if section has content
+  const hasSectionContent = (section: any): boolean => {
+    if (typeof section.content === 'string') {
+      return section.content.trim().length > 0
+    }
+    if (Array.isArray(section.content)) {
+      if (section.type === 'experience' || section.type === 'projects') {
+        return section.content.length > 0 && section.content.some((entry: any) => 
+          entry.bullets && entry.bullets.length > 0
+        )
+      }
+      return section.content.length > 0
+    }
+    return false
+  }
+
+  // Helper: Filter changes to only include visible/actionable ones
+  // This ensures consistent counting across the UI
+  // NOTE: Education changes are ALWAYS filtered out - education should never be modified
+  const getVisibleChanges = useMemo(() => {
+    return changes.filter(c => {
+      // Always exclude education changes - education should never be modified
+      if (c.section === 'Education' || c.section === 'education') {
+        return false
+      }
+      
+      // Only count changes that are actually visible/actionable
+      // Filter out changes for sections that don't exist or are empty
+      const section = optimizedResume.sections.find(s => s.title === c.section)
+      if (!section) return false
+      
+      // For positioned changes, verify the position exists
+      if (c.position?.sectionIndex !== undefined) {
+        // For experience/projects with bullet points
+        if (c.position?.bulletIndex !== undefined) {
+          if (section.type === 'experience' || section.type === 'projects') {
+            if (Array.isArray(section.content)) {
+              const entry = section.content[c.position.sectionIndex]
+              if (entry && typeof entry === 'object' && 'bullets' in entry) {
+                return Array.isArray(entry.bullets) && entry.bullets[c.position.bulletIndex]
+              }
+            }
+            return false
+          }
+        }
+      }
+      
+      return hasSectionContent(section)
+    })
+  }, [changes, optimizedResume.sections])
+
 
   // Helper: Render section content
   const renderSectionContent = (section: any, sectionIdx: number) => {
@@ -154,7 +231,7 @@ export function ResumeEditor({
                 </div>
 
                 <ul className="space-y-1.5 mt-2">
-                  {entry.bullets.map((bullet: string, bulletIdx: number) => {
+                  {entry.bullets && entry.bullets.map((bullet: string, bulletIdx: number) => {
                     // O(1) lookup using pre-indexed map
                     const bulletKey = `${section.title}-${entryIdx}-${bulletIdx}`
                     const bulletChanges = changeIndex.bySectionAndBullet.get(bulletKey) || []
@@ -189,6 +266,45 @@ export function ResumeEditor({
           </div>
         )
       }
+
+      // Education or other array sections
+      // NOTE: Education section should NEVER be modified - always show original content exactly as provided
+      // Display exactly what's in the structured data - backend should handle parsing correctly
+      if (section.type === 'education') {
+        return (
+          <div className="space-y-4">
+            {section.content.map((entry: any, entryIdx: number) => (
+              <div key={entryIdx}>
+                <div className="font-semibold text-gray-900 font-serif">
+                  {entry.degree}
+                </div>
+                {/* Only show institution/location if institution exists - prevents ", Location" when institution is missing */}
+                {entry.institution && (
+                  <div className="text-sm text-gray-700 font-sans">
+                    {entry.institution}{entry.location && `, ${entry.location}`}
+                  </div>
+                )}
+                {/* If institution is missing but location exists, show location (backend parsing issue, but display what we have) */}
+                {!entry.institution && entry.location && (
+                  <div className="text-sm text-gray-700 font-sans">
+                    {entry.location}
+                  </div>
+                )}
+                {entry.date && (
+                  <div className="text-sm text-gray-600 font-sans">{entry.date}</div>
+                )}
+                {entry.details && entry.details.length > 0 && (
+                  <ul className="mt-1 space-y-1">
+                    {entry.details.map((detail: string, detailIdx: number) => (
+                      <li key={detailIdx} className="text-sm text-gray-600 font-sans">• {detail}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        )
+      }
     }
 
     return null
@@ -200,7 +316,7 @@ export function ResumeEditor({
       <div className="bg-white/80 backdrop-blur-sm border border-gray-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.05)] rounded-lg px-6 py-4 flex items-center justify-between">
         <div>
           <p className="text-sm text-gray-600 font-sans">
-            {changes.length} suggestions • {acceptedChanges.size} accepted
+            {getVisibleChanges.length} suggestions • {getVisibleChanges.filter(c => acceptedChanges.has(c.id)).length} accepted
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -259,14 +375,16 @@ export function ResumeEditor({
 
         {/* Sections */}
         <div className="space-y-8">
-          {optimizedResume.sections.map((section, idx) => (
-            <div key={idx}>
-              <h2 className="text-base font-bold text-gray-900 mb-3 border-b-2 border-gray-900 pb-1 font-serif uppercase tracking-wide">
-                {section.title}
-              </h2>
-              {renderSectionContent(section, idx)}
-            </div>
-          ))}
+          {optimizedResume.sections
+            .filter(section => hasSectionContent(section)) // Only show sections with content
+            .map((section, idx) => (
+              <div key={idx}>
+                <h2 className="text-base font-bold text-gray-900 mb-3 border-b-2 border-gray-900 pb-1 font-serif uppercase tracking-wide">
+                  {section.title}
+                </h2>
+                {renderSectionContent(section, idx)}
+              </div>
+            ))}
         </div>
       </div>
     </div>
@@ -276,50 +394,39 @@ export function ResumeEditor({
 // Change Overlay Component (shows original with suggestion overlay - NOT replacement)
 interface ChangeOverlayProps {
   change: ResumeChange
+  allChanges?: ResumeChange[] // When multiple changes exist on the same line
   status: 'accepted' | 'rejected' | 'pending'
   isHovered: boolean
   onHover: () => void
   onLeave: () => void
-  onAccept: () => void
-  onReject: () => void
+  onAccept: (changeId: string) => void
+  onReject: (changeId: string) => void
+  multipleChanges?: boolean
+  changeIndex?: number
 }
 
 function ChangeOverlay({
   change,
+  allChanges = [change],
   status,
   isHovered,
   onHover,
   onLeave,
   onAccept,
-  onReject
+  onReject,
+  multipleChanges = false
 }: ChangeOverlayProps) {
-  const getStyle = () => {
-    if (change.type === 'addition') {
-      return 'bg-green-50/80 border-b-2 border-green-500'
-    }
-    if (change.type === 'deletion') {
-      return 'bg-red-50/80 border-b-2 border-red-500 line-through'
-    }
-    return 'bg-yellow-50/80 border-b-2 border-yellow-500'
-  }
-
   return (
-    <span className="relative inline-block group">
-      {/* Original text with visual indicator */}
+    <>
+      {/* Invisible hover area that covers the highlighted text */}
       <span
         onMouseEnter={onHover}
         onMouseLeave={onLeave}
-        className={`
-          ${getStyle()}
-          cursor-pointer transition-all
-          px-0.5 rounded-sm
-          font-sans text-gray-700
-        `}
-      >
-        {change.type === 'deletion' ? change.original : change.suggested}
-      </span>
+        className="absolute inset-0 cursor-pointer"
+        style={{ zIndex: 1 }}
+      />
 
-      {/* Reason tooltip with accept/reject buttons inside */}
+      {/* Tooltip with all changes when multiple exist on the same line */}
       <AnimatePresence>
         {isHovered && (
           <motion.div
@@ -331,63 +438,91 @@ function ChangeOverlay({
             onMouseLeave={onLeave}
             className="absolute z-50 top-full left-0 mt-2 w-80 backdrop-blur-md bg-white/95 border border-gray-200 shadow-lg rounded-lg p-3"
           >
-            {/* Reason explanation */}
-            <div className="flex items-start gap-2 mb-3">
-              <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-gray-700 font-sans flex-1">{change.reason}</p>
-            </div>
-
-            {/* Original text (if applicable) */}
-            {change.original && change.type !== 'addition' && (
-              <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-gray-600 font-sans">
-                <span className="font-medium">Original:</span> {change.original}
+            {multipleChanges && allChanges.length > 1 ? (
+              // Show all changes when multiple exist
+              <div className="space-y-3">
+                <div className="text-xs font-semibold text-gray-900 font-sans mb-2">
+                  {allChanges.length} suggestions on this line:
+                </div>
+                {allChanges.map((c, idx) => (
+                  <div key={c.id} className="border-b border-gray-200 pb-3 last:border-0 last:pb-0">
+                    <div className="flex items-start gap-2 mb-2">
+                      <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-gray-700 font-sans flex-1">{c.reason}</p>
+                    </div>
+                    {c.original && c.type !== 'addition' && (
+                      <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-gray-600 font-sans">
+                        <span className="font-medium">Original:</span> {c.original}
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onAccept(c.id)
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors"
+                        title="Accept"
+                      >
+                        <Check className="h-4 w-4 text-green-600" />
+                        <span className="text-xs font-medium text-green-700 font-sans">Accept</span>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onReject(c.id)
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors"
+                        title="Reject"
+                      >
+                        <X className="h-4 w-4 text-red-600" />
+                        <span className="text-xs font-medium text-red-700 font-sans">Reject</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            )}
-
-            {/* Accept/Reject buttons - only show for pending changes */}
-            {status === 'pending' && (
-              <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onAccept()
-                  }}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors group"
-                  title="Accept"
-                >
-                  <Check className="h-4 w-4 text-green-600" />
-                  <span className="text-xs font-medium text-green-700 font-sans">Accept</span>
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onReject()
-                  }}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors group"
-                  title="Reject"
-                >
-                  <X className="h-4 w-4 text-red-600" />
-                  <span className="text-xs font-medium text-red-700 font-sans">Reject</span>
-                </button>
-              </div>
-            )}
-
-            {/* Status indicator for accepted/rejected changes */}
-            {status === 'accepted' && (
-              <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
-                <Check className="h-4 w-4 text-green-600" />
-                <span className="text-xs font-medium text-green-700 font-sans">Accepted</span>
-              </div>
-            )}
-            {status === 'rejected' && (
-              <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
-                <X className="h-4 w-4 text-red-600" />
-                <span className="text-xs font-medium text-red-700 font-sans">Rejected</span>
-              </div>
+            ) : (
+              // Show single change
+              <>
+                <div className="flex items-start gap-2 mb-3">
+                  <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-gray-700 font-sans flex-1">{change.reason}</p>
+                </div>
+                {change.original && change.type !== 'addition' && (
+                  <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-gray-600 font-sans">
+                    <span className="font-medium">Original:</span> {change.original}
+                  </div>
+                )}
+                <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onAccept(change.id)
+                    }}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors"
+                    title="Accept"
+                  >
+                    <Check className="h-4 w-4 text-green-600" />
+                    <span className="text-xs font-medium text-green-700 font-sans">Accept</span>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      onReject(change.id)
+                    }}
+                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors"
+                    title="Reject"
+                  >
+                    <X className="h-4 w-4 text-red-600" />
+                    <span className="text-xs font-medium text-red-700 font-sans">Reject</span>
+                  </button>
+                </div>
+              </>
             )}
           </motion.div>
         )}
       </AnimatePresence>
-    </span>
+    </>
   )
 }

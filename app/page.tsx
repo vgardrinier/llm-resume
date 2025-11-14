@@ -45,65 +45,57 @@ export default function Home() {
   const [quickMetadata, setQuickMetadata] = useState<{ companyName?: string | null; jobTitle?: string | null; location?: string | null } | null>(null)
   const [fullJdPromise, setFullJdPromise] = useState<Promise<string> | null>(null)
 
-  // Helper function to get country flag emoji from location string
+  // State to store resolved flags for display (location -> flag emoji)
+  const [resolvedFlags, setResolvedFlags] = useState<Map<string, string>>(new Map())
+  // Ref to track pending requests to avoid duplicate API calls
+  const pendingFlagsRef = useRef<Set<string>>(new Set())
+  
+  // Resolve flag when location changes
+  useEffect(() => {
+    if (!quickMetadata?.location) return
+    
+    const locationKey = quickMetadata.location.trim().toLowerCase()
+    
+    // Skip if already resolved or pending
+    setResolvedFlags(prev => {
+      if (prev.has(locationKey) || pendingFlagsRef.current.has(locationKey)) {
+        return prev
+      }
+      
+      // Mark as pending
+      pendingFlagsRef.current.add(locationKey)
+      
+      // Fetch flag from API
+      fetch('/api/get-country-flag', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ location: quickMetadata.location }),
+      })
+        .then(response => response.json())
+        .then(data => {
+          const flag = data.flag ? ` ${data.flag}` : ''
+          setResolvedFlags(current => {
+            const next = new Map(current)
+            next.set(locationKey, flag)
+            return next
+          })
+          pendingFlagsRef.current.delete(locationKey)
+        })
+        .catch(error => {
+          console.error('[GetCountryFlag] Error fetching flag:', error)
+          pendingFlagsRef.current.delete(locationKey)
+        })
+      
+      return prev
+    })
+  }, [quickMetadata?.location])
+  
+  // Helper to get flag from cache (synchronous for display)
   const getCountryFlag = (location: string | null | undefined): string => {
     if (!location) return ''
-    
-    const locationLower = location.toLowerCase()
-    
-    // Common country mappings
-    const countryMap: { [key: string]: string } = {
-      'usa': '🇺🇸',
-      'united states': '🇺🇸',
-      'us': '🇺🇸',
-      'uk': '🇬🇧',
-      'united kingdom': '🇬🇧',
-      'canada': '🇨🇦',
-      'germany': '🇩🇪',
-      'france': '🇫🇷',
-      'spain': '🇪🇸',
-      'italy': '🇮🇹',
-      'netherlands': '🇳🇱',
-      'poland': '🇵🇱',
-      'portugal': '🇵🇹',
-      'sweden': '🇸🇪',
-      'norway': '🇳🇴',
-      'denmark': '🇩🇰',
-      'finland': '🇫🇮',
-      'switzerland': '🇨🇭',
-      'austria': '🇦🇹',
-      'belgium': '🇧🇪',
-      'ireland': '🇮🇪',
-      'australia': '🇦🇺',
-      'new zealand': '🇳🇿',
-      'japan': '🇯🇵',
-      'china': '🇨🇳',
-      'india': '🇮🇳',
-      'singapore': '🇸🇬',
-      'south korea': '🇰🇷',
-      'brazil': '🇧🇷',
-      'mexico': '🇲🇽',
-      'argentina': '🇦🇷',
-      'south africa': '🇿🇦',
-      'israel': '🇮🇱',
-      'uae': '🇦🇪',
-      'united arab emirates': '🇦🇪',
-    }
-    
-    // Check if location contains a country name
-    for (const [country, flag] of Object.entries(countryMap)) {
-      if (locationLower.includes(country)) {
-        return ` ${flag}`
-      }
-    }
-    
-    // Check for US states (common pattern: "City, ST")
-    const usStatePattern = /\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b/i
-    if (usStatePattern.test(location)) {
-      return ' 🇺🇸'
-    }
-    
-    return ''
+    return resolvedFlags.get(location.trim().toLowerCase()) || ''
   }
 
   // Known job platforms that require vision extraction (slower)
@@ -142,12 +134,27 @@ export default function Home() {
   }, [jobUrl])
 
   const generateResume = async () => {
+    // Start timing from button click
+    const userClickStart = performance.now()
+    const timingBreakdown: Record<string, number> = {
+      buttonClick: 0,
+      fullJdWait: 0,
+      apiCall: 0,
+      responseParse: 0,
+      stateUpdate: 0,
+      total: 0
+    }
+    
     setPhase('output')
     setLoading(true)
     setShowResume(false) // Reset resume visibility
+    
+    timingBreakdown.buttonClick = performance.now() - userClickStart
+    
     try {
       // If we have a background full JD extraction promise, wait for it
       let finalJobDescription = jobDescription
+      const fullJdWaitStart = performance.now()
       if (fullJdPromise) {
         console.log('[Frontend] Waiting for full JD extraction to complete...')
         const fullJd = await fullJdPromise
@@ -159,6 +166,7 @@ export default function Home() {
           console.warn('[Frontend] Full JD extraction failed, using existing job description')
         }
       }
+      timingBreakdown.fullJdWait = performance.now() - fullJdWaitStart
 
       // Debug: Log inputs before API call
       console.log('[Frontend] Starting resume generation', {
@@ -174,6 +182,7 @@ export default function Home() {
       // Choose API endpoint based on feature flag
       const apiEndpoint = useStructuredFlow ? '/api/orchestrator-structured' : '/api/orchestrator'
 
+      const apiCallStart = performance.now()
       const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: {
@@ -216,8 +225,21 @@ export default function Home() {
       }
 
       // Parse response based on which flow we're using
+      timingBreakdown.apiCall = performance.now() - apiCallStart
+      const parseStart = performance.now()
+      
       if (useStructuredFlow) {
         const data: StructuredResumeResponse = await response.json()
+        timingBreakdown.responseParse = performance.now() - parseStart
+
+        // Extract server-side timing if available
+        const serverTiming = data.metadata?.timing || {}
+        
+        const stateUpdateStart = performance.now()
+        setStructuredResult(data)
+        timingBreakdown.stateUpdate = performance.now() - stateUpdateStart
+        
+        timingBreakdown.total = performance.now() - userClickStart
 
         console.log('[Frontend] Structured API response received', {
           step: 'api_response',
@@ -228,9 +250,52 @@ export default function Home() {
           fitScoreAfter: data.analysis?.fitScoreAfter,
         })
 
-        setStructuredResult(data)
+        // Comprehensive timing breakdown
+        console.log('⏱️ TIMING BREAKDOWN (Button Click → Output Reveal):', {
+          'Client-Side': {
+            'Button Click → Setup': `${timingBreakdown.buttonClick.toFixed(0)}ms`,
+            'Full JD Wait (if any)': `${timingBreakdown.fullJdWait.toFixed(0)}ms`,
+            'API Call (network + server)': `${timingBreakdown.apiCall.toFixed(0)}ms`,
+            'Response Parse': `${timingBreakdown.responseParse.toFixed(0)}ms`,
+            'State Update': `${timingBreakdown.stateUpdate.toFixed(0)}ms`,
+            'TOTAL CLIENT TIME': `${timingBreakdown.total.toFixed(0)}ms (${(timingBreakdown.total / 1000).toFixed(1)}s)`
+          },
+          'Server-Side (from API)': {
+            'Analyzer (Sonnet)': serverTiming.analyzer_ms ? `${serverTiming.analyzer_ms}ms (${(serverTiming.analyzer_ms / 1000).toFixed(1)}s)` : 'N/A',
+            'Generator (Haiku)': serverTiming.generator_ms ? `${serverTiming.generator_ms}ms (${(serverTiming.generator_ms / 1000).toFixed(1)}s)` : 'N/A',
+            'Curator (Haiku)': serverTiming.curator_ms ? `${serverTiming.curator_ms}ms (${(serverTiming.curator_ms / 1000).toFixed(1)}s)` : 'N/A',
+            'Fit Score Calc': serverTiming.fitScore_ms ? `${serverTiming.fitScore_ms}ms (${(serverTiming.fitScore_ms / 1000).toFixed(1)}s)` : 'N/A',
+            'TOTAL SERVER TIME': serverTiming.total_ms ? `${serverTiming.total_ms}ms (${(serverTiming.total_ms / 1000).toFixed(1)}s)` : 'N/A'
+          },
+          'Bottleneck Analysis': (() => {
+            const bottlenecks: string[] = []
+            if (serverTiming.analyzer_ms && serverTiming.analyzer_ms > 30000) {
+              bottlenecks.push(`⚠️ Analyzer (Sonnet) is slow: ${(serverTiming.analyzer_ms / 1000).toFixed(1)}s`)
+            }
+            if (serverTiming.generator_ms && serverTiming.generator_ms > 20000) {
+              bottlenecks.push(`⚠️ Generator (Haiku) is slow: ${(serverTiming.generator_ms / 1000).toFixed(1)}s`)
+            }
+            if (serverTiming.curator_ms && serverTiming.curator_ms > 15000) {
+              bottlenecks.push(`⚠️ Curator (Haiku) is slow: ${(serverTiming.curator_ms / 1000).toFixed(1)}s`)
+            }
+            if (serverTiming.fitScore_ms && serverTiming.fitScore_ms > 10000) {
+              bottlenecks.push(`⚠️ Fit Score calculation is slow: ${(serverTiming.fitScore_ms / 1000).toFixed(1)}s`)
+            }
+            if (timingBreakdown.apiCall > 120000) {
+              bottlenecks.push(`⚠️ Total API call is very long: ${(timingBreakdown.apiCall / 1000).toFixed(1)}s`)
+            }
+            return bottlenecks.length > 0 ? bottlenecks : ['✅ All timings look reasonable']
+          })()
+        })
       } else {
         const data: GenerateInsightsResponse = await response.json()
+        timingBreakdown.responseParse = performance.now() - parseStart
+
+        const stateUpdateStart = performance.now()
+        setResult(data)
+        timingBreakdown.stateUpdate = performance.now() - stateUpdateStart
+        
+        timingBreakdown.total = performance.now() - userClickStart
 
         console.log('[Frontend] Legacy API response received', {
           step: 'api_response',
@@ -242,7 +307,16 @@ export default function Home() {
           optimizedResumeLength: data.optimized_resume?.length || 0,
         })
 
-        setResult(data)
+        console.log('⏱️ TIMING BREAKDOWN (Button Click → Output Reveal):', {
+          'Client-Side': {
+            'Button Click → Setup': `${timingBreakdown.buttonClick.toFixed(0)}ms`,
+            'Full JD Wait (if any)': `${timingBreakdown.fullJdWait.toFixed(0)}ms`,
+            'API Call (network + server)': `${timingBreakdown.apiCall.toFixed(0)}ms`,
+            'Response Parse': `${timingBreakdown.responseParse.toFixed(0)}ms`,
+            'State Update': `${timingBreakdown.stateUpdate.toFixed(0)}ms`,
+            'TOTAL CLIENT TIME': `${timingBreakdown.total.toFixed(0)}ms (${(timingBreakdown.total / 1000).toFixed(1)}s)`
+          }
+        })
       }
 
       setGenerationError(null) // Clear any previous errors on success
@@ -520,7 +594,11 @@ export default function Home() {
   return (
     <div className="flex-1 flex flex-col">
       {/* Navbar */}
-      <Navbar jobUrl={jobUrl} uploadedFileName={uploadedFile?.name} />
+      <Navbar 
+        jobUrl={jobUrl} 
+        uploadedFileName={uploadedFile?.name} 
+        onHomeClick={startOver}
+      />
 
       {/* Main content - centered vertically and horizontally */}
       {/* Background image transition */}
@@ -902,7 +980,13 @@ export default function Home() {
 
                       {/* Loading state */}
                       {loading && !result && (
-                        <UploadingNarrative jobDescription={jobDescription} companyNameHint={companyName ?? undefined} />
+                        <UploadingNarrative 
+                          jobDescription={jobDescription} 
+                          companyNameHint={companyName ?? undefined}
+                          jobTitle={quickMetadata?.jobTitle || null}
+                          location={quickMetadata?.location || null}
+                          resume={currentResume}
+                        />
                       )}
 
                       {/* Legacy Results (old chat narrator) */}

@@ -1,0 +1,178 @@
+{
+  "optimizedResume": {
+    "contactInfo": {
+      "name": "John Doe",
+      "email": "john@example.com",
+      "phone": "+1234567890",
+      "location": "San Francisco, CA",
+      "linkedin": "linkedin.com/in/johndoe",
+      "website": "johndoe.com"
+    },
+    "sections": [
+      {
+        "type": "summary",
+        "title": "Professional Summary",
+        "content": "Results-driven software engineer with 5+ years of experience building scalable distributed systems"
+      },
+      {
+        "type": "experience",
+        "title": "Experience",
+        "content": [
+          {
+            "title": "Senior Software Engineer",
+            "company": "TechCorp",
+            "location": "San Francisco, CA",
+            "dates": "Jan 2020 - Present",
+            "bullets": [
+              "Led migration of monolithic backend to microservices architecture, reducing deployment time by 60%",
+              "Architected real-time data pipeline processing 10M+ events/day using Kafka and Spark",
+              "Mentored junior engineers and provided technical leadership on cross-functional projects"
+            ]
+          },
+          {
+            "title": "Junior Developer",
+            "company": "StartupInc",
+            "location": "San Francisco, CA",
+            "dates": "Jan 2018 - Dec 2019",
+            "bullets": [
+              "Contributed to various projects",
+              "Helped with bug fixes",
+              "Learned new technologies"
+            ]
+          }
+        ]
+      },
+      {
+        "type": "skills",
+        "title": "Skills",
+        "content": [
+          "Python",
+          "AWS",
+          "Docker",
+          "Kubernetes",
+          "PostgreSQL"
+        ]
+      }
+    ]
+  },
+  "changes": [
+    {
+      "id": "change-1",
+      "type": "addition",
+      "section": "Summary",
+      "suggested": "Results-driven software engineer with 5+ years of experience building scalable distributed systems",
+      "reason": "Job description emphasizes 'results-driven' and 'scalable systems' - adding summary to immediately establish fit",
+      "impactScore": 9
+    },
+    {
+      "id": "change-2",
+      "type": "modification",
+      "section": "Experience",
+      "original": "Worked on backend infrastructure improvements",
+      "suggested": "Led migration of monolithic backend to microservices architecture, reducing deployment time by 60%",
+      "reason": "Job requires experience with 'microservices' and 'architecture' - made specific with impact metric",
+      "impactScore": 8,
+      "position": {
+        "sectionIndex": 0,
+        "bulletIndex": 0
+      }
+    },
+    {
+      "id": "change-3",
+      "type": "addition",
+      "section": "Experience",
+      "suggested": "Mentored junior engineers and provided technical leadership on cross-functional projects",
+      "reason": "Job description emphasizes 'mentor junior engineers' and 'cross-functional collaboration' - adding to demonstrate these skills",
+      "impactScore": 7,
+      "position": {
+        "sectionIndex": 0,
+        "bulletIndex": 2
+      }
+    }
+  ],
+  "analysis": {
+    "whatWorks": [
+      "Strong technical background in Python and distributed systems",
+      "Proven track record of leading infrastructure projects",
+      "Experience with AWS cloud technologies matches job requirements"
+    ],
+    "whatsMissing": [
+      "Need more emphasis on metrics and business impact",
+      "Should highlight additional leadership and mentoring experience"
+    ],
+    "keywordsToTarget": {
+      "verbs": [
+        "Led",
+        "Architected",
+        "Scaled",
+        "Optimized",
+        "Mentored"
+      ],
+      "nouns": [
+        "microservices",
+        "architecture",
+        "scalability",
+        "distributed systems"
+      ],
+      "concepts": [
+        "cross-functional collaboration",
+        "technical leadership",
+        "system design"
+      ],
+      "techStack": [
+        "Python",
+        "AWS",
+        "Kubernetes",
+        "Docker",
+        "PostgreSQL"
+      ],
+      "softSkills": [
+        "leadership",
+        "communication",
+        "strategic thinking"
+      ],
+      "compliance": []
+    },
+    "rationaleForChanges": "The original resume had strong technical content but lacked strategic positioning. The job description emphasizes scalable architecture, cross-functional leadership, and measurable impact. I've restructured the resume to lead with these strengths, quantified achievements where possible, and removed generic filler. The new version positions the candidate as a technical leader who delivers business value, not just writes code.",
+    "fitScoreBefore": 43,
+    "fitScoreAfter": 85,
+    "subscores": {
+      "before": {
+        "keywordMatch": 36,
+        "themeAlignment": 30,
+        "experienceRelevance": 49,
+        "skillOverlap": 52
+      },
+      "after": {
+        "keywordMatch": 93,
+        "themeAlignment": 85,
+        "experienceRelevance": 79,
+        "skillOverlap": 79
+      }
+    }
+  },
+  "salary": {
+    "median": 150000,
+    "range": [
+      120000,
+      180000
+    ],
+    "location": "Remote",
+    "role": "Senior Software Engineer",
+    "comment": "Typical salary in Remote: $150,000 (range $120,000–$180,000)."
+  },
+  "metadata": {
+    "generation_id": "4a577aba-67f5-41b8-be35-4e3ec7b75ff4",
+    "session_id": "4827bf72-3155-4d57-bcaf-e49c4a32b35f",
+    "job_metadata": {
+      "title": "Senior Software Engineer",
+      "company": "Company",
+      "location": "Remote"
+    },
+    "timing": {
+      "total_ms": 19840,
+      "generator_ms": 10188,
+      "curator_ms": 4926
+    }
+  }
+}

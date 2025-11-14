@@ -65,6 +65,13 @@ export interface StructuredResume {
   sections: ResumeSection[]
 }
 
+// Analysis constraints - explicit boundaries for what can/cannot be done
+export interface AnalysisConstraints {
+  cannot_invent: string[] // Things that MUST NOT be invented (e.g., "metrics not in resume", "technologies not mentioned")
+  safe_to_add: string[] // Things that are safe to add (e.g., "keywords from job description", "passive-to-active voice rewrites")
+  requires_user_input: string[] // Questions for user (e.g., "Do you have metrics for project X?", "How many people did you lead?")
+}
+
 // Analysis data for "The Brain" (left pane)
 export interface ResumeAnalysis {
   fitScoreBefore: number
@@ -94,6 +101,7 @@ export interface ResumeAnalysis {
     compliance: string[] // "security clearance", "GDPR"
   }
   rationaleForChanges: string // Paragraph explaining the overall strategy
+  constraints?: AnalysisConstraints // Explicit boundaries (added by curator-analyzer)
 }
 
 // New structured response format
@@ -127,8 +135,10 @@ export interface StructuredResumeResponse {
     }
     timing: {
       total_ms: number
+      analyzer_ms?: number
       generator_ms: number
       curator_ms: number
+      fitScore_ms?: number
     }
   }
 }

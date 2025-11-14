@@ -10,9 +10,10 @@ import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
 interface NavbarProps {
   jobUrl?: string
   uploadedFileName?: string
+  onHomeClick?: () => void
 }
 
-export function Navbar({ jobUrl, uploadedFileName }: NavbarProps) {
+export function Navbar({ jobUrl, uploadedFileName, onHomeClick }: NavbarProps) {
   const pathname = usePathname()
   const isHomePage = pathname === '/'
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -36,7 +37,17 @@ export function Navbar({ jobUrl, uploadedFileName }: NavbarProps) {
       <div className="container mx-auto px-4 md:px-8 py-2 md:py-3 flex items-center justify-between gap-4">
         {/* Left side: Logo */}
         <div className="flex items-center md:ml-6">
-          <Link href="/" className="flex-shrink-0 hover:opacity-80 transition-opacity">
+          <Link 
+            href="/" 
+            className="flex-shrink-0 hover:opacity-80 transition-opacity cursor-pointer"
+            onClick={(e) => {
+              // If already on home page and we have a reset handler, call it instead of navigating
+              if (isHomePage && onHomeClick) {
+                e.preventDefault()
+                onHomeClick()
+              }
+            }}
+          >
             <RightfitLogo />
           </Link>
         </div>

@@ -53,12 +53,18 @@ Be specific and concrete - these will be used to optimize the resume for ATS sys
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { job_description, candidate_resume, creative_mode = 'balanced' } = body
+    const { 
+      job_description, 
+      candidate_resume, 
+      creative_mode = 'balanced',
+      analysis // Optional: analysis from curator-analyzer with constraints
+    } = body
 
     console.log('[Generator-Structured] Request received', {
       step: 'start',
       hasJob: !!job_description,
       hasResume: !!candidate_resume,
+      hasAnalysis: !!analysis,
       jobLength: job_description?.length || 0,
       resumeLength: candidate_resume?.length || 0,
       creativeMode: creative_mode,
@@ -78,16 +84,56 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('[Generator-Structured] Starting structured resume generation with Claude Sonnet...')
+    console.log('[Generator-Structured] Starting structured resume generation with Claude Haiku...')
 
-    // Extract keywords for context
-    const explicitKeywords = await extractKeywords(job_description)
-    console.log('[Generator-Structured] Extracted keywords:', explicitKeywords)
+    // Extract keywords for context (fallback if no analysis provided)
+    const explicitKeywords = analysis?.keywordsToTarget 
+      ? [
+          ...(analysis.keywordsToTarget.verbs || []),
+          ...(analysis.keywordsToTarget.nouns || []),
+          ...(analysis.keywordsToTarget.techStack || [])
+        ]
+      : await extractKeywords(job_description)
+    console.log('[Generator-Structured] Using keywords:', explicitKeywords.slice(0, 10))
 
     // Lookup salary data
     const { role, location } = await extractJobTitleAndLocation(job_description)
     const salaryData = await lookupSalary({ role, location })
     console.log('[Generator-Structured] Salary lookup result:', salaryData ? `${salaryData.median.toLocaleString()} median` : 'No data')
+
+    // Build constraints section if analysis provided
+    const constraintsSection = analysis?.constraints ? `
+CRITICAL CONSTRAINTS (from strategic analysis - FOLLOW THESE EXACTLY):
+
+CANNOT INVENT:
+${analysis.constraints.cannot_invent.map(c => `- ${c}`).join('\n')}
+
+SAFE TO ADD:
+${analysis.constraints.safe_to_add.map(c => `- ${c}`).join('\n')}
+
+REQUIRES USER INPUT (do NOT invent these - mark for user):
+${analysis.constraints.requires_user_input.map(c => `- ${c}`).join('\n')}
+
+STRATEGY: ${analysis.rationaleForChanges || 'Improve resume fit through safe rewrites and keyword integration.'}
+
+ANALYSIS INSIGHTS (use these to guide your changes):
+WHAT WORKS (preserve and emphasize these):
+${analysis.whatWorks?.map(w => `- ${w}`).join('\n') || '- No specific strengths identified'}
+
+WHAT'S MISSING (address these gaps through safe rewrites):
+${analysis.whatsMissing?.map(m => `- ${m}`).join('\n') || '- No gaps identified'}
+
+KEYWORDS TO TARGET (integrate naturally):
+- Verbs: ${analysis.keywordsToTarget?.verbs?.join(', ') || 'none'}
+- Concepts: ${analysis.keywordsToTarget?.concepts?.join(', ') || 'none'}
+- Tech Stack: ${analysis.keywordsToTarget?.techStack?.join(', ') || 'none'}
+
+YOUR CHANGES MUST:
+1. Address the "what's missing" gaps through safe rewrites (not invention)
+2. Emphasize the "what works" strengths more prominently
+3. Integrate the keywords naturally throughout
+4. Follow the strategy rationale exactly
+` : ''
 
     // Build the system prompt for structured output
     const systemPrompt = `You are a professional résumé optimizer that returns STRUCTURED, GRANULAR changes for a Grammarly-style editor.
@@ -97,6 +143,7 @@ IDENTITY & ETHICS:
 - You may reword, emphasize, or generalize existing achievements, but NEVER add details not implied by the candidate's background
 - NEVER invent: company names, job titles, projects, metrics, dates, technologies not in the original
 - Preserve the candidate's authenticity and writing style
+${constraintsSection}
 
 YOUR TASK:
 1. Parse the original resume into structured sections (contact info, summary, experience, education, skills, etc.)
@@ -207,13 +254,29 @@ OUTPUT FORMAT - Return valid JSON with this structure:
 
 CRITICAL RULES:
 1. Every change must have a unique "id" (use "change-1", "change-2", etc.)
-2. Every change must have a "reason" that explains WHY it improves fit
-3. "impactScore" (1-10) indicates importance - focus on high-impact changes
+2. Every change must have a "reason" that explains WHY it improves fit - reference the analysis insights explicitly
+3. "impactScore" (1-10) indicates importance - focus on high-impact changes that address "what's missing"
 4. For "modification" and "deletion" types, include "original" text
 5. For "addition" and "modification" types, include "suggested" text
 6. Be granular - one change per bullet point or sentence
 7. Include position markers (sectionIndex, bulletIndex) when modifying/deleting bullets
 8. Target keywords naturally: ${explicitKeywords.join(', ')}
+9. PROFESSIONAL SUMMARY: Always review and suggest improvements to the summary section if it exists, or add one if missing. The summary is critical for ATS matching and should be optimized with job-relevant keywords. If the summary exists but doesn't align with the job, suggest modifications. If missing, add one.
+10. STRATEGIC PRIORITY (if analysis provided, follow this order):
+   a) Address "what's missing" gaps through safe rewrites (highest priority)
+   b) Emphasize "what works" strengths more prominently
+   c) Integrate missing keywords/concepts naturally
+   d) Remove irrelevant content that doesn't support the strategy
+   e) Improve clarity and specificity (only when it adds value)
+11. PRIORITIZE SUBSTANTIVE CHANGES over stylistic ones:
+   - High impact: Addressing "what's missing", adding missing keywords/concepts, removing irrelevant content, restructuring for clarity, optimizing summary
+   - Medium impact: Converting passive to active voice ONLY when it adds impact AND addresses a gap, improving specificity
+   - Low impact: Pure stylistic rewrites without adding keywords or improving clarity - AVOID these unless necessary
+12. QUALITY STANDARDS:
+   - Each change should directly address an analysis insight (what's missing, what works, keywords)
+   - Reasons should reference the analysis: "Job emphasizes X (from what's missing), this highlights your Y experience"
+   - Don't make changes just for the sake of change - every change must improve fit
+   - If analysis provided, your changes MUST align with the strategy rationale
 
 Job Description:
 ${job_description}
@@ -262,11 +325,14 @@ Return ONLY valid JSON. Escape all newlines as \\n (not literal newlines).`
       console.log('[Generator-Structured] Changes count:', result.changes.length)
       console.log('[Generator-Structured] Keywords targeted:', result.analysis.keywordsToTarget)
 
+      // Use curator's analysis if provided, otherwise use generator's analysis
+      const finalAnalysis = analysis || result.analysis
+
       // Return structured response (fit scores will be added by orchestrator)
       return NextResponse.json({
         optimizedResume: result.optimizedResume,
         changes: result.changes,
-        analysis: result.analysis,
+        analysis: finalAnalysis, // Use curator's analysis if available
         salary_data: salaryData,
         job_metadata: {
           title: role,

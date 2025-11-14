@@ -29,6 +29,12 @@ export function TheBrain({
 }: TheBrainProps) {
   const improvement = analysis.fitScoreAfter - analysis.fitScoreBefore
 
+  // Animation timing constants
+  const ANIMATION_DURATION = 0.8
+  const ANIMATION_EASING = [0.22, 1, 0.36, 1] as const
+  const CARD_DELAY_INCREMENT = 0.3 // Delay between each card reveal
+  const INITIAL_DELAY = 0.2 // First card delay
+
   // Animation variants for smoother progressive reveal
   const cardVariants = {
     hidden: {
@@ -41,8 +47,8 @@ export function TheBrain({
       y: 0,
       scale: 1,
       transition: {
-        duration: 0.8,
-        ease: [0.22, 1, 0.36, 1] // Custom easing for smooth feel
+        duration: ANIMATION_DURATION,
+        ease: ANIMATION_EASING,
       }
     }
   }
@@ -54,7 +60,7 @@ export function TheBrain({
         variants={cardVariants}
         initial="hidden"
         animate="visible"
-        transition={{ delay: 0.2 }}
+        transition={{ delay: INITIAL_DELAY }}
         className="backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.05)] rounded-2xl p-6"
       >
         <h2 className="text-lg font-semibold text-gray-900 mb-4 font-serif">
@@ -121,7 +127,7 @@ export function TheBrain({
         variants={cardVariants}
         initial="hidden"
         animate="visible"
-        transition={{ delay: 0.5 }}
+        transition={{ delay: INITIAL_DELAY + CARD_DELAY_INCREMENT }}
         className="backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.05)] rounded-2xl p-6"
       >
         <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2 font-sans">
@@ -143,7 +149,7 @@ export function TheBrain({
         variants={cardVariants}
         initial="hidden"
         animate="visible"
-        transition={{ delay: 0.8 }}
+        transition={{ delay: INITIAL_DELAY + CARD_DELAY_INCREMENT * 2 }}
         className="backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.05)] rounded-2xl p-6"
       >
         <h3 className="text-sm font-semibold text-gray-900 mb-3 flex items-center gap-2 font-sans">
@@ -165,7 +171,7 @@ export function TheBrain({
         variants={cardVariants}
         initial="hidden"
         animate="visible"
-        transition={{ delay: 1.1 }}
+        transition={{ delay: INITIAL_DELAY + CARD_DELAY_INCREMENT * 3 }}
         className="backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.05)] rounded-2xl p-6"
       >
         <h3 className="text-sm font-semibold text-gray-900 mb-3 font-sans">
@@ -227,7 +233,7 @@ export function TheBrain({
         variants={cardVariants}
         initial="hidden"
         animate="visible"
-        transition={{ delay: 1.4 }}
+        transition={{ delay: INITIAL_DELAY + CARD_DELAY_INCREMENT * 4 }}
         className="backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.05)] rounded-2xl p-6"
       >
         <h3 className="text-sm font-semibold text-gray-900 mb-2 font-sans">
@@ -244,7 +250,7 @@ export function TheBrain({
           variants={cardVariants}
           initial="hidden"
           animate="visible"
-          transition={{ delay: 1.7 }}
+          transition={{ delay: INITIAL_DELAY + CARD_DELAY_INCREMENT * 5 }}
           className="backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.05)] rounded-2xl p-6"
         >
           <h3 className="text-sm font-semibold text-gray-900 mb-2 font-sans">
@@ -267,7 +273,7 @@ export function TheBrain({
         variants={cardVariants}
         initial="hidden"
         animate="visible"
-        transition={{ delay: 2.0 }}
+        transition={{ delay: INITIAL_DELAY + CARD_DELAY_INCREMENT * 6 }}
         className="backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.05)] rounded-2xl p-6"
       >
         <h3 className="text-sm font-semibold text-gray-900 mb-3 font-sans">
