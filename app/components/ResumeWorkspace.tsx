@@ -32,6 +32,30 @@ export function ResumeWorkspace({ data, onStartOver }: ResumeWorkspaceProps) {
     return false
   }
 
+  // Helper: Normalize section names for matching (handles "Summary" vs "Professional Summary", etc.)
+  const normalizeSectionName = (name: string): string => {
+    return name.toLowerCase().trim().replace(/\s+/g, ' ')
+  }
+
+  // Helper: Match change section to resume section title
+  const matchesSection = (changeSection: string, sectionTitle: string): boolean => {
+    const normalizedChange = normalizeSectionName(changeSection)
+    const normalizedTitle = normalizeSectionName(sectionTitle)
+    
+    // Direct match
+    if (normalizedChange === normalizedTitle) return true
+    
+    // Special cases: "Summary" matches "Professional Summary", "Summary", etc.
+    if (normalizedChange === 'summary' && normalizedTitle.includes('summary')) return true
+    if (normalizedTitle === 'summary' && normalizedChange.includes('summary')) return true
+    
+    // "Experience" matches "Work Experience", "Professional Experience", etc.
+    if (normalizedChange === 'experience' && normalizedTitle.includes('experience')) return true
+    if (normalizedTitle === 'experience' && normalizedChange.includes('experience')) return true
+    
+    return false
+  }
+
   // Filter changes to only include visible/actionable ones
   // This ensures consistent counting across the UI
   // NOTE: Education changes are ALWAYS filtered out - education should never be modified
@@ -43,7 +67,7 @@ export function ResumeWorkspace({ data, onStartOver }: ResumeWorkspaceProps) {
     
     // Only count changes that are actually visible/actionable
     // Filter out changes for sections that don't exist or are empty
-    const section = data.optimizedResume.sections.find(s => s.title === c.section)
+    const section = data.optimizedResume.sections.find(s => matchesSection(c.section, s.title))
     if (!section) return false
     
     // For positioned changes, verify the position exists

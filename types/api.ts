@@ -72,6 +72,14 @@ export interface AnalysisConstraints {
   requires_user_input: string[] // Questions for user (e.g., "Do you have metrics for project X?", "How many people did you lead?")
 }
 
+// DSM: Semantic transformation mapping (FROM candidate domain → TO job requirement domain)
+export interface SemanticTransformation {
+  from: string // Candidate's existing domain/experience (e.g., "logistics planning")
+  to: string // Job-relevant domain (e.g., "vendor and on-site coordination")
+  confidence: number // 0.0-1.0, how confident the mapping is
+  reasoning: string // Why this transformation is safe and valid
+}
+
 // Analysis data for "The Brain" (left pane)
 export interface ResumeAnalysis {
   fitScoreBefore: number
@@ -102,6 +110,13 @@ export interface ResumeAnalysis {
   }
   rationaleForChanges: string // Paragraph explaining the overall strategy
   constraints?: AnalysisConstraints // Explicit boundaries (added by curator-analyzer)
+  
+  // DSM (Dynamic Semantic Mapping) fields - internal reasoning tool
+  candidate_domains?: string[] // Core skill/experience domains from resume (e.g., "project coordination", "stakeholder communication")
+  job_requirement_domains?: string[] // Core skill/experience domains required by job (e.g., "engineering project management", "risk tracking")
+  semantic_transformations?: SemanticTransformation[] // FROM → TO mappings for safe reinterpretation
+  unmet_requirements?: string[] // Job domains that cannot be satisfied without new facts
+  safe_rewrites?: string[] // What the generator is ALLOWED to do (one sentence per rule)
 }
 
 // New structured response format

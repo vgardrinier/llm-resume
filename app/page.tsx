@@ -720,7 +720,7 @@ export default function Home() {
                           className="flex-1 min-h-[56px] px-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all hover:border-gray-400 backdrop-blur-sm bg-white/60 placeholder:text-gray-500 text-gray-900 text-sm md:text-base font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
                           disabled={urlLoading}
                         />
-                        <Tooltip content="Fetch job description" position="top" delay={200}>
+                        <Tooltip key="fetch-job-tooltip" content="Fetch job description" position="top" align="left" delay={200}>
                           <button
                             type="button"
                             onClick={handleFetchJobFromUrl}
@@ -739,7 +739,7 @@ export default function Home() {
 
                       {/* Resume Upload - Desktop: next to URL, Mobile: below */}
                       <div className="flex gap-2 md:flex-shrink-0">
-                        <Tooltip content={uploadedFile && currentResume ? "Résumé uploaded successfully" : "Upload résumé (PDF)"} position="top" delay={200}>
+                        <Tooltip key="upload-resume-tooltip" content={uploadedFile && currentResume ? "Résumé uploaded successfully" : "Upload résumé (PDF)"} position="left" delay={200}>
                           <button
                             type="button"
                             onClick={handleUploadClick}
@@ -986,6 +986,7 @@ export default function Home() {
                           jobTitle={quickMetadata?.jobTitle || null}
                           location={quickMetadata?.location || null}
                           resume={currentResume}
+                          isLoading={loading}
                         />
                       )}
 

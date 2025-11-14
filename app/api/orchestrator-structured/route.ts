@@ -1,7 +1,36 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { calculateFitScore, calculateBaselineFitScore, type FitScoreResult } from '@/lib/utils/fitScore'
 import { randomUUID } from 'crypto'
-import type { StructuredResumeResponse } from '@/types/api'
+import type { StructuredResumeResponse, StructuredResume, ResumeSection } from '@/types/api'
+
+// Utility: Check if a section has content
+function hasSectionContent(section: ResumeSection): boolean {
+  if (typeof section.content === 'string') {
+    return section.content.trim().length > 0
+  }
+  if (Array.isArray(section.content)) {
+    if (section.type === 'experience' || section.type === 'projects') {
+      return section.content.length > 0 && section.content.some((entry: any) => 
+        entry.bullets && Array.isArray(entry.bullets) && entry.bullets.length > 0
+      )
+    }
+    if (section.type === 'education') {
+      return section.content.length > 0 && section.content.some((entry: any) => 
+        entry.degree && entry.institution
+      )
+    }
+    return section.content.length > 0
+  }
+  return false
+}
+
+// Utility: Filter out empty sections from resume
+function filterEmptySections(resume: StructuredResume): StructuredResume {
+  return {
+    ...resume,
+    sections: resume.sections.filter(hasSectionContent)
+  }
+}
 
 export async function POST(request: NextRequest) {
   const overallStart = Date.now()
@@ -78,8 +107,15 @@ export async function POST(request: NextRequest) {
       const errorData = await analyzerResponse.json()
       analyzerTime = Date.now() - analyzerStart
       console.error(`[Orchestrator-Structured] Analyzer failed after ${analyzerTime}ms:`, errorData)
-      console.warn('[Orchestrator-Structured] Continuing without analysis constraints')
-      analysisData = null
+      // Generator now requires analysis - fail fast if analyzer fails
+      return NextResponse.json(
+        { 
+          error: 'Analyzer failed - analysis is required for generator', 
+          details: errorData.error || 'Unknown error',
+          generation_id: generationId
+        },
+        { status: analyzerResponse.status || 500 }
+      )
     } else {
       const analyzerResult = await analyzerResponse.json()
       analyzerTime = Date.now() - analyzerStart
@@ -88,7 +124,13 @@ export async function POST(request: NextRequest) {
         step: 'analyzer_complete',
         hasAnalysis: !!analysisData,
         hasConstraints: !!analysisData?.constraints,
-        cannotInventCount: analysisData?.constraints?.cannot_invent?.length || 0
+        cannotInventCount: analysisData?.constraints?.cannot_invent?.length || 0,
+        // DSM metrics
+        semanticTransformationsCount: analysisData?.semantic_transformations?.length || 0,
+        candidateDomainsCount: analysisData?.candidate_domains?.length || 0,
+        jobRequirementDomainsCount: analysisData?.job_requirement_domains?.length || 0,
+        safeRewritesCount: analysisData?.safe_rewrites?.length || 0,
+        unmetRequirementsCount: analysisData?.unmet_requirements?.length || 0
       })
     }
 
@@ -185,7 +227,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Use validated resume if curator provided one, otherwise use original
-    const finalOptimizedResume = curatorData.validatedOptimizedResume || generatorData.optimizedResume
+    let finalOptimizedResume = curatorData.validatedOptimizedResume || generatorData.optimizedResume
+    
+    // Filter out empty sections before finalizing
+    const beforeFilterCount = finalOptimizedResume.sections?.length || 0
+    finalOptimizedResume = filterEmptySections(finalOptimizedResume)
+    const afterFilterCount = finalOptimizedResume.sections.length
+    if (beforeFilterCount > afterFilterCount) {
+      console.log(`[Orchestrator-Structured] Removed ${beforeFilterCount - afterFilterCount} empty section(s) from final resume`)
+    }
     
     // Log if curator modified the resume structure
     if (curatorData.validatedOptimizedResume) {

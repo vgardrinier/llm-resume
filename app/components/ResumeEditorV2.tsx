@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { StructuredResume, ResumeChange } from '@/types/api'
 import { Check, X, Info, Download } from 'lucide-react'
@@ -23,14 +23,78 @@ type ChangeIndex = {
   byEducationEntry: Map<string, ResumeChange[]>
 }
 
+// Normalize section name for consistent matching (case-insensitive, trimmed)
+function normalizeSectionName(name: string): string {
+  return name.toLowerCase().trim().replace(/\s+/g, ' ')
+}
+
+// Extract core section name (e.g., "Professional Summary" -> "summary", "Work Experience" -> "experience")
+// CRITICAL: This must handle ALL variations from generator: "Professional Summary", "Summary", "Work Experience", "Experience", etc.
+function getCoreSectionName(name: string): string {
+  if (!name || typeof name !== 'string') return 'unknown'
+  
+  const normalized = normalizeSectionName(name)
+  
+  // CRITICAL: Check for keywords in order of specificity (more specific first)
+  // Handle all variations: "Professional Summary", "Summary", "Executive Summary", etc.
+  if (normalized.includes('summary')) return 'summary'
+  
+  // Handle all experience variations: "Work Experience", "Professional Experience", "Experience", "Job Experience", etc.
+  if (normalized.includes('experience')) return 'experience'
+  
+  // Handle education variations
+  if (normalized.includes('education')) return 'education'
+  
+  // Handle skills variations: "Skills", "Technical Skills", "Core Skills", etc.
+  if (normalized.includes('skill')) return 'skills'
+  
+  // Handle projects variations
+  if (normalized.includes('project')) return 'projects'
+  
+  // Handle certifications
+  if (normalized.includes('certification')) return 'certifications'
+  
+  // Fallback: try direct match on common names
+  const directMatches: Record<string, string> = {
+    'summary': 'summary',
+    'experience': 'experience',
+    'education': 'education',
+    'skills': 'skills',
+    'projects': 'projects',
+    'certifications': 'certifications'
+  }
+  
+  if (directMatches[normalized]) {
+    return directMatches[normalized]
+  }
+  
+  // Last resort: return normalized name
+  return normalized
+}
+
 function indexChanges(changes: ResumeChange[]): ChangeIndex {
   const bySectionAndBullet = new Map<string, ResumeChange[]>()
   const bySection = new Map<string, ResumeChange[]>()
   const byEducationEntry = new Map<string, ResumeChange[]>()
 
   changes.forEach(change => {
+    // CRITICAL: Normalize section name robustly - handle ALL generator variations
+    // Generator can send: "Professional Summary", "Summary", "Work Experience", "Experience", etc.
+    const sectionName = change.section || ''
+    const coreSection = getCoreSectionName(sectionName)
+    
+    // DEBUG: Log if we're getting unexpected section names
+    if (process.env.NODE_ENV === 'development' && coreSection === 'unknown') {
+      console.warn('[ResumeEditor] Unknown section name in change:', {
+        changeId: change.id,
+        originalSection: change.section,
+        normalized: normalizeSectionName(sectionName),
+        coreSection
+      })
+    }
+    
     // Index by section only (for summary, skills, etc.)
-    const sectionKey = `section-${change.section}`
+    const sectionKey = `section-${coreSection}`
     if (!bySection.has(sectionKey)) {
       bySection.set(sectionKey, [])
     }
@@ -38,7 +102,7 @@ function indexChanges(changes: ResumeChange[]): ChangeIndex {
 
     // Index by section + bullet (for experience, projects)
     if (change.position?.sectionIndex !== undefined && change.position?.bulletIndex !== undefined) {
-      const bulletKey = `${change.section}-${change.position.sectionIndex}-${change.position.bulletIndex}`
+      const bulletKey = `${coreSection}-${change.position.sectionIndex}-${change.position.bulletIndex}`
       if (!bySectionAndBullet.has(bulletKey)) {
         bySectionAndBullet.set(bulletKey, [])
       }
@@ -64,7 +128,81 @@ export function ResumeEditor({
   const [hoveredChange, setHoveredChange] = useState<string | null>(null)
 
   // Pre-index changes once (O(n) setup, O(1) lookups)
-  const changeIndex = useMemo(() => indexChanges(changes), [changes])
+  const changeIndex = useMemo(() => {
+    const index = indexChanges(changes)
+    
+    // DEBUG: Log indexing results
+    if (process.env.NODE_ENV === 'development' && changes.length > 0) {
+      const modifications = changes.filter((c: any) => c.type === 'modification')
+      console.log('[ResumeEditor] Change indexing complete:', {
+        totalChanges: changes.length,
+        modifications: modifications.length,
+        indexedBySection: Array.from(index.bySection.entries()).map(([key, vals]) => ({
+          key,
+          count: vals.length,
+          sections: Array.from(new Set(vals.map(v => v.section)))
+        })),
+        indexedByBullet: Array.from(index.bySectionAndBullet.entries()).map(([key, vals]) => ({
+          key,
+          count: vals.length,
+          changes: vals.map((v: any) => ({
+            id: v.id,
+            type: v.type,
+            section: v.section,
+            position: v.position
+          }))
+        })),
+        modificationsWithPositions: modifications.filter((c: any) => 
+          c.position?.sectionIndex !== undefined && c.position?.bulletIndex !== undefined
+        ).map((c: any) => ({
+          id: c.id,
+          section: c.section,
+          position: c.position,
+          hasOriginal: !!(c.original && c.original.trim().length > 0)
+        }))
+      })
+    }
+    
+    return index
+  }, [changes])
+  
+  // DEBUG: Log changes breakdown on mount/update
+  useEffect(() => {
+    const changesByType = changes.reduce((acc: any, c: any) => {
+      acc[c.type] = (acc[c.type] || 0) + 1
+      return acc
+    }, {})
+    
+    const changesBySection = changes.reduce((acc: any, c: any) => {
+      const section = c.section || 'unknown'
+      acc[section] = (acc[section] || 0) + 1
+      return acc
+    }, {})
+    
+    const modifications = changes.filter((c: any) => c.type === 'modification')
+    const modificationsWithOriginal = modifications.filter((c: any) => c.original && c.original.trim().length > 0)
+    const modificationsWithPosition = modifications.filter((c: any) => 
+      c.position?.sectionIndex !== undefined && c.position?.bulletIndex !== undefined
+    )
+    
+    console.log('[ResumeEditor] Changes received:', {
+      total: changes.length,
+      byType: changesByType,
+      bySection: changesBySection,
+      modifications: {
+        total: modifications.length,
+        withOriginal: modificationsWithOriginal.length,
+        withPosition: modificationsWithPosition.length,
+        details: modifications.map((c: any) => ({
+          id: c.id,
+          section: c.section,
+          hasOriginal: !!(c.original && c.original.trim().length > 0),
+          hasPosition: !!(c.position?.sectionIndex !== undefined && c.position?.bulletIndex !== undefined),
+          position: c.position
+        }))
+      }
+    })
+  }, [changes])
 
   // Helper: Get change status
   const getChangeStatus = (id: string): 'accepted' | 'rejected' | 'pending' => {
@@ -79,18 +217,68 @@ export function ResumeEditor({
     changes: ResumeChange[],
     sectionTitle: string
   ) => {
+    // DEBUG: Log when we have changes but they're not showing
+    if (process.env.NODE_ENV === 'development' && changes.length > 0) {
+      const modifications = changes.filter(c => c.type === 'modification')
+      if (modifications.length > 0) {
+        console.log(`[ResumeEditor] renderTextWithChanges called with ${changes.length} changes (${modifications.length} modifications):`, {
+          sectionTitle,
+          changes: changes.map(c => ({
+            id: c.id,
+            type: c.type,
+            status: getChangeStatus(c.id),
+            hasOriginal: !!(c.original && c.original.trim().length > 0),
+            originalPreview: c.original?.substring(0, 30),
+            suggestedPreview: c.suggested?.substring(0, 30)
+          }))
+        })
+      }
+    }
+    
     if (changes.length === 0) {
       return <span className="text-gray-700 font-sans">{originalText}</span>
     }
 
-    // Filter out rejected changes for display
-    const activeChanges = changes.filter(c => getChangeStatus(c.id) !== 'rejected')
-    const rejectedChanges = changes.filter(c => getChangeStatus(c.id) === 'rejected')
+    // CRITICAL: Filter out rejected changes FIRST - they should not affect highlighting or styling
+    const nonRejectedChanges = changes.filter(c => getChangeStatus(c.id) !== 'rejected')
     
-    // If all changes are rejected, show original
-    if (activeChanges.length === 0) {
+    // If all changes are rejected, handle based on change type
+    if (nonRejectedChanges.length === 0) {
+      // Check if any rejected change was an addition (new content)
+      const rejectedAdditions = changes.filter(c => 
+        getChangeStatus(c.id) === 'rejected' && c.type === 'addition'
+      )
+      
+      // If rejected changes include additions, return empty (new content should disappear when rejected)
+      if (rejectedAdditions.length > 0) {
+        // For additions, if rejected, show nothing (or original if it existed)
+        const hasOriginal = changes.some(c => c.original && c.original.trim().length > 0)
+        return hasOriginal 
+          ? <span className="text-gray-700 font-sans">{changes.find(c => c.original)?.original || ''}</span>
+          : <span></span> // Empty - addition was rejected, so remove it
+      }
+      
+      // For modifications/deletions, return the ORIGINAL text from the change object
+      // CRITICAL: When a modification is rejected, we must show the original text from the change,
+      // not the optimized text (originalText parameter might be the optimized version)
+      const rejectedModifications = changes.filter(c => 
+        getChangeStatus(c.id) === 'rejected' && c.type === 'modification' && c.original
+      )
+      
+      if (rejectedModifications.length > 0) {
+        // Use the original text from the most recent rejected modification
+        const originalFromChange = rejectedModifications[rejectedModifications.length - 1].original
+        if (originalFromChange && originalFromChange.trim().length > 0) {
+          return <span className="text-gray-700 font-sans">{originalFromChange}</span>
+        }
+      }
+      
+      // Fallback: return originalText parameter (for deletions or if no original found)
       return <span className="text-gray-700 font-sans">{originalText}</span>
     }
+
+    // Now work only with non-rejected changes
+    const activeChanges = nonRejectedChanges
 
     // If all changes are accepted, show the last accepted suggestion (or merge them)
     const allAccepted = activeChanges.every(c => getChangeStatus(c.id) === 'accepted')
@@ -103,28 +291,101 @@ export function ResumeEditor({
     // When multiple changes exist on the same line, show a count badge
     const pendingChanges = activeChanges.filter(c => getChangeStatus(c.id) === 'pending')
     
+    // DEBUG: Log if we have active changes but no pending ones
+    if (process.env.NODE_ENV === 'development' && activeChanges.length > 0 && pendingChanges.length === 0) {
+      console.log(`[ResumeEditor] renderTextWithChanges: ${activeChanges.length} active changes but 0 pending (all accepted?)`, {
+        sectionTitle,
+        activeChanges: activeChanges.map(c => ({
+          id: c.id,
+          type: c.type,
+          status: getChangeStatus(c.id)
+        }))
+      })
+    }
+    
     if (pendingChanges.length === 0) {
       // All active changes are accepted, show the last one
       return <span className="text-gray-700 font-sans">{activeChanges[activeChanges.length - 1].suggested}</span>
     }
+
+    // Determine what text to show and what color to use
+    const firstChange = pendingChanges[0]
+    const isAddition = firstChange.type === 'addition'
+    const isModification = firstChange.type === 'modification'
+    const isDeletion = firstChange.type === 'deletion'
+    
+    // DEBUG: Log what we're about to highlight
+    if (process.env.NODE_ENV === 'development' && isModification) {
+      console.log(`[ResumeEditor] About to highlight modification:`, {
+        changeId: firstChange.id,
+        sectionTitle,
+        hasOriginal: !!(firstChange.original && firstChange.original.trim().length > 0),
+        originalPreview: firstChange.original?.substring(0, 50),
+        suggestedPreview: firstChange.suggested?.substring(0, 50),
+        displayTextWillBe: firstChange.original || originalText
+      })
+    }
+    
+    // For additions, show the suggested text (new content)
+    // For modifications/deletions, show the original text (what's being changed)
+    // CRITICAL: For modifications, we MUST use firstChange.original if it exists
+    // If original is missing for a modification, that's a data issue - log it and show optimized text
+    const displayText = isAddition 
+      ? firstChange.suggested
+      : (firstChange.original && firstChange.original.trim().length > 0)
+        ? firstChange.original  // Use original from change object (most reliable)
+        : (() => {
+            // DEBUG: Log missing original for modifications
+            if (isModification && process.env.NODE_ENV === 'development') {
+              console.warn(`[ResumeEditor] Modification change ${firstChange.id} missing original field`, {
+                changeId: firstChange.id,
+                section: firstChange.section,
+                suggested: firstChange.suggested?.substring(0, 50),
+                originalText: originalText?.substring(0, 50)
+              })
+            }
+            // For modifications without original, show optimized text (no highlight - data issue)
+            return originalText
+          })()
+
+    // Use different colors for different change types
+    // Yellow for modifications (edits), Green/Blue for additions (new content)
+    const highlightClasses = isAddition
+      ? `bg-green-200/90 border-b-2 border-green-600 px-1 rounded-sm cursor-pointer transition-all duration-200 hover:bg-green-300/90 hover:border-green-700`
+      : isDeletion
+      ? `bg-red-200/90 border-b-2 border-red-600 px-1 rounded-sm cursor-pointer transition-all duration-200 hover:bg-red-300/90 hover:border-red-700`
+      : `bg-yellow-200/90 border-b-2 border-yellow-600 px-1 rounded-sm cursor-pointer transition-all duration-200 hover:bg-yellow-300/90 hover:border-yellow-700`
+    
+    const badgeColor = isAddition
+      ? 'bg-green-600'
+      : isDeletion
+      ? 'bg-red-600'
+      : 'bg-yellow-600'
+    
+    const shadowColor = isAddition
+      ? 'rgba(34, 197, 94, 0.2)' // green
+      : isDeletion
+      ? 'rgba(239, 68, 68, 0.2)' // red
+      : 'rgba(234, 179, 8, 0.2)' // yellow
 
     // Show original text with highlight, and handle multiple changes
     const hasMultipleChanges = pendingChanges.length > 1
     
     return (
       <span className="relative inline-block group">
-        {/* Show original text with highlight when there are pending changes */}
+        {/* Show text with highlight when there are pending changes */}
         <span
-          className={`
-            text-gray-700 font-sans
-            bg-yellow-50/80 border-b-2 border-yellow-500 px-0.5 rounded-sm cursor-pointer
-          `}
+          className={`text-gray-700 font-sans ${highlightClasses}`}
+          style={{
+            textDecoration: 'none',
+            boxShadow: `0 1px 2px ${shadowColor}`
+          }}
         >
-          {originalText}
+          {displayText}
         </span>
         {/* Show count badge when multiple changes are on the same line */}
         {hasMultipleChanges && (
-          <span className="ml-2 inline-flex items-center justify-center w-5 h-5 rounded-full bg-yellow-500 text-white text-xs font-semibold font-sans">
+          <span className={`ml-2 inline-flex items-center justify-center w-5 h-5 rounded-full ${badgeColor} text-white text-xs font-semibold font-sans shadow-sm`}>
             {pendingChanges.length}
           </span>
         )}
@@ -162,19 +423,62 @@ export function ResumeEditor({
     return false
   }
 
+  // Helper: Match change section to resume section title
+  // CRITICAL: Use getCoreSectionName for consistent matching - handles ALL variations
+  // This ensures "Professional Summary" matches "Summary", "Work Experience" matches "Experience", etc.
+  const matchesSection = (changeSection: string, sectionTitle: string): boolean => {
+    // Use core section names for matching - this handles all variations robustly
+    const changeCore = getCoreSectionName(changeSection)
+    const titleCore = getCoreSectionName(sectionTitle)
+    
+    // Direct core match - this is the primary matching logic
+    if (changeCore === titleCore && changeCore !== 'unknown') {
+      return true
+    }
+    
+    // Fallback: also check normalized names (for edge cases where getCoreSectionName might miss)
+    const normalizedChange = normalizeSectionName(changeSection)
+    const normalizedTitle = normalizeSectionName(sectionTitle)
+    
+    if (normalizedChange === normalizedTitle) return true
+    
+    // Additional fallback: check substring matches for known core types
+    const knownCores = ['summary', 'experience', 'education', 'skills', 'projects', 'certifications']
+    if (knownCores.includes(changeCore) && knownCores.includes(titleCore)) {
+      // If both resolve to known cores, they should match if cores match
+      return changeCore === titleCore
+    }
+    
+    return false
+  }
+
   // Helper: Filter changes to only include visible/actionable ones
   // This ensures consistent counting across the UI
   // NOTE: Education changes are ALWAYS filtered out - education should never be modified
+  // CRITICAL: Rejected changes are excluded - they should not count as "visible"
   const getVisibleChanges = useMemo(() => {
     return changes.filter(c => {
+      // Always exclude rejected changes - they're not actionable
+      if (getChangeStatus(c.id) === 'rejected') {
+        return false
+      }
+      
       // Always exclude education changes - education should never be modified
       if (c.section === 'Education' || c.section === 'education') {
         return false
       }
       
-      // Only count changes that are actually visible/actionable
-      // Filter out changes for sections that don't exist or are empty
-      const section = optimizedResume.sections.find(s => s.title === c.section)
+      // For ADDITIONS (new content), always count them if they're not rejected
+      // They might be adding content to sections that don't exist yet or are empty
+      if (c.type === 'addition') {
+        // Check if section exists in optimized resume (where the addition would appear)
+        const section = optimizedResume.sections.find(s => matchesSection(c.section, s.title))
+        // If section exists, count it; if not, still count it (it's being added)
+        return true // Additions are always visible/actionable
+      }
+      
+      // For modifications/deletions, verify the section exists and content is valid
+      const section = optimizedResume.sections.find(s => matchesSection(c.section, s.title))
       if (!section) return false
       
       // For positioned changes, verify the position exists
@@ -193,19 +497,53 @@ export function ResumeEditor({
         }
       }
       
+      // For non-positioned changes (like summary modifications), check if section has content
       return hasSectionContent(section)
     })
-  }, [changes, optimizedResume.sections])
+  }, [changes, optimizedResume.sections, acceptedChanges, rejectedChanges])
 
 
   // Helper: Render section content
   const renderSectionContent = (section: any, sectionIdx: number) => {
-    const sectionKey = `section-${section.title}`
-    const sectionChanges = changeIndex.bySection.get(sectionKey) || []
+    // Use core section name for consistent matching (handles "Professional Summary" vs "Summary")
+    const coreSectionName = getCoreSectionName(section.title)
+    const sectionKey = `section-${coreSectionName}`
+    let sectionChanges = (changeIndex.bySection.get(sectionKey) || [])
+      .filter(c => getChangeStatus(c.id) !== 'rejected') // CRITICAL: Exclude rejected changes
+
+    // Debug: Log if we're not finding changes but they should exist
+    // (This helps identify section matching issues)
+    if (sectionChanges.length === 0 && changes.length > 0) {
+      // Try to find changes that might match this section by checking all changes
+      const potentialMatches = changes.filter(c => {
+        const changeCoreSection = getCoreSectionName(c.section)
+        return changeCoreSection === coreSectionName && getChangeStatus(c.id) !== 'rejected'
+      })
+      if (potentialMatches.length > 0) {
+        sectionChanges = potentialMatches
+      }
+    }
 
     if (typeof section.content === 'string') {
       // Simple text section (e.g., summary)
-      const nonPositionedChanges = sectionChanges.filter(c => !c.position?.sectionIndex)
+      // For summary sections, include ALL changes for this section (both positioned and non-positioned)
+      // Some generators might incorrectly add positions to summary changes
+      const nonPositionedChanges = sectionChanges.filter(c => !c.position?.sectionIndex && !c.position?.bulletIndex)
+
+      // Check if this is a pure addition (new section) that was rejected
+      const isPureAddition = nonPositionedChanges.length === 0 && 
+        changes.some(c => {
+          const changeCoreSection = getCoreSectionName(c.section)
+          return changeCoreSection === coreSectionName && 
+                 c.type === 'addition' && 
+                 getChangeStatus(c.id) === 'rejected' &&
+                 (!c.original || c.original.trim().length === 0)
+        })
+
+      // If it's a rejected pure addition, don't render the section content
+      if (isPureAddition) {
+        return null
+      }
 
       return (
         <div className="space-y-2">
@@ -232,9 +570,113 @@ export function ResumeEditor({
 
                 <ul className="space-y-1.5 mt-2">
                   {entry.bullets && entry.bullets.map((bullet: string, bulletIdx: number) => {
-                    // O(1) lookup using pre-indexed map
-                    const bulletKey = `${section.title}-${entryIdx}-${bulletIdx}`
-                    const bulletChanges = changeIndex.bySectionAndBullet.get(bulletKey) || []
+                    // O(1) lookup using pre-indexed map (uses core section name for consistent matching)
+                    const bulletKey = `${coreSectionName}-${entryIdx}-${bulletIdx}`
+                    let bulletChanges = (changeIndex.bySectionAndBullet.get(bulletKey) || [])
+                      .filter(c => getChangeStatus(c.id) !== 'rejected') // CRITICAL: Exclude rejected changes
+
+                    // Fallback: If no changes found via indexed lookup, try multiple matching strategies
+                    // CRITICAL: This handles cases where section name matching failed during indexing OR positions don't match
+                    if (bulletChanges.length === 0 && changes.length > 0) {
+                      // Strategy 1: Try exact position match with core section name
+                      bulletChanges = changes.filter(c => {
+                        const changeCoreSection = getCoreSectionName(c.section || '')
+                        const matchesCore = changeCoreSection === coreSectionName
+                        const matchesPosition = c.position?.sectionIndex === entryIdx &&
+                          c.position?.bulletIndex === bulletIdx
+                        const notRejected = getChangeStatus(c.id) !== 'rejected'
+                        
+                        return matchesCore && matchesPosition && notRejected
+                      })
+                      
+                      // Strategy 2: If still no matches, try content-based matching for modifications
+                      // This handles cases where generator didn't provide correct positions
+                      if (bulletChanges.length === 0) {
+                        const sectionChanges = changes.filter(c => {
+                          const changeCoreSection = getCoreSectionName(c.section || '')
+                          return changeCoreSection === coreSectionName && getChangeStatus(c.id) !== 'rejected'
+                        })
+                        
+                        // For modifications, try to match by content similarity
+                        // If original text from change matches the bullet text (or is substring), it's likely a match
+                        bulletChanges = sectionChanges.filter(c => {
+                          if (c.type === 'modification' && c.original) {
+                            const originalLower = c.original.toLowerCase().trim()
+                            const bulletLower = bullet.toLowerCase().trim()
+                            // Check if original text is similar to bullet (exact match or bullet contains original)
+                            const isMatch = originalLower === bulletLower || 
+                                           bulletLower.includes(originalLower) ||
+                                           originalLower.includes(bulletLower)
+                            
+                            if (isMatch && process.env.NODE_ENV === 'development') {
+                              console.log(`[ResumeEditor] Found modification via content matching for bullet ${entryIdx}-${bulletIdx}:`, {
+                                changeId: c.id,
+                                original: c.original.substring(0, 50),
+                                bullet: bullet.substring(0, 50),
+                                position: c.position,
+                                expectedPosition: { sectionIndex: entryIdx, bulletIndex: bulletIdx }
+                              })
+                            }
+                            
+                            return isMatch
+                          }
+                          return false
+                        })
+                      }
+                      
+                      // DEBUG: Log if we found matches via fallback
+                      if (bulletChanges.length > 0 && process.env.NODE_ENV === 'development') {
+                        console.log(`[ResumeEditor] Found ${bulletChanges.length} change(s) via fallback matching for bullet ${entryIdx}-${bulletIdx}`)
+                      }
+                    }
+
+                    // DEBUG: Log bullet changes for modifications
+                    if (bulletChanges.length > 0 && process.env.NODE_ENV === 'development') {
+                      const hasModifications = bulletChanges.some(c => c.type === 'modification')
+                      if (hasModifications) {
+                        console.log(`[ResumeEditor] Bullet ${entryIdx}-${bulletIdx} (${coreSectionName}) has changes:`, {
+                          bulletKey,
+                          changesCount: bulletChanges.length,
+                          changes: bulletChanges.map((c: any) => ({
+                            id: c.id,
+                            type: c.type,
+                            hasOriginal: !!(c.original && c.original.trim().length > 0),
+                            originalPreview: c.original?.substring(0, 50),
+                            suggestedPreview: c.suggested?.substring(0, 50),
+                            status: getChangeStatus(c.id)
+                          }))
+                        })
+                      }
+                    }
+
+                    // DEBUG: Log EVERY bullet render call to see if changes are being passed
+                    if (process.env.NODE_ENV === 'development') {
+                      if (bulletChanges.length === 0 && changes.length > 0) {
+                        // Check if there SHOULD be changes for this bullet
+                        const allChangesForSection = changes.filter(c => {
+                          const changeCoreSection = getCoreSectionName(c.section || '')
+                          return changeCoreSection === coreSectionName && getChangeStatus(c.id) !== 'rejected'
+                        })
+                        if (allChangesForSection.length > 0) {
+                          console.log(`[ResumeEditor] ⚠️ POSITION MISMATCH: Bullet ${entryIdx}-${bulletIdx} has NO changes but section has ${allChangesForSection.length} changes:`, {
+                            bulletKey,
+                            coreSectionName,
+                            sectionTitle: section.title,
+                            expectedPosition: { sectionIndex: entryIdx, bulletIndex: bulletIdx },
+                            allSectionChanges: allChangesForSection.map((c: any) => ({
+                              id: c.id,
+                              type: c.type,
+                              section: c.section,
+                              hasPosition: !!(c.position?.sectionIndex !== undefined && c.position?.bulletIndex !== undefined),
+                              actualPosition: c.position,
+                              matchesExpected: c.position?.sectionIndex === entryIdx && c.position?.bulletIndex === bulletIdx,
+                              originalPreview: c.original?.substring(0, 40),
+                              suggestedPreview: c.suggested?.substring(0, 40)
+                            }))
+                          })
+                        }
+                      }
+                    }
 
                     return (
                       <li key={bulletIdx} className="flex gap-2 text-[15px] leading-relaxed">
@@ -377,14 +819,56 @@ export function ResumeEditor({
         <div className="space-y-8">
           {optimizedResume.sections
             .filter(section => hasSectionContent(section)) // Only show sections with content
-            .map((section, idx) => (
-              <div key={idx}>
-                <h2 className="text-base font-bold text-gray-900 mb-3 border-b-2 border-gray-900 pb-1 font-serif uppercase tracking-wide">
-                  {section.title}
-                </h2>
-                {renderSectionContent(section, idx)}
-              </div>
-            ))}
+            .map((section, idx) => {
+              // Check if this section has any actionable changes (both section-level and bullet-level)
+              // CRITICAL: Only count non-rejected changes for border styling
+              const coreSectionName = getCoreSectionName(section.title)
+              const sectionKey = `section-${coreSectionName}`
+              
+              // Get section-level changes (filter out rejected)
+              const sectionChanges = (changeIndex.bySection.get(sectionKey) || [])
+                .filter(c => getChangeStatus(c.id) !== 'rejected')
+              
+              // Get bullet-level changes for this section (filter out rejected)
+              let bulletChanges: ResumeChange[] = []
+              if (section.type === 'experience' || section.type === 'projects') {
+                if (Array.isArray(section.content)) {
+                  section.content.forEach((entry: any, entryIdx: number) => {
+                    if (entry.bullets && Array.isArray(entry.bullets)) {
+                      entry.bullets.forEach((_: string, bulletIdx: number) => {
+                        const bulletKey = `${coreSectionName}-${entryIdx}-${bulletIdx}`
+                        const changes = (changeIndex.bySectionAndBullet.get(bulletKey) || [])
+                          .filter(c => getChangeStatus(c.id) !== 'rejected')
+                        bulletChanges.push(...changes)
+                      })
+                    }
+                  })
+                }
+              }
+              
+              // Combine all actionable changes for this section (already filtered to exclude rejected)
+              const actionableChanges = [...sectionChanges, ...bulletChanges]
+              
+              // REMOVED: Section borders - we use inline highlights like Grammarly, not side borders
+              // The highlights are applied inline via renderTextWithChanges
+              
+              // Check if section content should be hidden (pure addition that was rejected)
+              const sectionContent = renderSectionContent(section, idx)
+              
+              // If section content is null (rejected pure addition), don't render the section at all
+              if (sectionContent === null) {
+                return null
+              }
+              
+              return (
+                <div key={idx}>
+                  <h2 className="text-base font-bold text-gray-900 mb-3 border-b-2 border-gray-900 pb-1 font-serif uppercase tracking-wide">
+                    {section.title}
+                  </h2>
+                  {sectionContent}
+                </div>
+              )
+            })}
         </div>
       </div>
     </div>

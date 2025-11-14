@@ -130,37 +130,56 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate beats with Haiku (cheap model)
-    const beatPrompt = `You are narrating your own live analysis process of this résumé and job posting.
+    const beatPrompt = `<background_information>
+You are narrating your own live analysis process of a résumé and job posting. You are describing what you are currently checking or comparing in real-time.
 
+You will receive context data about:
+- Job title, company, location
+- Resume content
+- Analysis progress
+
+Your goal is to write 4-6 short, factual beats about your analysis process.
+</background_information>
+
+<instructions>
 Write 4-6 short beats about what you are currently checking or comparing.
-
-Use ONLY the data provided:
-${JSON.stringify(context, null, 2)}
 
 CRITICAL STYLE RULES:
 - Use simple, direct language: "Scanning...", "Comparing...", "Checking..."
 - NO evaluative language like "Evaluating if...", "Assessing whether...", "Determining if..."
 - NO conditional phrasing like "if your skills match" or "whether X matches Y"
+- NO complex matching statements like "Matching your experience in X to the job's focus on Y"
 - Just state what you're doing: "Scanning your resume for [specific thing]..."
 - Keep it factual and process-oriented, not judgmental
+- Each beat should be clear and meaningful - avoid vague or overly complex statements
 
 Examples of CORRECT style:
-- "Scanning your resume highlights for ownership signals…"
-- "Comparing your experience with the job's expectations for this role…"
-- "Checking whether your background aligns with the key skills required…" (this is OK - it's checking, not evaluating)
-- "Matching your technical skills against the job requirements…"
+- "Scanning your resume for key skills and experience…"
+- "Comparing your background with the job requirements…"
+- "Checking your technical skills against what this role needs…"
+- "Reviewing your work history and achievements…"
+- "Analyzing how your experience relates to this position…"
 
 Examples of WRONG style (avoid these):
 - "Evaluating if your skills match the job's focus..." ❌
 - "Assessing whether your experience aligns..." ❌
+- "Matching your experience in driving frugality and continuous improvements to the job's focus on value engineering..." ❌ (too complex, doesn't mean anything)
 - "Determining if your background fits..." ❌
 
-Do not invent new facts.
-Do not generalize beyond the provided data.
-Keep each beat 1 sentence, max 2.
+CONSTRAINTS:
+- Do not invent new facts
+- Do not generalize beyond the provided data
+- Keep each beat 1 sentence, max 15 words
+- Make sure each beat is clear and meaningful - if it sounds vague or confusing, simplify it
+</instructions>
+
+## Output description
 
 Output as a JSON array of strings:
-["beat 1", "beat 2", "beat 3", ...]`
+["beat 1", "beat 2", "beat 3", ...]
+
+Use ONLY the data provided:
+${JSON.stringify(context, null, 2)}`
 
     const message = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307',

@@ -133,24 +133,33 @@ async function extractTraitSentences(
       return { clarity: clarityText, relevance: relevanceText, honesty: honestyText }
     }
 
-    const classificationPrompt = `You're analyzing coaching feedback about a resume. The feedback touches on three aspects:
+    const classificationPrompt = `<background_information>
+You are analyzing coaching feedback about a resume. The feedback touches on three aspects:
 - CLARITY: how clear, readable, or well-organized the writing is
 - RELEVANCE: how well the resume fits or aligns with the role
 - HONESTY: how authentic, genuine, or truthful the resume sounds
 
+Your goal is to classify each sentence in the feedback according to which aspect(s) it relates to.
+</background_information>
+
+<instructions>
 For each sentence below, identify which aspect(s) it relates to. A sentence can relate to multiple aspects.
 
-Sentences:
-${sentences.map((s, i) => `${i + 1}. ${s}`).join('\n')}
+If a sentence doesn't clearly relate to any aspect, omit it.
+</instructions>
+
+## Output description
 
 Return JSON mapping sentence numbers to aspects (can be multiple):
+
 {
   "clarity": [1, 3],
   "relevance": [2, 3],
   "honesty": [4]
 }
 
-If a sentence doesn't clearly relate to any aspect, omit it.`
+Sentences:
+${sentences.map((s, i) => `${i + 1}. ${s}`).join('\n')}`
 
     const classificationRes = await anthropic.messages.create({
       model,
@@ -218,52 +227,54 @@ export async function generateCoachingMessages(
       ? 'claude-3-7-sonnet-20250219'
       : 'claude-3-haiku-20240307'
 
-  const prompt = `You are a career coach helping a job seeker improve their resume.
+  const prompt = `<background_information>
+You are a career coach helping a job seeker improve their resume. You are speaking directly to the job seeker, not writing notes to yourself or the system.
 
-Speak directly to them. Write short, natural feedback as if chatting in person. You are speaking directly to the job seeker, not writing notes to yourself or the system.
-Never include internal thoughts, evaluations, or hidden commentary.
+You will receive:
+- An original resume (what the candidate actually has)
+- Evaluator feedback (may contain suggestions - distinguish from observations)
+- Context: Role: ${role || 'unspecified'}, Company: ${company || 'unspecified'}, Location: ${location || 'unspecified'}
 
+Your goal is to provide helpful, conversational feedback about clarity, relevance, and honesty.
+</background_information>
+
+<instructions>
 CRITICAL RULES - READ CAREFULLY:
 1. ONLY reference what is ACTUALLY in the resume. Never mention skills, experiences, or roles that aren't explicitly stated.
 2. The evaluator feedback may contain SUGGESTIONS (e.g., "consider adding X") - these are NOT things the candidate has. Only reference what's actually present.
 3. If the feedback says "you could add" or "consider emphasizing" - that means it's NOT currently there. Do NOT say "you mention X" if X isn't in the resume.
 4. Verify every claim: Before saying "you mention X" or "your experience with Y", check that X or Y actually appears in the resume text below.
 
-ORIGINAL RESUME (what the candidate actually has):
-${originalResume || 'Resume not provided - only reference what evaluator confirms exists.'}
-
-Don't use JSON or headings. Just write a few short paragraphs in a flowing, conversational style.
-
-Your note should touch on:
-- how clear the writing feels (clarity)
-- how well it fits the role (relevance)
-- whether it sounds authentic (honesty)
-
-Guidelines:
-- sound natural and conversational, not robotic
-- vary your phrasing and rhythm
-- use small, human touches like "I think" or "you might try"
-- never mention scores or evaluation metrics
-- don't repeat the same sentence structures
-- 80–120 words total
-- one flowing message, not sections
-- If role or company context is known, weave it naturally into one sentence, not repeatedly
-- Be specific: ONLY reference actual experiences, skills, or details that appear in the resume above
-- If suggesting improvements, say "you could consider X" not "you mention X" (unless X is actually in the resume)
-
-Context:
-Role: ${role || 'unspecified'}
-Company: ${company || 'unspecified'}
-Location: ${location || 'unspecified'}
-
-Evaluator feedback (may contain suggestions - distinguish from observations):
-${feedback || 'No specific feedback provided. Base your advice on general resume best practices.'}
-
-IMPORTANT: When reading evaluator feedback, distinguish between:
+When reading evaluator feedback, distinguish between:
 - OBSERVATIONS: "The resume mentions X" or "You have Y" → These are things actually in the resume
 - SUGGESTIONS: "Consider adding X" or "You could emphasize Y" → These are NOT in the resume, they're recommendations
 
-Only reference observations as facts. Treat suggestions as recommendations, not existing content.`
+Only reference observations as facts. Treat suggestions as recommendations, not existing content.
+
+Write short, natural feedback as if chatting in person:
+- Speak directly to them
+- Never include internal thoughts, evaluations, or hidden commentary
+- Don't use JSON or headings. Just write a few short paragraphs in a flowing, conversational style
+- Your note should touch on: how clear the writing feels (clarity), how well it fits the role (relevance), whether it sounds authentic (honesty)
+
+Guidelines:
+- Sound natural and conversational, not robotic
+- Vary your phrasing and rhythm
+- Use small, human touches like "I think" or "you might try"
+- Never mention scores or evaluation metrics
+- Don't repeat the same sentence structures
+- 80–120 words total
+- One flowing message, not sections
+- If role or company context is known, weave it naturally into one sentence, not repeatedly
+- Be specific: ONLY reference actual experiences, skills, or details that appear in the resume above
+- If suggesting improvements, say "you could consider X" not "you mention X" (unless X is actually in the resume)
+</instructions>
+
+ORIGINAL RESUME (what the candidate actually has):
+${originalResume || 'Resume not provided - only reference what evaluator confirms exists.'}
+
+Evaluator feedback (may contain suggestions - distinguish from observations):
+${feedback || 'No specific feedback provided. Base your advice on general resume best practices.'}`
 
   try {
     const res = await anthropic.messages.create({

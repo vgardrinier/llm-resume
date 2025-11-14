@@ -264,25 +264,34 @@ async function extractQuickMetadata(url: string) {
             },
             {
               type: 'text',
-              text: `You are analyzing a screenshot of a job posting webpage. Extract ONLY these 3 fields:
+              text: `<background_information>
+You are analyzing a screenshot of a job posting webpage. Your goal is to extract basic metadata fields from the job posting.
+</background_information>
+
+<instructions>
+Extract ONLY these 3 fields:
 
 1. The company name
 2. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
 3. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA" or "Warsaw, Poland")
-
-Please respond in JSON format:
-{
-  "companyName": "company name",
-  "jobTitle": "complete job title including all qualifiers",
-  "location": "city, state or city, country"
-}
 
 Instructions:
 - For job title: Extract the COMPLETE title as shown
 - For location: Look for city and state/country information, often shown near the job title or company name. Extract EXACTLY as written
 - If you cannot find certain fields, use null
 - DO NOT extract the job description - we only need these 3 fields
-- CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. Extract only plain text.`,
+- CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. Extract only plain text.
+</instructions>
+
+## Output description
+
+Please respond in JSON format:
+
+{
+  "companyName": "company name",
+  "jobTitle": "complete job title including all qualifiers",
+  "location": "city, state or city, country"
+}`,
             },
           ],
         },
@@ -388,20 +397,17 @@ async function extractWithVision(url: string, quick: boolean = false) {
             },
             {
               type: 'text',
-              text: `You are analyzing a screenshot of a job posting webpage. Extract the following information:
+              text: `<background_information>
+You are analyzing a screenshot of a job posting webpage. Your goal is to extract complete job posting information including the full job description and metadata.
+</background_information>
+
+<instructions>
+Extract the following information:
 
 1. The complete job description (all relevant text including responsibilities, qualifications, benefits, etc.)
 2. The company name
 3. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
 4. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA" or "Warsaw, Poland")
-
-Please respond in JSON format:
-{
-  "jobDescription": "the full job description text here",
-  "companyName": "company name",
-  "jobTitle": "complete job title including all qualifiers",
-  "location": "city, state or city, country"
-}
 
 Instructions:
 - Extract ALL relevant job posting content, not just a summary
@@ -416,7 +422,19 @@ Instructions:
 - DO NOT truncate, summarize, or abbreviate the job description. Extract every word, sentence, and paragraph.
 - If the job description is 2000+ characters, you MUST include all 2000+ characters in your response.
 - Use the full token allowance if needed - completeness is more important than brevity.
-- CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. Extract only plain text. Remove any emojis you see on the page.`,
+- CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. Extract only plain text. Remove any emojis you see on the page.
+</instructions>
+
+## Output description
+
+Please respond in JSON format:
+
+{
+  "jobDescription": "the full job description text here",
+  "companyName": "company name",
+  "jobTitle": "complete job title including all qualifiers",
+  "location": "city, state or city, country"
+}`,
             },
           ],
         },
@@ -591,23 +609,17 @@ CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. 
     }
 
     // Use Claude to parse the scraped content
-    const extractionPrompt = `You are a job posting parser. Extract the following information from this scraped webpage content:
+    const extractionPrompt = `<background_information>
+You are a job posting parser. Your goal is to extract complete job posting information from scraped webpage content.
+</background_information>
+
+<instructions>
+Extract the following information:
 
 1. The complete job description (all relevant text including responsibilities, qualifications, benefits, etc.)
 2. The company name
 3. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
 4. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA" or "Warsaw, Poland")
-
-Webpage Content:
-${htmlContent.slice(0, 80000)}
-
-Please respond in JSON format:
-{
-  "jobDescription": "the full job description text here",
-  "companyName": "company name",
-  "jobTitle": "complete job title including all qualifiers",
-  "location": "city, state or city, country"
-}
 
 Instructions:
 - Extract ALL relevant job posting content, not just a summary
@@ -619,8 +631,21 @@ Instructions:
 - DO NOT truncate, summarize, or abbreviate the job description. Extract every word, sentence, and paragraph.
 - If the job description is 2000+ characters, you MUST include all 2000+ characters in your response.
 - Use the full token allowance if needed - completeness is more important than brevity.
-- If you cannot find certain fields, use null
-- CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. Extract only plain text. Remove any emojis you see in the content.`
+</instructions>
+
+## Output description
+
+Please respond in JSON format:
+
+{
+  "jobDescription": "the full job description text here",
+  "companyName": "company name",
+  "jobTitle": "complete job title including all qualifiers",
+  "location": "city, state or city, country"
+}
+
+Webpage Content:
+${htmlContent.slice(0, 80000)}`
 
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
@@ -811,23 +836,17 @@ CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. 
     const htmlSlice = htmlContent.slice(0, 200000) // Increased from 50000 to capture more content
     console.log(`[FetchJob] Sending ${htmlSlice.length} chars of HTML to Claude (original: ${htmlContent.length} chars)`)
     
-    const extractionPrompt = `You are a job posting parser. Extract the following information from this HTML content:
+    const extractionPrompt = `<background_information>
+You are a job posting parser. Your goal is to extract complete job posting information from HTML content.
+</background_information>
+
+<instructions>
+Extract the following information:
 
 1. The complete job description (all relevant text including responsibilities, qualifications, benefits, etc.)
 2. The company name
 3. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
 4. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA" or "Warsaw, Poland")
-
-HTML Content:
-${htmlSlice}
-
-Please respond in JSON format:
-{
-  "jobDescription": "the full job description text here",
-  "companyName": "company name",
-  "jobTitle": "complete job title including all qualifiers",
-  "location": "city, state or city, country"
-}
 
 Instructions:
 - Extract ALL relevant job posting content, not just a summary
@@ -839,8 +858,21 @@ Instructions:
 - DO NOT truncate, summarize, or abbreviate the job description. Extract every word, sentence, and paragraph.
 - If the job description is 2000+ characters, you MUST include all 2000+ characters in your response.
 - Use the full token allowance if needed - completeness is more important than brevity.
-- If you cannot find certain fields, use null
-- CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. Extract only plain text. Remove any emojis you see in the HTML content.`
+</instructions>
+
+## Output description
+
+Please respond in JSON format:
+
+{
+  "jobDescription": "the full job description text here",
+  "companyName": "company name",
+  "jobTitle": "complete job title including all qualifiers",
+  "location": "city, state or city, country"
+}
+
+HTML Content:
+${htmlSlice}`
 
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',

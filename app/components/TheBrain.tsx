@@ -1,5 +1,6 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import type { ResumeAnalysis } from '@/types/api'
 import { CheckCircle2, XCircle, ArrowUp, TrendingUp } from 'lucide-react'
@@ -28,6 +29,39 @@ export function TheBrain({
   onStartOver
 }: TheBrainProps) {
   const improvement = analysis.fitScoreAfter - analysis.fitScoreBefore
+  
+  // Animated score counter
+  const [animatedScore, setAnimatedScore] = useState(analysis.fitScoreBefore)
+  
+  useEffect(() => {
+    // Animate from before to after score
+    const from = analysis.fitScoreBefore
+    const to = analysis.fitScoreAfter
+    
+    // If scores are the same, no animation needed
+    if (from === to) {
+      setAnimatedScore(to)
+      return
+    }
+    
+    const duration = 1500 // 1.5s animation
+    const stepCount = 30
+    const increment = (to - from) / stepCount
+    const intervalTime = duration / stepCount
+    
+    let current = from
+    const interval = setInterval(() => {
+      current += increment
+      if ((increment > 0 && current >= to) || (increment < 0 && current <= to)) {
+        setAnimatedScore(to)
+        clearInterval(interval)
+      } else {
+        setAnimatedScore(Math.round(current))
+      }
+    }, intervalTime)
+    
+    return () => clearInterval(interval)
+  }, [analysis.fitScoreBefore, analysis.fitScoreAfter])
 
   // Animation timing constants
   const ANIMATION_DURATION = 0.8
@@ -83,9 +117,15 @@ export function TheBrain({
           </div>
 
           <div className="text-center">
-            <div className="text-4xl font-semibold text-green-600 font-serif">
-              {analysis.fitScoreAfter}
-            </div>
+            <motion.div 
+              key={animatedScore}
+              initial={{ scale: 1 }}
+              animate={{ scale: [1, 1.1, 1] }}
+              transition={{ duration: 0.3 }}
+              className="text-4xl font-semibold text-green-600 font-serif"
+            >
+              {animatedScore}
+            </motion.div>
             <div className="text-xs text-gray-500 font-sans">After</div>
           </div>
         </div>
