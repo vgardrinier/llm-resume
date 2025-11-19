@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useReactToPrint } from 'react-to-print'
 import type { StructuredResume, ResumeChange } from '@/types/api'
 import { Check, X, Info, Download } from 'lucide-react'
 import { Button } from './Button'
@@ -126,6 +127,12 @@ export function ResumeEditor({
   onAcceptAll
 }: ResumeEditorProps) {
   const [hoveredChange, setHoveredChange] = useState<string | null>(null)
+  const resumeRef = useRef<HTMLDivElement>(null)
+
+  const handlePrint = useReactToPrint({
+    contentRef: resumeRef,
+    documentTitle: 'Resumelm_Resume',
+  })
 
   // Pre-index changes once (O(n) setup, O(1) lookups)
   const changeIndex = useMemo(() => {
@@ -834,18 +841,18 @@ export function ResumeEditor({
             Accept All
           </Button>
           <Button
-            onClick={() => {/* TODO: Export */}}
+            onClick={() => handlePrint()}
             variant="primary"
             className="flex items-center gap-2"
           >
             <Download className="h-4 w-4" />
-            Download
+            Download PDF
           </Button>
         </div>
       </div>
 
       {/* Resume Content - Inside glass container */}
-      <div className="bg-white/80 backdrop-blur-sm border border-gray-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.05)] rounded-lg p-12 flex-1 overflow-y-auto" style={{
+      <div ref={resumeRef} className="bg-white/80 backdrop-blur-sm border border-gray-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.05)] rounded-lg p-12 flex-1 overflow-y-auto print:overflow-visible print:h-auto print:bg-white print:p-0 print:shadow-none print:border-0" style={{
         lineHeight: '1.6'
       }}>
         {/* Contact Info */}
