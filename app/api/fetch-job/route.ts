@@ -26,20 +26,28 @@ function isJobPlatform(url: string): boolean {
 // Helper to remove emojis and decorative characters from text
 function removeEmojis(text: string | null | undefined): string {
   if (!text) return ''
-  // Remove emojis and other Unicode symbols (flags, decorative characters, etc.)
+  // Remove emojis and other Unicode symbols using RegExp constructor to avoid ES5/ES6 target issues
   // This regex matches most emoji ranges including flags, symbols, pictographs, etc.
-  return text
-    .replace(/[\u{1F300}-\u{1F9FF}]/gu, '') // Miscellaneous Symbols and Pictographs
-    .replace(/[\u{1F600}-\u{1F64F}]/gu, '') // Emoticons
-    .replace(/[\u{1F680}-\u{1F6FF}]/gu, '') // Transport and Map Symbols
-    .replace(/[\u{2600}-\u{26FF}]/gu, '') // Miscellaneous Symbols
-    .replace(/[\u{2700}-\u{27BF}]/gu, '') // Dingbats
-    .replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '') // Regional Indicator Symbols (flags)
-    .replace(/[\u{1F900}-\u{1F9FF}]/gu, '') // Supplemental Symbols and Pictographs
-    .replace(/[\u{1FA00}-\u{1FA6F}]/gu, '') // Chess Symbols
-    .replace(/[\u{1FA70}-\u{1FAFF}]/gu, '') // Symbols and Pictographs Extended-A
-    .replace(/\s+/g, ' ') // Normalize whitespace
-    .trim()
+  // We use new RegExp with the 'u' flag to properly handle unicode ranges
+  const ranges = [
+    '[\\u{1F300}-\\u{1F9FF}]', // Miscellaneous Symbols and Pictographs
+    '[\\u{1F600}-\u{1F64F}]', // Emoticons
+    '[\\u{1F680}-\u{1F6FF}]', // Transport and Map Symbols
+    '[\\u{2600}-\u{26FF}]',   // Miscellaneous Symbols
+    '[\\u{2700}-\u{27BF}]',   // Dingbats
+    '[\\u{1F1E0}-\u{1F1FF}]', // Regional Indicator Symbols (flags)
+    '[\\u{1F900}-\u{1F9FF}]', // Supplemental Symbols and Pictographs
+    '[\\u{1FA00}-\u{1FA6F}]', // Chess Symbols
+    '[\\u{1FA70}-\u{1FAFF}]', // Symbols and Pictographs Extended-A
+  ].join('|')
+  
+  try {
+    const regex = new RegExp(ranges, 'gu')
+    return text.replace(regex, '').replace(/\s+/g, ' ').trim()
+  } catch (e) {
+    // Fallback for older environments if regex construction fails
+    return text.replace(/\s+/g, ' ').trim()
+  }
 }
 
 // Helper to parse Claude's JSON response
