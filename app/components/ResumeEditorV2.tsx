@@ -138,12 +138,17 @@ export function ResumeEditor({
     documentTitle: `${optimizedResume.contactInfo.name.replace(/\s+/g, '_')}_${companyName && companyName.toLowerCase() !== 'company' ? companyName.replace(/\s+/g, '_') : 'Rightfit'}`,
     pageStyle: `
       @page {
-        margin: 0mm; 
+        margin: 15mm 20mm;
         size: auto;
       }
       @media print {
         body {
           -webkit-print-color-adjust: exact;
+          margin: 0;
+          padding: 0;
+        }
+        @page {
+          margin: 15mm 20mm;
         }
       }
     `
@@ -732,7 +737,7 @@ export function ResumeEditor({
                     }
 
                     return (
-                      <li key={bulletIdx} className="flex gap-2 text-sm print:text-xs leading-relaxed">
+                      <li key={bulletIdx} className="flex gap-2 text-sm leading-relaxed">
                         <span className="text-gray-400 flex-shrink-0 mt-0.5">•</span>
                         <div className="flex-1">
                           {renderTextWithChanges(bullet, bulletChanges, section.title)}
@@ -773,7 +778,7 @@ export function ResumeEditor({
               return (
                 <span
                   key={idx}
-                  className={`px-3 py-1 rounded-lg text-sm font-sans ${classes} ${idx >= 10 ? 'print:hidden' : ''}`}
+                  className={`px-3 py-1 rounded-lg text-xs font-sans ${classes} ${idx >= 10 ? 'print:hidden' : ''}`}
                 >
                   {skill}
                   {change && getChangeStatus(change.id) === 'pending' && (
@@ -867,8 +872,9 @@ export function ResumeEditor({
       </div>
 
       {/* Resume Content - Inside glass container */}
-      <div ref={resumeRef} className="bg-white/80 backdrop-blur-sm border border-gray-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.05)] rounded-lg p-12 flex-1 overflow-y-auto print:overflow-visible print:h-auto print:bg-white print:p-[15mm] print:shadow-none print:border-0 print:text-xs" style={{
-        lineHeight: '1.5'
+      <div ref={resumeRef} className="bg-white/80 backdrop-blur-sm border border-gray-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.05)] rounded-lg p-12 flex-1 overflow-y-auto print:overflow-visible print:h-auto print:bg-white print:p-0 print:shadow-none print:border-0" style={{
+        lineHeight: '1.5',
+        fontSize: 'inherit'
       }}>
         {/* Contact Info */}
         {optimizedResume.contactInfo && (
