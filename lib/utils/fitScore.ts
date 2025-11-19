@@ -3,15 +3,13 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
-
-// Add slight entropy to scores to avoid rounded numbers (e.g., 85, 90, 95)
-// Randomizes within ±2 points to keep numbers believable while breaking the "multiples of 5" pattern
+// REMOVED: Randomization causes variability between runs
+// Even deterministic randomization based on score value can cause issues when the LLM returns slightly different scores
+// Instead, we'll round to nearest integer without adding variation - this ensures maximum consistency
 function randomizeScore(val: number): number {
-  const randomized = Math.round(val + (Math.random() * 4 - 2))
-  return Math.max(0, Math.min(100, randomized))
+  // Simply round to nearest integer - no variation added
+  // This ensures same input → same output, maximum consistency
+  return Math.max(0, Math.min(100, Math.round(val)))
 }
 
 export interface FitScoreInputs {
@@ -49,22 +47,22 @@ export async function calculateFitScore(inputs: FitScoreInputs): Promise<FitScor
   // Check if job description is too short (likely incomplete)
   const isJobDescriptionIncomplete = jobDescription.trim().length < 200
   
-  const fitScorePrompt = `You are an expert recruiter and hiring manager evaluating how well a candidate's resume matches a job description.
+  const fitScorePrompt = `<background_information>
+You are an expert recruiter and hiring manager evaluating how well a candidate's resume matches a job description.
 
-JOB DESCRIPTION:
-${jobDescription}
+You will evaluate:
+- An original candidate resume
+- An optimized resume (improved version)
+- A job description
+- Keywords used in optimization: ${keywordsUsed.join(', ')}
+- Themes covered: ${themesCovered.join(', ')}
 
-${isJobDescriptionIncomplete ? '\n⚠️ NOTE: The job description appears incomplete or very brief. Please evaluate based on available information and note this limitation in your explanation.\n' : ''}
+${isJobDescriptionIncomplete ? '⚠️ NOTE: The job description appears incomplete or very brief. Please evaluate based on available information and note this limitation in your explanation.' : ''}
 
-ORIGINAL CANDIDATE RESUME:
-${candidateResume}
+Your goal is to assess how well the optimized resume fits the job requirements across multiple dimensions.
+</background_information>
 
-OPTIMIZED RESUME:
-${generatedResume}
-
-KEYWORDS USED: ${keywordsUsed.join(', ')}
-THEMES COVERED: ${themesCovered.join(', ')}
-
+<instructions>
 Evaluate the fit across these dimensions (0-100 scale each):
 
 1. KEYWORD MATCH (0-100): How well does the optimized resume incorporate key terms, skills, and requirements from the job description?
@@ -75,11 +73,21 @@ Evaluate the fit across these dimensions (0-100 scale each):
 
 4. SKILL OVERLAP (0-100): How well do the candidate's technical and soft skills match what's needed for this role?
 
-${isJobDescriptionIncomplete ? 'IMPORTANT: Since the job description is incomplete, base your evaluation on:\n- The keywords and themes that were extracted\n- General industry/role expectations\n- The candidate\'s overall qualifications\n- Note the limitation in your explanation\n' : ''}
+CRITICAL EVALUATION PRINCIPLE: The optimized resume should NEVER score lower than the original resume in any category or overall. Even if the job is not a perfect fit for the candidate, the optimization process improves the resume's presentation, clarity, and alignment with the job requirements. The optimization adds value by better presenting the candidate's existing qualifications. You can be honest about a poor fit (low absolute scores), but the optimized version should always score equal to or higher than the original in every dimension, reflecting that we've improved how the candidate's qualifications are presented, even when those qualifications don't perfectly match the role.
+
+${isJobDescriptionIncomplete ? 'IMPORTANT: Since the job description is incomplete, base your evaluation on:\n- The keywords and themes that were extracted\n- General industry/role expectations\n- The candidate\'s overall qualifications\n- Note the limitation in your explanation' : ''}
+
+IMPORTANT: Use varied, realistic scores (not just multiples of 5). Scores like 87, 92, 86, 83, 88 are more believable than 85, 90, 85, 80, 85.
+
+Be thorough but concise. Consider both the original resume and the optimized version.
+</instructions>
+
+## Output description
 
 CRITICAL: You MUST respond with valid JSON only. Do not include any explanatory text outside the JSON object. If the job description is incomplete, still provide scores based on available information.
 
 Provide your assessment as valid JSON only:
+
 {
   "overall_score": 87,
   "breakdown": {
@@ -91,15 +99,24 @@ Provide your assessment as valid JSON only:
   "explanation": "Strong match with excellent keyword integration and theme alignment. Candidate has relevant experience and skills, though some seniority gaps exist."
 }
 
-IMPORTANT: Use varied, realistic scores (not just multiples of 5). Scores like 87, 92, 86, 83, 88 are more believable than 85, 90, 85, 80, 85.
+JOB DESCRIPTION:
+${jobDescription}
 
-Be thorough but concise. Consider both the original resume and the optimized version.`
+ORIGINAL CANDIDATE RESUME:
+${candidateResume}
+
+OPTIMIZED RESUME:
+${generatedResume}`
 
   try {
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
       max_tokens: 1000,
-      temperature: 0.3, // Slightly higher for more varied scores (was 0.2)
+      temperature: 0.0, // Zero temperature for maximum consistency - same inputs should produce same scores
       messages: [
         {
           role: 'user',
@@ -280,10 +297,14 @@ Provide your assessment as valid JSON only:
 IMPORTANT: Use varied, realistic scores (not just multiples of 5). Scores like 73, 71, 74, 69, 76 are more believable than 72, 70, 72, 68, 74.`
 
   try {
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
       max_tokens: 800,
-      temperature: 0.3, // Slightly higher for more varied scores (was 0.2)
+      temperature: 0.0, // Zero temperature for maximum consistency - same inputs should produce same scores
       messages: [{ role: 'user', content: prompt }]
     })
 

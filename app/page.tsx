@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { Upload, Link2 } from 'lucide-react'
-import { ParseResumeResponse, GenerateInsightsResponse } from '@/types/api'
+import { ParseResumeResponse, GenerateInsightsResponse, StructuredResumeResponse } from '@/types/api'
 import { ChatNarrator } from '@/app/components/ChatNarrator'
 import { UploadingNarrative } from '@/app/components/UploadingNarrative'
 import { InsightCard } from '@/app/components/InsightCard'
@@ -12,6 +12,7 @@ import { Navbar } from '@/app/components/Navbar'
 import { Button } from '@/app/components/Button'
 import { ErrorAlert } from '@/app/components/ErrorAlert'
 import { Tooltip } from '@/app/components/Tooltip'
+import { ResumeWorkspace } from '@/app/components/ResumeWorkspace'
 import { AnimatePresence, motion } from 'framer-motion'
 
 export default function Home() {
@@ -19,7 +20,9 @@ export default function Home() {
   const [currentResume, setCurrentResume] = useState('')
   const [creativeMode, setCreativeMode] = useState<'conservative' | 'balanced' | 'assertive'>('balanced')
   const [result, setResult] = useState<GenerateInsightsResponse | null>(null)
+  const [structuredResult, setStructuredResult] = useState<StructuredResumeResponse | null>(null)
   const [loading, setLoading] = useState(false)
+  const [useStructuredFlow, setUseStructuredFlow] = useState(true) // Feature flag for new flow
   const [generationError, setGenerationError] = useState<string | null>(null)
   const [companyName, setCompanyName] = useState<string | null>(null)
   const [showResume, setShowResume] = useState(false)
@@ -42,65 +45,57 @@ export default function Home() {
   const [quickMetadata, setQuickMetadata] = useState<{ companyName?: string | null; jobTitle?: string | null; location?: string | null } | null>(null)
   const [fullJdPromise, setFullJdPromise] = useState<Promise<string> | null>(null)
 
-  // Helper function to get country flag emoji from location string
+  // State to store resolved flags for display (location -> flag emoji)
+  const [resolvedFlags, setResolvedFlags] = useState<Map<string, string>>(new Map())
+  // Ref to track pending requests to avoid duplicate API calls
+  const pendingFlagsRef = useRef<Set<string>>(new Set())
+  
+  // Resolve flag when location changes
+  useEffect(() => {
+    if (!quickMetadata?.location) return
+    
+    const locationKey = quickMetadata.location.trim().toLowerCase()
+    
+    // Skip if already resolved or pending
+    setResolvedFlags(prev => {
+      if (prev.has(locationKey) || pendingFlagsRef.current.has(locationKey)) {
+        return prev
+      }
+      
+      // Mark as pending
+      pendingFlagsRef.current.add(locationKey)
+      
+      // Fetch flag from API
+      fetch('/api/get-country-flag', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ location: quickMetadata.location }),
+      })
+        .then(response => response.json())
+        .then(data => {
+          const flag = data.flag ? ` ${data.flag}` : ''
+          setResolvedFlags(current => {
+            const next = new Map(current)
+            next.set(locationKey, flag)
+            return next
+          })
+          pendingFlagsRef.current.delete(locationKey)
+        })
+        .catch(error => {
+          console.error('[GetCountryFlag] Error fetching flag:', error)
+          pendingFlagsRef.current.delete(locationKey)
+        })
+      
+      return prev
+    })
+  }, [quickMetadata?.location])
+  
+  // Helper to get flag from cache (synchronous for display)
   const getCountryFlag = (location: string | null | undefined): string => {
     if (!location) return ''
-    
-    const locationLower = location.toLowerCase()
-    
-    // Common country mappings
-    const countryMap: { [key: string]: string } = {
-      'usa': '🇺🇸',
-      'united states': '🇺🇸',
-      'us': '🇺🇸',
-      'uk': '🇬🇧',
-      'united kingdom': '🇬🇧',
-      'canada': '🇨🇦',
-      'germany': '🇩🇪',
-      'france': '🇫🇷',
-      'spain': '🇪🇸',
-      'italy': '🇮🇹',
-      'netherlands': '🇳🇱',
-      'poland': '🇵🇱',
-      'portugal': '🇵🇹',
-      'sweden': '🇸🇪',
-      'norway': '🇳🇴',
-      'denmark': '🇩🇰',
-      'finland': '🇫🇮',
-      'switzerland': '🇨🇭',
-      'austria': '🇦🇹',
-      'belgium': '🇧🇪',
-      'ireland': '🇮🇪',
-      'australia': '🇦🇺',
-      'new zealand': '🇳🇿',
-      'japan': '🇯🇵',
-      'china': '🇨🇳',
-      'india': '🇮🇳',
-      'singapore': '🇸🇬',
-      'south korea': '🇰🇷',
-      'brazil': '🇧🇷',
-      'mexico': '🇲🇽',
-      'argentina': '🇦🇷',
-      'south africa': '🇿🇦',
-      'israel': '🇮🇱',
-      'uae': '🇦🇪',
-      'united arab emirates': '🇦🇪',
-    }
-    
-    // Check if location contains a country name
-    for (const [country, flag] of Object.entries(countryMap)) {
-      if (locationLower.includes(country)) {
-        return ` ${flag}`
-      }
-    }
-    
-    // Check for US states (common pattern: "City, ST")
-    const usStatePattern = /\b(AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY)\b/i
-    if (usStatePattern.test(location)) {
-      return ' 🇺🇸'
-    }
-    
-    return ''
+    return resolvedFlags.get(location.trim().toLowerCase()) || ''
   }
 
   // Known job platforms that require vision extraction (slower)
@@ -139,12 +134,27 @@ export default function Home() {
   }, [jobUrl])
 
   const generateResume = async () => {
+    // Start timing from button click
+    const userClickStart = performance.now()
+    const timingBreakdown: Record<string, number> = {
+      buttonClick: 0,
+      fullJdWait: 0,
+      apiCall: 0,
+      responseParse: 0,
+      stateUpdate: 0,
+      total: 0
+    }
+    
     setPhase('output')
     setLoading(true)
     setShowResume(false) // Reset resume visibility
+    
+    timingBreakdown.buttonClick = performance.now() - userClickStart
+    
     try {
       // If we have a background full JD extraction promise, wait for it
       let finalJobDescription = jobDescription
+      const fullJdWaitStart = performance.now()
       if (fullJdPromise) {
         console.log('[Frontend] Waiting for full JD extraction to complete...')
         const fullJd = await fullJdPromise
@@ -156,6 +166,7 @@ export default function Home() {
           console.warn('[Frontend] Full JD extraction failed, using existing job description')
         }
       }
+      timingBreakdown.fullJdWait = performance.now() - fullJdWaitStart
 
       // Debug: Log inputs before API call
       console.log('[Frontend] Starting resume generation', {
@@ -168,7 +179,11 @@ export default function Home() {
         waitedForFullJd: !!fullJdPromise,
       })
 
-      const response = await fetch('/api/orchestrator', {
+      // Choose API endpoint based on feature flag
+      const apiEndpoint = useStructuredFlow ? '/api/orchestrator-structured' : '/api/orchestrator'
+
+      const apiCallStart = performance.now()
+      const response = await fetch(apiEndpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -188,7 +203,7 @@ export default function Home() {
           statusText: response.statusText,
           error: errorData,
         })
-        
+
         // Provide user-friendly error messages based on status code
         let userMessage = 'Failed to generate resume. Please try again.'
         if (response.status === 400) {
@@ -205,24 +220,105 @@ export default function Home() {
         } else if (response.status >= 500) {
           userMessage = 'Service temporarily unavailable. Please try again shortly.'
         }
-        
+
         throw new Error(userMessage)
       }
 
-      const data: GenerateInsightsResponse = await response.json()
+      // Parse response based on which flow we're using
+      timingBreakdown.apiCall = performance.now() - apiCallStart
+      const parseStart = performance.now()
       
-      // Debug: Log API response
-      console.log('[Frontend] API response received', {
-        step: 'api_response',
-        hasInsights: !!data.insights,
-        hasFitScore: !!data.insights?.fit,
-        fitScoreBefore: data.insights?.fit?.score_before,
-        fitScoreAfter: data.insights?.fit?.score_after,
-        hasOptimizedResume: !!data.optimized_resume,
-        optimizedResumeLength: data.optimized_resume?.length || 0,
-      })
-      
-      setResult(data)
+      if (useStructuredFlow) {
+        const data: StructuredResumeResponse = await response.json()
+        timingBreakdown.responseParse = performance.now() - parseStart
+
+        // Extract server-side timing if available
+        const serverTiming = data.metadata?.timing || {}
+        
+        const stateUpdateStart = performance.now()
+        setStructuredResult(data)
+        timingBreakdown.stateUpdate = performance.now() - stateUpdateStart
+        
+        timingBreakdown.total = performance.now() - userClickStart
+
+        console.log('[Frontend] Structured API response received', {
+          step: 'api_response',
+          hasOptimizedResume: !!data.optimizedResume,
+          changesCount: data.changes?.length || 0,
+          hasAnalysis: !!data.analysis,
+          fitScoreBefore: data.analysis?.fitScoreBefore,
+          fitScoreAfter: data.analysis?.fitScoreAfter,
+        })
+
+        // Comprehensive timing breakdown
+        console.log('⏱️ TIMING BREAKDOWN (Button Click → Output Reveal):', {
+          'Client-Side': {
+            'Button Click → Setup': `${timingBreakdown.buttonClick.toFixed(0)}ms`,
+            'Full JD Wait (if any)': `${timingBreakdown.fullJdWait.toFixed(0)}ms`,
+            'API Call (network + server)': `${timingBreakdown.apiCall.toFixed(0)}ms`,
+            'Response Parse': `${timingBreakdown.responseParse.toFixed(0)}ms`,
+            'State Update': `${timingBreakdown.stateUpdate.toFixed(0)}ms`,
+            'TOTAL CLIENT TIME': `${timingBreakdown.total.toFixed(0)}ms (${(timingBreakdown.total / 1000).toFixed(1)}s)`
+          },
+          'Server-Side (from API)': {
+            'Analyzer (Sonnet)': serverTiming.analyzer_ms ? `${serverTiming.analyzer_ms}ms (${(serverTiming.analyzer_ms / 1000).toFixed(1)}s)` : 'N/A',
+            'Generator (Haiku)': serverTiming.generator_ms ? `${serverTiming.generator_ms}ms (${(serverTiming.generator_ms / 1000).toFixed(1)}s)` : 'N/A',
+            'Curator (Haiku)': serverTiming.curator_ms ? `${serverTiming.curator_ms}ms (${(serverTiming.curator_ms / 1000).toFixed(1)}s)` : 'N/A',
+            'Fit Score Calc': serverTiming.fitScore_ms ? `${serverTiming.fitScore_ms}ms (${(serverTiming.fitScore_ms / 1000).toFixed(1)}s)` : 'N/A',
+            'TOTAL SERVER TIME': serverTiming.total_ms ? `${serverTiming.total_ms}ms (${(serverTiming.total_ms / 1000).toFixed(1)}s)` : 'N/A'
+          },
+          'Bottleneck Analysis': (() => {
+            const bottlenecks: string[] = []
+            if (serverTiming.analyzer_ms && serverTiming.analyzer_ms > 30000) {
+              bottlenecks.push(`⚠️ Analyzer (Sonnet) is slow: ${(serverTiming.analyzer_ms / 1000).toFixed(1)}s`)
+            }
+            if (serverTiming.generator_ms && serverTiming.generator_ms > 20000) {
+              bottlenecks.push(`⚠️ Generator (Haiku) is slow: ${(serverTiming.generator_ms / 1000).toFixed(1)}s`)
+            }
+            if (serverTiming.curator_ms && serverTiming.curator_ms > 15000) {
+              bottlenecks.push(`⚠️ Curator (Haiku) is slow: ${(serverTiming.curator_ms / 1000).toFixed(1)}s`)
+            }
+            if (serverTiming.fitScore_ms && serverTiming.fitScore_ms > 10000) {
+              bottlenecks.push(`⚠️ Fit Score calculation is slow: ${(serverTiming.fitScore_ms / 1000).toFixed(1)}s`)
+            }
+            if (timingBreakdown.apiCall > 120000) {
+              bottlenecks.push(`⚠️ Total API call is very long: ${(timingBreakdown.apiCall / 1000).toFixed(1)}s`)
+            }
+            return bottlenecks.length > 0 ? bottlenecks : ['✅ All timings look reasonable']
+          })()
+        })
+      } else {
+        const data: GenerateInsightsResponse = await response.json()
+        timingBreakdown.responseParse = performance.now() - parseStart
+
+        const stateUpdateStart = performance.now()
+        setResult(data)
+        timingBreakdown.stateUpdate = performance.now() - stateUpdateStart
+        
+        timingBreakdown.total = performance.now() - userClickStart
+
+        console.log('[Frontend] Legacy API response received', {
+          step: 'api_response',
+          hasInsights: !!data.insights,
+          hasFitScore: !!data.insights?.fit,
+          fitScoreBefore: data.insights?.fit?.score_before,
+          fitScoreAfter: data.insights?.fit?.score_after,
+          hasOptimizedResume: !!data.optimized_resume,
+          optimizedResumeLength: data.optimized_resume?.length || 0,
+        })
+
+        console.log('⏱️ TIMING BREAKDOWN (Button Click → Output Reveal):', {
+          'Client-Side': {
+            'Button Click → Setup': `${timingBreakdown.buttonClick.toFixed(0)}ms`,
+            'Full JD Wait (if any)': `${timingBreakdown.fullJdWait.toFixed(0)}ms`,
+            'API Call (network + server)': `${timingBreakdown.apiCall.toFixed(0)}ms`,
+            'Response Parse': `${timingBreakdown.responseParse.toFixed(0)}ms`,
+            'State Update': `${timingBreakdown.stateUpdate.toFixed(0)}ms`,
+            'TOTAL CLIENT TIME': `${timingBreakdown.total.toFixed(0)}ms (${(timingBreakdown.total / 1000).toFixed(1)}s)`
+          }
+        })
+      }
+
       setGenerationError(null) // Clear any previous errors on success
     } catch (error) {
       console.error('Error generating resume:', error)
@@ -249,6 +345,7 @@ export default function Home() {
     setLoading(false)
     setShowResume(false)
     setResult(null)
+    setStructuredResult(null)
     setCompanyName(null)
     setJobDescription('')
     setJobUrl('')
@@ -409,7 +506,7 @@ export default function Home() {
         })
         
         if (quickData.companyName) setCompanyName(quickData.companyName)
-        
+
         // Start full JD extraction in background
         const fullExtractionPromise = fetch('/api/fetch-job', {
           method: 'POST',
@@ -451,7 +548,7 @@ export default function Home() {
             // Return empty string if full extraction fails - we'll use what we have
             return ''
           })
-        
+
         setFullJdPromise(fullExtractionPromise)
         setUrlFetchSuccess(true)
         setUrlLoading(false)
@@ -497,7 +594,11 @@ export default function Home() {
   return (
     <div className="flex-1 flex flex-col">
       {/* Navbar */}
-      <Navbar jobUrl={jobUrl} uploadedFileName={uploadedFile?.name} />
+      <Navbar 
+        jobUrl={jobUrl} 
+        uploadedFileName={uploadedFile?.name} 
+        onHomeClick={startOver}
+      />
 
       {/* Main content - centered vertically and horizontally */}
       {/* Background image transition */}
@@ -543,7 +644,7 @@ export default function Home() {
           className="fixed inset-0 -z-10"
           initial={false}
           animate={{
-            opacity: phase === 'output' ? 1 : 0,
+            opacity: phase === 'output' || structuredResult ? 1 : 0,
           }}
           transition={{
             opacity: { duration: 0.6, ease: [0.25, 0.1, 0.25, 1] },
@@ -562,7 +663,7 @@ export default function Home() {
             }}
           />
         </motion.div>
-        <div className="w-full max-w-3xl flex flex-col items-center md:items-center pt-6 md:pt-0">
+        <div className={`w-full ${structuredResult ? 'max-w-none' : 'max-w-3xl'} flex flex-col items-center md:items-center pt-6 md:pt-0`}>
           {/* Hero Title with AnimatePresence for smooth fade-out */}
           <AnimatePresence>
             {phase === 'input' && (
@@ -619,7 +720,7 @@ export default function Home() {
                           className="flex-1 min-h-[56px] px-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all hover:border-gray-400 backdrop-blur-sm bg-white/60 placeholder:text-gray-500 text-gray-900 text-sm md:text-base font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
                           disabled={urlLoading}
                         />
-                        <Tooltip content="Fetch job description" position="top" delay={200}>
+                        <Tooltip key="fetch-job-tooltip" content="Fetch job description" position="top" align="left" delay={200}>
                           <button
                             type="button"
                             onClick={handleFetchJobFromUrl}
@@ -638,16 +739,34 @@ export default function Home() {
 
                       {/* Resume Upload - Desktop: next to URL, Mobile: below */}
                       <div className="flex gap-2 md:flex-shrink-0">
-                        <Tooltip content="Upload résumé (PDF)" position="top" delay={200}>
+                        <Tooltip key="upload-resume-tooltip" content={uploadedFile && currentResume ? "Résumé uploaded successfully" : "Upload résumé (PDF)"} position="left" delay={200}>
                           <button
                             type="button"
                             onClick={handleUploadClick}
                             disabled={parseLoading}
-                            className="min-h-[56px] min-w-[56px] rounded-xl bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 text-white border border-gray-900 flex items-center justify-center transition-all flex-shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
+                            className={`min-h-[56px] min-w-[56px] rounded-xl text-white border flex items-center justify-center transition-all flex-shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.05)] ${
+                              uploadedFile && currentResume && !parseLoading
+                                ? 'bg-green-600 hover:bg-green-700 border-green-600'
+                                : parseLoading
+                                ? 'bg-gray-300 border-gray-300'
+                                : 'bg-gray-900 hover:bg-gray-800 border-gray-900'
+                            }`}
                             aria-label="Upload résumé PDF"
                           >
                             {parseLoading ? (
                               <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent"></div>
+                            ) : uploadedFile && currentResume ? (
+                              <motion.svg
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                                className="h-5 w-5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </motion.svg>
                             ) : (
                               <Upload className="h-5 w-5" />
                             )}
@@ -665,34 +784,66 @@ export default function Home() {
                         
                         {/* File status display - Desktop: next to icon, Mobile: below */}
                         <div className="flex-1 min-w-0 flex items-center md:hidden">
-                          {uploadedFile && currentResume && !parseLoading ? (
-                            <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-xl border border-gray-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
-                              ✓ {uploadedFile.name}
-                            </div>
-                          ) : parseError ? (
-                            <div className="text-xs text-red-900 backdrop-blur-sm bg-red-50/80 px-3 py-2 rounded-xl border border-red-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
-                              ⚠️ {parseError}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-gray-500 font-serif">Upload résumé (PDF)</span>
-                          )}
+                          <AnimatePresence mode="wait">
+                            {uploadedFile && currentResume && !parseLoading ? (
+                              <motion.div
+                                key="success"
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 10 }}
+                                transition={{ duration: 0.3 }}
+                                className="text-xs text-green-900 backdrop-blur-sm bg-green-50/80 px-3 py-2 rounded-xl border border-green-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
+                              >
+                                ✓ {uploadedFile.name}
+                              </motion.div>
+                            ) : parseError ? (
+                              <motion.div
+                                key="error"
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 10 }}
+                                transition={{ duration: 0.3 }}
+                                className="text-xs text-red-900 backdrop-blur-sm bg-red-50/80 px-3 py-2 rounded-xl border border-red-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
+                              >
+                                ⚠️ {parseError}
+                              </motion.div>
+                            ) : (
+                              <span className="text-xs text-gray-500 font-serif">Upload résumé (PDF)</span>
+                            )}
+                          </AnimatePresence>
                         </div>
                       </div>
                     </div>
 
                     {/* Mobile: Upload text below icon */}
                     <div className="md:hidden flex justify-center">
-                      {uploadedFile && currentResume && !parseLoading ? (
-                        <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-xl border border-gray-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
-                          ✓ {uploadedFile.name}
-                        </div>
-                      ) : parseError ? (
-                        <div className="text-xs text-red-900 backdrop-blur-sm bg-red-50/80 px-3 py-2 rounded-xl border border-red-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
-                          ⚠️ {parseError}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-gray-500 font-serif">Upload résumé (PDF)</span>
-                      )}
+                      <AnimatePresence mode="wait">
+                        {uploadedFile && currentResume && !parseLoading ? (
+                          <motion.div
+                            key="success-mobile"
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            transition={{ duration: 0.3 }}
+                            className="text-xs text-green-900 backdrop-blur-sm bg-green-50/80 px-3 py-2 rounded-xl border border-green-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
+                          >
+                            ✓ {uploadedFile.name}
+                          </motion.div>
+                        ) : parseError ? (
+                          <motion.div
+                            key="error-mobile"
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            transition={{ duration: 0.3 }}
+                            className="text-xs text-red-900 backdrop-blur-sm bg-red-50/80 px-3 py-2 rounded-xl border border-red-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
+                          >
+                            ⚠️ {parseError}
+                          </motion.div>
+                        ) : (
+                          <span className="text-xs text-gray-500 font-serif">Upload résumé (PDF)</span>
+                        )}
+                      </AnimatePresence>
                     </div>
 
                     {/* Helper text and status messages */}
@@ -804,42 +955,60 @@ export default function Home() {
                   transition={{ duration: 0.4, ease: [0.25, 0.1, 0.25, 1] }}
                   className="w-full flex justify-center"
                 >
-                  <div className="w-full max-w-3xl px-0 sm:px-4 py-6 sm:py-8 mx-auto my-8">
-                    {/* Error state */}
-                    {generationError && !loading && (
-                      <div className="mb-6">
-                        <ErrorAlert
-                          message={generationError}
-                          onDismiss={() => setGenerationError(null)}
-                          onRetry={generateResume}
-                          variant="error"
-                        />
-                      </div>
-                    )}
-                    
-                    {/* Loading state */}
-                    {loading && !result && (
-                      <UploadingNarrative jobDescription={jobDescription} companyNameHint={companyName ?? undefined} />
-                    )}
+                  {/* Structured Results (full-width workspace) */}
+                  {structuredResult && (
+                    <ResumeWorkspace
+                      data={structuredResult}
+                      onStartOver={startOver}
+                    />
+                  )}
 
-                    {/* Results */}
-                    {result && (
-                      <div className="space-y-6">
-                        <ChatNarrator insights={result.insights} />
-
-                        {/* Start Over button */}
-                        <div className="pt-6 border-t border-gray-100">
-                          <button
-                            type="button"
-                            onClick={startOver}
-                            className="w-full text-center text-gray-600 hover:text-gray-800 underline text-sm transition-colors font-serif"
-                          >
-                            Start over
-                          </button>
+                  {/* Legacy/Loading States (constrained width) */}
+                  {!structuredResult && (
+                    <div className="w-full max-w-3xl px-0 sm:px-4 py-6 sm:py-8 mx-auto my-8">
+                      {/* Error state */}
+                      {generationError && !loading && (
+                        <div className="mb-6">
+                          <ErrorAlert
+                            message={generationError}
+                            onDismiss={() => setGenerationError(null)}
+                            onRetry={generateResume}
+                            variant="error"
+                          />
                         </div>
-                      </div>
-                    )}
-                  </div>
+                      )}
+
+                      {/* Loading state */}
+                      {loading && !result && (
+                        <UploadingNarrative 
+                          jobDescription={jobDescription} 
+                          companyNameHint={companyName ?? undefined}
+                          jobTitle={quickMetadata?.jobTitle || null}
+                          location={quickMetadata?.location || null}
+                          resume={currentResume}
+                          isLoading={loading}
+                        />
+                      )}
+
+                      {/* Legacy Results (old chat narrator) */}
+                      {result && (
+                        <div className="space-y-6">
+                          <ChatNarrator insights={result.insights} />
+
+                          {/* Start Over button */}
+                          <div className="pt-6 border-t border-gray-100">
+                            <button
+                              type="button"
+                              onClick={startOver}
+                              className="w-full text-center text-gray-600 hover:text-gray-800 underline text-sm transition-colors font-serif"
+                            >
+                              Start over
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>

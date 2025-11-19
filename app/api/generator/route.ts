@@ -3,10 +3,6 @@ import Anthropic from '@anthropic-ai/sdk'
 import { extractJobTitleAndLocation, lookupSalary, generateSalaryContext } from '@/lib/utils/salaryMCP'
 import { parseClaudeJson, parseClaudeJsonArray } from '@/lib/utils/parseJson'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
-
 // Extract explicit keywords from job description (for ATS matching)
 async function extractKeywords(jobDescription: string): Promise<string[]> {
   const extractionPrompt = `Extract 10-15 concrete keywords and phrases from this job description that are critical for ATS matching and role alignment.
@@ -26,6 +22,10 @@ Return ONLY a JSON array of strings (10-15 keywords):
 Be specific and concrete - these will be used to optimize the resume for ATS systems.`
 
   try {
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307',
       max_tokens: 300,
@@ -75,6 +75,10 @@ Be specific and prioritize what this role ACTUALLY requires. Return ONLY a JSON 
 Limit to 5-7 most critical themes.`
 
   try {
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307',
       max_tokens: 500,
@@ -165,10 +169,20 @@ export async function POST(request: NextRequest) {
     })
     
     // Build the system prompt
-    const systemPrompt = `You are a professional résumé optimizer specializing in technical and product roles.
+    const systemPrompt = `<background_information>
+You are a professional résumé optimizer specializing in technical and product roles. Your role is to rewrite a candidate's résumé so it fits a specific job description WITHOUT inventing ANY untrue facts.
 
-IDENTITY & ETHICS:
-- Your job is to rewrite the candidate's résumé so it fits a specific job description WITHOUT inventing ANY untrue facts
+You will receive:
+- A job description (the target role)
+- A candidate's original résumé
+${salaryContext ? `- Salary context: ${salaryContext}` : ''}
+${revision_goals ? `- Revision goals: ${revision_goals}` : ''}
+
+Your goal is to make the résumé feel tailor-made for the role, truthful, and impressive while maintaining complete honesty.
+</background_information>
+
+<instructions>
+ETHICS & CONSTRAINTS:
 - You may reword, emphasize, or generalize existing achievements, but NEVER add details not implied by the candidate's background
 - CRITICAL: NEVER invent company names, job titles, or specific projects that aren't in the original resume
 - CRITICAL: NEVER add specific metrics, numbers, or achievements that aren't clearly implied in the original
@@ -177,7 +191,6 @@ IDENTITY & ETHICS:
 - You may emphasize scale or impact using relative phrasing ("significant", "double-digit", "multi-country") instead of inventing numbers
 - Preserve the candidate's writing style and personality - do not genericize
 - Tone: concise, confident, metric-oriented
-- Goal: make the résumé feel tailor-made for the role, truthful, and impressive
 
 STRUCTURE REQUIREMENTS:
 - CRITICAL: One-page résumé targeting 500-650 words MAX. Keep it tight and impactful.
@@ -198,8 +211,20 @@ KEYWORD REQUIREMENTS:
 - Do not force keywords if they're irrelevant to the candidate's actual experience
 - Weave keywords into natural, readable sentences - avoid keyword stuffing
 
-OUTPUT FORMAT:
+CREATIVE MODE: ${creative_mode}
+${creative_mode === 'assertive' ? '- You may elevate tone and reframe generic achievements as outcomes, still truthful\n- Use vivid, impactful adjectives: "transformative", "exceptional", "outstanding", "remarkable", "pioneering", "breakthrough"\n- Emphasize scale and impact with strong descriptors while staying factual' : ''}
+${creative_mode === 'conservative' ? '- Maintain conservative tone, focus on factual accuracy over impact' : ''}
+
+${revision_goals ? `REVISION GOALS (incorporate these improvements):
+${revision_goals}
+
+When rewriting the resume, make sure to address these specific suggestions while maintaining all factual accuracy.` : ''}
+</instructions>
+
+## Output description
+
 Return only valid JSON with this structure:
+
 {
   "resume_md": "markdown resume text with escaped newlines",
   "fit_summary": "3-line explanation of why candidate fits + what was emphasized",
@@ -210,20 +235,11 @@ Return only valid JSON with this structure:
 
 CRITICAL: All newlines in string values must be escaped as \\n (not literal newlines).
 
-CREATIVE MODE: ${creative_mode}
-${creative_mode === 'assertive' ? '- You may elevate tone and reframe generic achievements as outcomes, still truthful\n- Use vivid, impactful adjectives: "transformative", "exceptional", "outstanding", "remarkable", "pioneering", "breakthrough"\n- Emphasize scale and impact with strong descriptors while staying factual' : ''}
-${creative_mode === 'conservative' ? '- Maintain conservative tone, focus on factual accuracy over impact' : ''}
-
 Job Description:
 ${job_description}
 
 Candidate Resume:
-${candidate_resume}
-
-${salaryContext ? `${salaryContext}\n\n` : ''}${revision_goals ? `\n\nREVISION GOALS (incorporate these improvements):
-${revision_goals}
-
-When rewriting the resume, make sure to address these specific suggestions while maintaining all factual accuracy.` : ''}`
+${candidate_resume}`
 
     // Map temperature dynamically based on creative mode
     // Conservative: 0.2 (more deterministic, factual)
@@ -234,6 +250,10 @@ When rewriting the resume, make sure to address these specific suggestions while
     console.log(`[Generator] Using temperature: ${temperature} for mode: ${creative_mode}`)
 
     // Call Claude Haiku for initial generation
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307',
       max_tokens: 4000,

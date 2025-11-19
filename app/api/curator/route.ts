@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { parseClaudeJson } from '@/lib/utils/parseJson'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
-
 export interface EvaluationResult {
   clarity: number // 0-100
   relevance: number // 0-100
@@ -124,6 +120,10 @@ Return ONLY JSON:
 }`
 
     // Call Claude Sonnet for evaluation
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
       max_tokens: 1500,
@@ -205,6 +205,10 @@ ${job_description}
 Return ONLY the revised resume text in Markdown format. Do not include any explanation or JSON wrapper - just the resume text itself.`
 
         try {
+          const anthropic = new Anthropic({
+            apiKey: process.env.ANTHROPIC_API_KEY,
+          })
+
           const revisionMessage = await anthropic.messages.create({
             model: 'claude-3-haiku-20240307', // Use Haiku for cost optimization (~80% cheaper)
             max_tokens: 4000,

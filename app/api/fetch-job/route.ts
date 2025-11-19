@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import puppeteer from 'puppeteer'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
-
 // Known job platforms that typically block scraping
 const JOB_PLATFORMS = [
   'linkedin.com',
@@ -15,6 +11,7 @@ const JOB_PLATFORMS = [
   'careerbuilder.com',
   'ziprecruiter.com',
   'simplyhired.com',
+  'amazon.jobs',
 ]
 
 function isJobPlatform(url: string): boolean {
@@ -23,6 +20,33 @@ function isJobPlatform(url: string): boolean {
     return JOB_PLATFORMS.some(platform => hostname.includes(platform))
   } catch {
     return false
+  }
+}
+
+// Helper to remove emojis and decorative characters from text
+function removeEmojis(text: string | null | undefined): string {
+  if (!text) return ''
+  // Remove emojis and other Unicode symbols using RegExp constructor to avoid ES5/ES6 target issues
+  // This regex matches most emoji ranges including flags, symbols, pictographs, etc.
+  // We use new RegExp with the 'u' flag to properly handle unicode ranges
+  const ranges = [
+    '[\\u{1F300}-\\u{1F9FF}]', // Miscellaneous Symbols and Pictographs
+    '[\\u{1F600}-\u{1F64F}]', // Emoticons
+    '[\\u{1F680}-\u{1F6FF}]', // Transport and Map Symbols
+    '[\\u{2600}-\u{26FF}]',   // Miscellaneous Symbols
+    '[\\u{2700}-\u{27BF}]',   // Dingbats
+    '[\\u{1F1E0}-\u{1F1FF}]', // Regional Indicator Symbols (flags)
+    '[\\u{1F900}-\u{1F9FF}]', // Supplemental Symbols and Pictographs
+    '[\\u{1FA00}-\u{1FA6F}]', // Chess Symbols
+    '[\\u{1FA70}-\u{1FAFF}]', // Symbols and Pictographs Extended-A
+  ].join('|')
+  
+  try {
+    const regex = new RegExp(ranges, 'gu')
+    return text.replace(regex, '').replace(/\s+/g, ' ').trim()
+  } catch (e) {
+    // Fallback for older environments if regex construction fails
+    return text.replace(/\s+/g, ' ').trim()
   }
 }
 
@@ -151,8 +175,8 @@ function extractFromJsonLd(html: string): { jobDescription?: string; companyName
         }
 
         const fullDesc = descParts.join('\n\n').trim()
-        const company = item.hiringOrganization?.name || item.organization?.name
-        const title = item.title || item.name
+        const company = removeEmojis(item.hiringOrganization?.name || item.organization?.name)
+        const title = removeEmojis(item.title || item.name)
         // Extract location from JSON-LD structure
         const locationObj = item.jobLocation || item.workLocation
         let location: string | undefined = undefined
@@ -172,7 +196,12 @@ function extractFromJsonLd(html: string): { jobDescription?: string; companyName
         }
 
         if (fullDesc && fullDesc.length >= 40) {
-          return { jobDescription: fullDesc, companyName: company || undefined, jobTitle: title || undefined, location }
+          return { 
+            jobDescription: removeEmojis(fullDesc), 
+            companyName: company || undefined, 
+            jobTitle: title || undefined, 
+            location: location ? removeEmojis(location) : undefined 
+          }
         }
       }
     } catch {
@@ -223,6 +252,10 @@ async function extractQuickMetadata(url: string) {
     console.log('[FetchJob] Quick extraction: Sending to Claude Vision...')
     const screenshotBase64 = screenshot
 
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-5-haiku-20241022', // Use Haiku for speed
       max_tokens: 1000, // Much smaller since we only need 3 fields
@@ -240,24 +273,34 @@ async function extractQuickMetadata(url: string) {
             },
             {
               type: 'text',
-              text: `You are analyzing a screenshot of a job posting webpage. Extract ONLY these 3 fields:
+              text: `<background_information>
+You are analyzing a screenshot of a job posting webpage. Your goal is to extract basic metadata fields from the job posting.
+</background_information>
+
+<instructions>
+Extract ONLY these 3 fields:
 
 1. The company name
 2. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
 3. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA" or "Warsaw, Poland")
 
-Please respond in JSON format:
-{
-  "companyName": "company name",
-  "jobTitle": "complete job title including all qualifiers",
-  "location": "city, state or city, country"
-}
-
 Instructions:
 - For job title: Extract the COMPLETE title as shown
 - For location: Look for city and state/country information, often shown near the job title or company name. Extract EXACTLY as written
 - If you cannot find certain fields, use null
-- DO NOT extract the job description - we only need these 3 fields`,
+- DO NOT extract the job description - we only need these 3 fields
+- CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. Extract only plain text.
+</instructions>
+
+## Output description
+
+Please respond in JSON format:
+
+{
+  "companyName": "company name",
+  "jobTitle": "complete job title including all qualifiers",
+  "location": "city, state or city, country"
+}`,
             },
           ],
         },
@@ -267,12 +310,19 @@ Instructions:
     const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
     const extractedData = parseClaudeResponse(responseText)
 
-    console.log(`[FetchJob] Quick extraction result - Job: "${extractedData.jobTitle}", Company: "${extractedData.companyName}", Location: "${extractedData.location}"`)
+    // Remove emojis from extracted data
+    const cleanedData = {
+      companyName: removeEmojis(extractedData.companyName) || null,
+      jobTitle: removeEmojis(extractedData.jobTitle) || null,
+      location: removeEmojis(extractedData.location) || null,
+    }
+
+    console.log(`[FetchJob] Quick extraction result - Job: "${cleanedData.jobTitle}", Company: "${cleanedData.companyName}", Location: "${cleanedData.location}"`)
 
     return NextResponse.json({
-      companyName: extractedData.companyName || null,
-      jobTitle: extractedData.jobTitle || null,
-      location: extractedData.location || null,
+      companyName: cleanedData.companyName,
+      jobTitle: cleanedData.jobTitle,
+      location: cleanedData.location,
       quick: true, // Flag to indicate this is a quick extraction
     })
 
@@ -339,6 +389,10 @@ async function extractWithVision(url: string, quick: boolean = false) {
     console.log('Screenshot captured, sending to Claude Vision...')
     const screenshotBase64 = screenshot
 
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
       max_tokens: 32000, // Increased to ensure full job description extraction (no truncation)
@@ -356,20 +410,17 @@ async function extractWithVision(url: string, quick: boolean = false) {
             },
             {
               type: 'text',
-              text: `You are analyzing a screenshot of a job posting webpage. Extract the following information:
+              text: `<background_information>
+You are analyzing a screenshot of a job posting webpage. Your goal is to extract complete job posting information including the full job description and metadata.
+</background_information>
+
+<instructions>
+Extract the following information:
 
 1. The complete job description (all relevant text including responsibilities, qualifications, benefits, etc.)
 2. The company name
 3. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
 4. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA" or "Warsaw, Poland")
-
-Please respond in JSON format:
-{
-  "jobDescription": "the full job description text here",
-  "companyName": "company name",
-  "jobTitle": "complete job title including all qualifiers",
-  "location": "city, state or city, country"
-}
 
 Instructions:
 - Extract ALL relevant job posting content, not just a summary
@@ -383,7 +434,20 @@ Instructions:
 - CRITICAL: The jobDescription field must contain the FULL job description, not a summary. If the description is long, include all of it.
 - DO NOT truncate, summarize, or abbreviate the job description. Extract every word, sentence, and paragraph.
 - If the job description is 2000+ characters, you MUST include all 2000+ characters in your response.
-- Use the full token allowance if needed - completeness is more important than brevity.`,
+- Use the full token allowance if needed - completeness is more important than brevity.
+- CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. Extract only plain text. Remove any emojis you see on the page.
+</instructions>
+
+## Output description
+
+Please respond in JSON format:
+
+{
+  "jobDescription": "the full job description text here",
+  "companyName": "company name",
+  "jobTitle": "complete job title including all qualifiers",
+  "location": "city, state or city, country"
+}`,
             },
           ],
         },
@@ -393,34 +457,42 @@ Instructions:
     const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
     const extractedData = parseClaudeResponse(responseText)
 
-    const jobDescLength = extractedData.jobDescription?.length || 0
-    console.log(`Vision extraction result - Job: "${extractedData.jobTitle}", Company: "${extractedData.companyName}", Location: "${extractedData.location}", Description: ${jobDescLength} chars`)
+    // Remove emojis from extracted data
+    const cleanedData = {
+      jobDescription: removeEmojis(extractedData.jobDescription),
+      companyName: removeEmojis(extractedData.companyName) || null,
+      jobTitle: removeEmojis(extractedData.jobTitle) || null,
+      location: removeEmojis(extractedData.location) || null,
+    }
+
+    const jobDescLength = cleanedData.jobDescription?.length || 0
+    console.log(`Vision extraction result - Job: "${cleanedData.jobTitle}", Company: "${cleanedData.companyName}", Location: "${cleanedData.location}", Description: ${jobDescLength} chars`)
     
     // Warn if job description seems truncated (less than 500 chars is suspiciously short)
     if (jobDescLength > 0 && jobDescLength < 500) {
       console.warn(`[FetchJob] WARNING: Extracted job description is very short (${jobDescLength} chars). May be truncated.`)
     }
 
-    if (!extractedData.jobDescription || extractedData.jobDescription.trim().length < 40) {
+    if (!cleanedData.jobDescription || cleanedData.jobDescription.trim().length < 40) {
       return NextResponse.json(
         { error: 'Could not extract a valid job description from this URL. The page may not contain a job posting.' },
         { status: 422 }
       )
     }
 
-    const jdLength = extractedData.jobDescription.length
+    const jdLength = cleanedData.jobDescription.length
     console.log(`[FetchJob] ✅ Full JD extraction completed: ${jdLength} characters`, {
-      jobTitle: extractedData.jobTitle || 'N/A',
-      company: extractedData.companyName || 'N/A',
-      location: extractedData.location || 'N/A',
+      jobTitle: cleanedData.jobTitle || 'N/A',
+      company: cleanedData.companyName || 'N/A',
+      location: cleanedData.location || 'N/A',
       method: 'vision',
     })
 
     return NextResponse.json({
-      jobDescription: extractedData.jobDescription,
-      companyName: extractedData.companyName || null,
-      jobTitle: extractedData.jobTitle || null,
-      location: extractedData.location || null, // Include location if extracted from vision
+      jobDescription: cleanedData.jobDescription,
+      companyName: cleanedData.companyName,
+      jobTitle: cleanedData.jobTitle,
+      location: cleanedData.location,
     })
 
   } catch (error) {
@@ -518,7 +590,13 @@ Respond in JSON:
   "companyName": "...",
   "jobTitle": "...",
   "location": "..."
-}`
+}
+
+CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. Extract only plain text.`
+
+      const anthropic = new Anthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY,
+      })
 
       const quickMessage = await anthropic.messages.create({
         model: 'claude-3-5-haiku-20241022',
@@ -529,35 +607,36 @@ Respond in JSON:
       const quickResponseText = quickMessage.content[0].type === 'text' ? quickMessage.content[0].text : ''
       const quickData = parseClaudeResponse(quickResponseText)
       
-      if (quickData.companyName || quickData.jobTitle || quickData.location) {
+      // Remove emojis from quick extraction data
+      const cleanedQuickData = {
+        companyName: removeEmojis(quickData.companyName) || null,
+        jobTitle: removeEmojis(quickData.jobTitle) || null,
+        location: removeEmojis(quickData.location) || null,
+      }
+      
+      if (cleanedQuickData.companyName || cleanedQuickData.jobTitle || cleanedQuickData.location) {
         console.log('[FetchJob] Quick extraction: Returning metadata from Claude')
         return NextResponse.json({
-          companyName: quickData.companyName || null,
-          jobTitle: quickData.jobTitle || null,
-          location: quickData.location || null,
+          companyName: cleanedQuickData.companyName,
+          jobTitle: cleanedQuickData.jobTitle,
+          location: cleanedQuickData.location,
           quick: true,
         })
       }
     }
 
     // Use Claude to parse the scraped content
-    const extractionPrompt = `You are a job posting parser. Extract the following information from this scraped webpage content:
+    const extractionPrompt = `<background_information>
+You are a job posting parser. Your goal is to extract complete job posting information from scraped webpage content.
+</background_information>
+
+<instructions>
+Extract the following information:
 
 1. The complete job description (all relevant text including responsibilities, qualifications, benefits, etc.)
 2. The company name
 3. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
 4. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA" or "Warsaw, Poland")
-
-Webpage Content:
-${htmlContent.slice(0, 80000)}
-
-Please respond in JSON format:
-{
-  "jobDescription": "the full job description text here",
-  "companyName": "company name",
-  "jobTitle": "complete job title including all qualifiers",
-  "location": "city, state or city, country"
-}
 
 Instructions:
 - Extract ALL relevant job posting content, not just a summary
@@ -569,7 +648,25 @@ Instructions:
 - DO NOT truncate, summarize, or abbreviate the job description. Extract every word, sentence, and paragraph.
 - If the job description is 2000+ characters, you MUST include all 2000+ characters in your response.
 - Use the full token allowance if needed - completeness is more important than brevity.
-- If you cannot find certain fields, use null`
+</instructions>
+
+## Output description
+
+Please respond in JSON format:
+
+{
+  "jobDescription": "the full job description text here",
+  "companyName": "company name",
+  "jobTitle": "complete job title including all qualifiers",
+  "location": "city, state or city, country"
+}
+
+Webpage Content:
+${htmlContent.slice(0, 80000)}`
+
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
 
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
@@ -585,15 +682,23 @@ Instructions:
     const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
     const extractedData = parseClaudeResponse(responseText)
 
-    if (!extractedData.jobDescription || extractedData.jobDescription.trim().length < 40) {
+    // Remove emojis from extracted data
+    const cleanedData = {
+      jobDescription: removeEmojis(extractedData.jobDescription),
+      companyName: removeEmojis(extractedData.companyName) || null,
+      jobTitle: removeEmojis(extractedData.jobTitle) || null,
+      location: removeEmojis(extractedData.location) || null,
+    }
+
+    if (!cleanedData.jobDescription || cleanedData.jobDescription.trim().length < 40) {
       throw new Error('Could not extract valid job description from Firecrawl content')
     }
 
-    const jobDescLength = extractedData.jobDescription.length
+    const jobDescLength = cleanedData.jobDescription.length
     console.log(`[FetchJob] ✅ Full JD extraction completed: ${jobDescLength} characters`, {
-      jobTitle: extractedData.jobTitle || 'N/A',
-      company: extractedData.companyName || 'N/A',
-      location: extractedData.location || 'N/A',
+      jobTitle: cleanedData.jobTitle || 'N/A',
+      company: cleanedData.companyName || 'N/A',
+      location: cleanedData.location || 'N/A',
       method: 'firecrawl',
     })
     
@@ -602,10 +707,10 @@ Instructions:
       console.warn(`[FetchJob] WARNING: Extracted job description is very short (${jobDescLength} chars). May be truncated.`)
     }
     return NextResponse.json({
-      jobDescription: extractedData.jobDescription,
-      companyName: extractedData.companyName || null,
-      jobTitle: extractedData.jobTitle || null,
-      location: extractedData.location || null,
+      jobDescription: cleanedData.jobDescription,
+      companyName: cleanedData.companyName,
+      jobTitle: cleanedData.jobTitle,
+      location: cleanedData.location,
     })
 
   } catch (error) {
@@ -693,10 +798,10 @@ async function extractWithScraping(url: string, quick: boolean = false) {
     })
   }
   
-  // If quick mode, try a fast extraction with smaller prompt
-  if (quick) {
-    const htmlSlice = htmlContent.slice(0, 5000)
-    const quickPrompt = `Extract ONLY these 3 fields from this HTML:
+    // If quick mode, try a fast extraction with smaller prompt
+    if (quick) {
+      const htmlSlice = htmlContent.slice(0, 5000)
+      const quickPrompt = `Extract ONLY these 3 fields from this HTML:
 
 1. Company name
 2. Full job title
@@ -710,9 +815,15 @@ Respond in JSON:
   "companyName": "...",
   "jobTitle": "...",
   "location": "..."
-}`
+}
+
+CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. Extract only plain text.`
 
     try {
+      const anthropic = new Anthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY,
+      })
+
       const quickMessage = await anthropic.messages.create({
         model: 'claude-3-5-haiku-20241022',
         max_tokens: 500,
@@ -722,12 +833,19 @@ Respond in JSON:
       const quickResponseText = quickMessage.content[0].type === 'text' ? quickMessage.content[0].text : ''
       const quickData = parseClaudeResponse(quickResponseText)
       
-      if (quickData.companyName || quickData.jobTitle || quickData.location) {
+      // Remove emojis from quick extraction data
+      const cleanedQuickData = {
+        companyName: removeEmojis(quickData.companyName) || null,
+        jobTitle: removeEmojis(quickData.jobTitle) || null,
+        location: removeEmojis(quickData.location) || null,
+      }
+      
+      if (cleanedQuickData.companyName || cleanedQuickData.jobTitle || cleanedQuickData.location) {
         console.log('[FetchJob] Quick extraction: Returning metadata from Claude')
         return NextResponse.json({
-          companyName: quickData.companyName || null,
-          jobTitle: quickData.jobTitle || null,
-          location: quickData.location || null,
+          companyName: cleanedQuickData.companyName,
+          jobTitle: cleanedQuickData.jobTitle,
+          location: cleanedQuickData.location,
           quick: true,
         })
       }
@@ -743,23 +861,17 @@ Respond in JSON:
     const htmlSlice = htmlContent.slice(0, 200000) // Increased from 50000 to capture more content
     console.log(`[FetchJob] Sending ${htmlSlice.length} chars of HTML to Claude (original: ${htmlContent.length} chars)`)
     
-    const extractionPrompt = `You are a job posting parser. Extract the following information from this HTML content:
+    const extractionPrompt = `<background_information>
+You are a job posting parser. Your goal is to extract complete job posting information from HTML content.
+</background_information>
+
+<instructions>
+Extract the following information:
 
 1. The complete job description (all relevant text including responsibilities, qualifications, benefits, etc.)
 2. The company name
 3. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
 4. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA" or "Warsaw, Poland")
-
-HTML Content:
-${htmlSlice}
-
-Please respond in JSON format:
-{
-  "jobDescription": "the full job description text here",
-  "companyName": "company name",
-  "jobTitle": "complete job title including all qualifiers",
-  "location": "city, state or city, country"
-}
 
 Instructions:
 - Extract ALL relevant job posting content, not just a summary
@@ -771,7 +883,25 @@ Instructions:
 - DO NOT truncate, summarize, or abbreviate the job description. Extract every word, sentence, and paragraph.
 - If the job description is 2000+ characters, you MUST include all 2000+ characters in your response.
 - Use the full token allowance if needed - completeness is more important than brevity.
-- If you cannot find certain fields, use null`
+</instructions>
+
+## Output description
+
+Please respond in JSON format:
+
+{
+  "jobDescription": "the full job description text here",
+  "companyName": "company name",
+  "jobTitle": "complete job title including all qualifiers",
+  "location": "city, state or city, country"
+}
+
+HTML Content:
+${htmlSlice}`
+
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
 
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
@@ -788,18 +918,26 @@ Instructions:
     console.log(`[FetchJob] Claude response length: ${responseText.length} chars`)
     const extractedData = parseClaudeResponse(responseText)
 
-    if (!extractedData.jobDescription || extractedData.jobDescription.trim().length < 40) {
+    // Remove emojis from extracted data
+    const cleanedData = {
+      jobDescription: removeEmojis(extractedData.jobDescription),
+      companyName: removeEmojis(extractedData.companyName) || null,
+      jobTitle: removeEmojis(extractedData.jobTitle) || null,
+      location: removeEmojis(extractedData.location) || null,
+    }
+
+    if (!cleanedData.jobDescription || cleanedData.jobDescription.trim().length < 40) {
       return NextResponse.json(
         { error: 'Could not extract a valid job description from this URL. The page may not contain a job posting.' },
         { status: 422 }
       )
     }
 
-    const jobDescLength = extractedData.jobDescription.length
+    const jobDescLength = cleanedData.jobDescription.length
     console.log(`[FetchJob] ✅ Full JD extraction completed: ${jobDescLength} characters`, {
-      jobTitle: extractedData.jobTitle || 'N/A',
-      company: extractedData.companyName || 'N/A',
-      location: extractedData.location || 'N/A',
+      jobTitle: cleanedData.jobTitle || 'N/A',
+      company: cleanedData.companyName || 'N/A',
+      location: cleanedData.location || 'N/A',
       method: 'html-scraping',
     })
     
@@ -812,10 +950,10 @@ Instructions:
     }
 
     return NextResponse.json({
-      jobDescription: extractedData.jobDescription,
-      companyName: extractedData.companyName || null,
-      jobTitle: extractedData.jobTitle || null,
-      location: extractedData.location || null, // Include location if extracted from HTML
+      jobDescription: cleanedData.jobDescription,
+      companyName: cleanedData.companyName,
+      jobTitle: cleanedData.jobTitle,
+      location: cleanedData.location,
     })
 
   } catch (error) {
