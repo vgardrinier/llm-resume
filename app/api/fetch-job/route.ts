@@ -664,6 +664,10 @@ Please respond in JSON format:
 Webpage Content:
 ${htmlContent.slice(0, 80000)}`
 
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
       max_tokens: 32000, // Increased to ensure full job description extraction (no truncation)
