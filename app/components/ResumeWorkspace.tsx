@@ -179,6 +179,8 @@ export function ResumeWorkspace({ data, onStartOver }: ResumeWorkspaceProps) {
             onAcceptChange={handleAcceptChange}
             onRejectChange={handleRejectChange}
             onAcceptAll={handleAcceptAll}
+            jobTitle={data.metadata.job_metadata.title}
+            companyName={data.metadata.job_metadata.company}
           />
         </div>
       </motion.div>

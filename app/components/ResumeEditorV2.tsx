@@ -15,6 +15,8 @@ interface ResumeEditorProps {
   onAcceptChange: (id: string) => void
   onRejectChange: (id: string) => void
   onAcceptAll: () => void
+  jobTitle?: string
+  companyName?: string
 }
 
 // Pre-index changes for O(1) lookup instead of O(n²) filtering
@@ -124,14 +126,26 @@ export function ResumeEditor({
   rejectedChanges,
   onAcceptChange,
   onRejectChange,
-  onAcceptAll
+  onAcceptAll,
+  jobTitle,
+  companyName
 }: ResumeEditorProps) {
   const [hoveredChange, setHoveredChange] = useState<string | null>(null)
   const resumeRef = useRef<HTMLDivElement>(null)
 
   const handlePrint = useReactToPrint({
     contentRef: resumeRef,
-    documentTitle: 'Resumelm_Resume',
+    documentTitle: `${optimizedResume.contactInfo.name.replace(/\s+/g, '_')}_${companyName ? companyName.replace(/\s+/g, '_') : 'Resume'}`,
+    pageStyle: `
+      @page {
+        margin: 15mm 20mm;
+      }
+      @media print {
+        body {
+          -webkit-print-color-adjust: exact;
+        }
+      }
+    `
   })
 
   // Pre-index changes once (O(n) setup, O(1) lookups)
@@ -758,7 +772,7 @@ export function ResumeEditor({
               return (
                 <span
                   key={idx}
-                  className={`px-3 py-1 rounded-lg text-sm font-sans ${classes}`}
+                  className={`px-3 py-1 rounded-lg text-sm font-sans ${classes} ${idx >= 10 ? 'print:hidden' : ''}`}
                 >
                   {skill}
                   {change && getChangeStatus(change.id) === 'pending' && (
@@ -852,8 +866,8 @@ export function ResumeEditor({
       </div>
 
       {/* Resume Content - Inside glass container */}
-      <div ref={resumeRef} className="bg-white/80 backdrop-blur-sm border border-gray-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.05)] rounded-lg p-12 flex-1 overflow-y-auto print:overflow-visible print:h-auto print:bg-white print:p-0 print:shadow-none print:border-0" style={{
-        lineHeight: '1.6'
+      <div ref={resumeRef} className="bg-white/80 backdrop-blur-sm border border-gray-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.05)] rounded-lg p-12 flex-1 overflow-y-auto print:overflow-visible print:h-auto print:bg-white print:p-0 print:shadow-none print:border-0 print:text-xs" style={{
+        lineHeight: '1.5'
       }}>
         {/* Contact Info */}
         {optimizedResume.contactInfo && (
