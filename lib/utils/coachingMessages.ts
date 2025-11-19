@@ -7,10 +7,6 @@
 import Anthropic from '@anthropic-ai/sdk'
 import { parseClaudeJson } from './parseJson'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
-
 export interface CoachingMessage {
   clarity: string
   relevance: string
@@ -123,6 +119,10 @@ async function extractTraitSentences(
   console.log('[Coaching LLM] Regex found < 2 traits, using LLM semantic classification fallback')
   
   try {
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     // Split text into sentences
     const sentences = text
       .split(/(?<=[.!?])\s+/)
@@ -274,9 +274,13 @@ ORIGINAL RESUME (what the candidate actually has):
 ${originalResume || 'Resume not provided - only reference what evaluator confirms exists.'}
 
 Evaluator feedback (may contain suggestions - distinguish from observations):
-${feedback || 'No specific feedback provided. Base your advice on general resume best practices.'}`
+    ${feedback || 'No specific feedback provided. Base your advice on general resume best practices.'}`
 
   try {
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const res = await anthropic.messages.create({
       model,
       max_tokens: 600,

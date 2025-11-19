@@ -34,11 +34,6 @@ function filterEmptySections(resume: StructuredResume): StructuredResume {
   }
 }
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
-
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
@@ -231,6 +226,10 @@ ${candidate_resume}`
 
     // Use Haiku for speed and cost efficiency (structured JSON should work fine)
     // Increased max_tokens to handle full structured resume + changes array
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307',
       max_tokens: 4096, // Increased to handle full structured resume with all sections and changes

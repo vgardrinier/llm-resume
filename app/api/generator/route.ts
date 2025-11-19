@@ -3,10 +3,6 @@ import Anthropic from '@anthropic-ai/sdk'
 import { extractJobTitleAndLocation, lookupSalary, generateSalaryContext } from '@/lib/utils/salaryMCP'
 import { parseClaudeJson, parseClaudeJsonArray } from '@/lib/utils/parseJson'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
-
 // Extract explicit keywords from job description (for ATS matching)
 async function extractKeywords(jobDescription: string): Promise<string[]> {
   const extractionPrompt = `Extract 10-15 concrete keywords and phrases from this job description that are critical for ATS matching and role alignment.
@@ -26,6 +22,10 @@ Return ONLY a JSON array of strings (10-15 keywords):
 Be specific and concrete - these will be used to optimize the resume for ATS systems.`
 
   try {
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307',
       max_tokens: 300,
@@ -75,6 +75,10 @@ Be specific and prioritize what this role ACTUALLY requires. Return ONLY a JSON 
 Limit to 5-7 most critical themes.`
 
   try {
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307',
       max_tokens: 500,
@@ -246,6 +250,10 @@ ${candidate_resume}`
     console.log(`[Generator] Using temperature: ${temperature} for mode: ${creative_mode}`)
 
     // Call Claude Haiku for initial generation
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307',
       max_tokens: 4000,

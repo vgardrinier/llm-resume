@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import { parseClaudeJsonArray } from '@/lib/utils/parseJson'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
-
 // Infer seniority from job title (cheap, no API call)
 function inferSeniority(jobTitle?: string | null): string | null {
   if (!jobTitle) return null
@@ -35,6 +31,10 @@ Return ONLY a JSON array of strings:
 Focus on concrete achievements, technologies, or roles. Keep it factual and brief.`
 
   try {
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307',
       max_tokens: 200,
@@ -68,6 +68,10 @@ Return ONLY a JSON array of strings:
 Focus on concrete skills, technologies, or responsibilities. Keep it factual and brief.`
 
   try {
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307',
       max_tokens: 200,
@@ -180,6 +184,10 @@ Output as a JSON array of strings:
 
 Use ONLY the data provided:
 ${JSON.stringify(context, null, 2)}`
+
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
 
     const message = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307',

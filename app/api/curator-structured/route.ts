@@ -32,10 +32,6 @@ function filterEmptySections(resume: StructuredResume): StructuredResume {
   }
 }
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
-
 // Analysis mode: Generate analysis with DSM (Dynamic Semantic Mapping)
 async function runAnalysisMode(originalResume: string, jobDescription: string) {
   const analysisPrompt = `<background_information>
@@ -104,6 +100,10 @@ Job Description:
 ${jobDescription}`
 
   try {
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219', // Use Sonnet for strategic thinking
       max_tokens: 4000,
@@ -376,6 +376,10 @@ ${JSON.stringify(changes, null, 2)}
 Optimized Resume Structure:
 ${JSON.stringify(optimizedResume, null, 2)}
 `
+
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
 
     const message = await anthropic.messages.create({
       model: 'claude-3-haiku-20240307', // Use Haiku for validation - faster and cheaper, validation is simpler than analysis

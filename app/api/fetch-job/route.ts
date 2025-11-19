@@ -2,10 +2,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import puppeteer from 'puppeteer'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
-
 // Known job platforms that typically block scraping
 const JOB_PLATFORMS = [
   'linkedin.com',
@@ -15,6 +11,7 @@ const JOB_PLATFORMS = [
   'careerbuilder.com',
   'ziprecruiter.com',
   'simplyhired.com',
+  'amazon.jobs',
 ]
 
 function isJobPlatform(url: string): boolean {
@@ -247,6 +244,10 @@ async function extractQuickMetadata(url: string) {
     console.log('[FetchJob] Quick extraction: Sending to Claude Vision...')
     const screenshotBase64 = screenshot
 
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-5-haiku-20241022', // Use Haiku for speed
       max_tokens: 1000, // Much smaller since we only need 3 fields
@@ -379,6 +380,10 @@ async function extractWithVision(url: string, quick: boolean = false) {
 
     console.log('Screenshot captured, sending to Claude Vision...')
     const screenshotBase64 = screenshot
+
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
 
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
@@ -580,6 +585,10 @@ Respond in JSON:
 }
 
 CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. Extract only plain text.`
+
+      const anthropic = new Anthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY,
+      })
 
       const quickMessage = await anthropic.messages.create({
         model: 'claude-3-5-haiku-20241022',
@@ -799,6 +808,10 @@ Respond in JSON:
 CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. Extract only plain text.`
 
     try {
+      const anthropic = new Anthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY,
+      })
+
       const quickMessage = await anthropic.messages.create({
         model: 'claude-3-5-haiku-20241022',
         max_tokens: 500,
@@ -873,6 +886,10 @@ Please respond in JSON format:
 
 HTML Content:
 ${htmlSlice}`
+
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
 
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',

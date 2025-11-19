@@ -3,10 +3,6 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-})
-
 // REMOVED: Randomization causes variability between runs
 // Even deterministic randomization based on score value can cause issues when the LLM returns slightly different scores
 // Instead, we'll round to nearest integer without adding variation - this ensures maximum consistency
@@ -113,6 +109,10 @@ OPTIMIZED RESUME:
 ${generatedResume}`
 
   try {
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
       max_tokens: 1000,
@@ -297,6 +297,10 @@ Provide your assessment as valid JSON only:
 IMPORTANT: Use varied, realistic scores (not just multiples of 5). Scores like 73, 71, 74, 69, 76 are more believable than 72, 70, 72, 68, 74.`
 
   try {
+    const anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
       max_tokens: 800,

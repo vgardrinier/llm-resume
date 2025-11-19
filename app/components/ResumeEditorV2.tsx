@@ -330,8 +330,21 @@ export function ResumeEditor({
     // For modifications/deletions, show the original text (what's being changed)
     // CRITICAL: For modifications, we MUST use firstChange.original if it exists
     // If original is missing for a modification, that's a data issue - log it and show optimized text
+    
+    // VALIDATION: Check if suggested text is valid (not just the section title)
+    const isValidSuggestion = (text: string | undefined) => {
+      if (!text) return false
+      const normalizedText = text.toLowerCase().trim()
+      const normalizedTitle = sectionTitle.toLowerCase().trim()
+      // If suggestion is identical to title, it's likely a hallucination
+      if (normalizedText === normalizedTitle) return false
+      // If suggestion is extremely short (< 15 chars) for a summary, it's suspicious
+      if (normalizedText.length < 15 && sectionTitle.toLowerCase().includes('summary')) return false
+      return true
+    }
+
     const displayText = isAddition 
-      ? firstChange.suggested
+      ? (isValidSuggestion(firstChange.suggested) ? firstChange.suggested : originalText)
       : (firstChange.original && firstChange.original.trim().length > 0)
         ? firstChange.original  // Use original from change object (most reliable)
         : (() => {
@@ -458,13 +471,13 @@ export function ResumeEditor({
   // CRITICAL: Rejected changes are excluded - they should not count as "visible"
   const getVisibleChanges = useMemo(() => {
     return changes.filter(c => {
-      // Always exclude rejected changes - they're not actionable
-      if (getChangeStatus(c.id) === 'rejected') {
-        return false
-      }
-      
       // Always exclude education changes - education should never be modified
       if (c.section === 'Education' || c.section === 'education') {
+        return false
+      }
+
+      // Always exclude rejected changes - they're not actionable
+      if (getChangeStatus(c.id) === 'rejected') {
         return false
       }
       
@@ -598,27 +611,45 @@ export function ResumeEditor({
                         })
                         
                         // For modifications, try to match by content similarity
-                        // If original text from change matches the bullet text (or is substring), it's likely a match
+                        // We check BOTH original (old) and suggested (new) text against the bullet (new)
+                        // because we are rendering the optimized resume (new text)
                         bulletChanges = sectionChanges.filter(c => {
-                          if (c.type === 'modification' && c.original) {
-                            const originalLower = c.original.toLowerCase().trim()
+                          if (c.type === 'modification') {
                             const bulletLower = bullet.toLowerCase().trim()
-                            // Check if original text is similar to bullet (exact match or bullet contains original)
-                            const isMatch = originalLower === bulletLower || 
-                                           bulletLower.includes(originalLower) ||
-                                           originalLower.includes(bulletLower)
                             
-                            if (isMatch && process.env.NODE_ENV === 'development') {
-                              console.log(`[ResumeEditor] Found modification via content matching for bullet ${entryIdx}-${bulletIdx}:`, {
-                                changeId: c.id,
-                                original: c.original.substring(0, 50),
-                                bullet: bullet.substring(0, 50),
-                                position: c.position,
-                                expectedPosition: { sectionIndex: entryIdx, bulletIndex: bulletIdx }
-                              })
+                            // Check 1: Does suggested text match the current bullet?
+                            // This is the most reliable check since bullet IS the suggested text
+                            if (c.suggested) {
+                              const suggestedLower = c.suggested.toLowerCase().trim()
+                              // Exact match or close enough
+                              if (suggestedLower === bulletLower || 
+                                  bulletLower.includes(suggestedLower) || 
+                                  (suggestedLower.length > 20 && suggestedLower.includes(bulletLower))) {
+                                return true
+                              }
                             }
                             
-                            return isMatch
+                            // Check 2: Does original text match? (Fallback)
+                            // This happens if the bullet hasn't been updated yet or if matching logic is fuzzy
+                            if (c.original) {
+                              const originalLower = c.original.toLowerCase().trim()
+                              // Check if original text is similar to bullet (exact match or bullet contains original)
+                              const isMatch = originalLower === bulletLower || 
+                                             bulletLower.includes(originalLower) ||
+                                             originalLower.includes(bulletLower)
+                              
+                              if (isMatch && process.env.NODE_ENV === 'development') {
+                                console.log(`[ResumeEditor] Found modification via content matching for bullet ${entryIdx}-${bulletIdx}:`, {
+                                  changeId: c.id,
+                                  original: c.original.substring(0, 50),
+                                  bullet: bullet.substring(0, 50),
+                                  position: c.position,
+                                  expectedPosition: { sectionIndex: entryIdx, bulletIndex: bulletIdx }
+                                })
+                              }
+                              
+                              return isMatch
+                            }
                           }
                           return false
                         })
@@ -695,16 +726,48 @@ export function ResumeEditor({
       }
 
       if (section.type === 'skills') {
+        // Get actionable changes for skills section
+        const skillChanges = (changeIndex.bySection.get(sectionKey) || [])
+          .filter(c => getChangeStatus(c.id) !== 'rejected')
+
         return (
           <div className="flex flex-wrap gap-2">
-            {section.content.map((skill: string, idx: number) => (
-              <span
-                key={idx}
-                className="bg-gray-100 text-gray-700 px-3 py-1 rounded-lg text-sm font-sans"
-              >
-                {skill}
-              </span>
-            ))}
+            {section.content.map((skill: string, idx: number) => {
+              // Find change that added this skill
+              const change = skillChanges.find(c => 
+                c.type === 'addition' && 
+                c.suggested?.toLowerCase().trim() === skill.toLowerCase().trim()
+              )
+              
+              // Determine styling based on change status
+              let classes = "bg-gray-100 text-gray-700 border border-transparent"
+              if (change) {
+                const status = getChangeStatus(change.id)
+                if (status === 'pending') {
+                  classes = "bg-green-100 text-green-800 border-green-200 cursor-pointer hover:bg-green-200 transition-colors relative group"
+                }
+              }
+              
+              return (
+                <span
+                  key={idx}
+                  className={`px-3 py-1 rounded-lg text-sm font-sans ${classes}`}
+                >
+                  {skill}
+                  {change && getChangeStatus(change.id) === 'pending' && (
+                    <ChangeOverlay
+                      change={change}
+                      status="pending"
+                      isHovered={hoveredChange === change.id}
+                      onHover={() => setHoveredChange(change.id)}
+                      onLeave={() => setHoveredChange(null)}
+                      onAccept={onAcceptChange}
+                      onReject={onRejectChange}
+                    />
+                  )}
+                </span>
+              )
+            })}
           </div>
         )
       }
