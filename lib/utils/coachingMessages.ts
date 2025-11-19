@@ -319,7 +319,12 @@ Evaluator feedback (may contain suggestions - distinguish from observations):
     try {
       const fallbackPrompt = `You're a career coach giving quick feedback on a resume. Write 2-3 short, natural sentences about clarity, relevance, and authenticity. Be conversational and helpful.`
       
-      const fallbackRes = await anthropic.messages.create({
+      // Initialize new client for fallback to ensure it exists
+      const anthropicFallback = new Anthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY,
+      })
+
+      const fallbackRes = await anthropicFallback.messages.create({
         model,
         max_tokens: 300,
         temperature: 0.8,
