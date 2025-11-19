@@ -135,10 +135,11 @@ export function ResumeEditor({
 
   const handlePrint = useReactToPrint({
     contentRef: resumeRef,
-    documentTitle: `${optimizedResume.contactInfo.name.replace(/\s+/g, '_')}_${companyName ? companyName.replace(/\s+/g, '_') : 'Resume'}`,
+    documentTitle: `${optimizedResume.contactInfo.name.replace(/\s+/g, '_')}_${companyName ? companyName.replace(/\s+/g, '_') : 'Rightfit'}`,
     pageStyle: `
       @page {
         margin: 15mm 20mm;
+        size: auto;
       }
       @media print {
         body {
