@@ -135,10 +135,10 @@ export function ResumeEditor({
 
   const handlePrint = useReactToPrint({
     contentRef: resumeRef,
-    documentTitle: `${optimizedResume.contactInfo.name.replace(/\s+/g, '_')}_${companyName ? companyName.replace(/\s+/g, '_') : 'Rightfit'}`,
+    documentTitle: `${optimizedResume.contactInfo.name.replace(/\s+/g, '_')}_${companyName && companyName.toLowerCase() !== 'company' ? companyName.replace(/\s+/g, '_') : 'Rightfit'}`,
     pageStyle: `
       @page {
-        margin: 15mm 20mm;
+        margin: 0mm; 
         size: auto;
       }
       @media print {
@@ -732,7 +732,7 @@ export function ResumeEditor({
                     }
 
                     return (
-                      <li key={bulletIdx} className="flex gap-2 text-[15px] leading-relaxed">
+                      <li key={bulletIdx} className="flex gap-2 text-sm print:text-xs leading-relaxed">
                         <span className="text-gray-400 flex-shrink-0 mt-0.5">•</span>
                         <div className="flex-1">
                           {renderTextWithChanges(bullet, bulletChanges, section.title)}
@@ -867,7 +867,7 @@ export function ResumeEditor({
       </div>
 
       {/* Resume Content - Inside glass container */}
-      <div ref={resumeRef} className="bg-white/80 backdrop-blur-sm border border-gray-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.05)] rounded-lg p-12 flex-1 overflow-y-auto print:overflow-visible print:h-auto print:bg-white print:p-0 print:shadow-none print:border-0 print:text-xs" style={{
+      <div ref={resumeRef} className="bg-white/80 backdrop-blur-sm border border-gray-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.05)] rounded-lg p-12 flex-1 overflow-y-auto print:overflow-visible print:h-auto print:bg-white print:p-[15mm] print:shadow-none print:border-0 print:text-xs" style={{
         lineHeight: '1.5'
       }}>
         {/* Contact Info */}
