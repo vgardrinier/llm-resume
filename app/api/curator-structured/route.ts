@@ -277,6 +277,7 @@ Your task is to validate each change against the original resume AND the origina
    - If a change adds a metric/number not in original → REMOVE IT
    - If a change adds a technology not in original → REMOVE IT
    - If a change adds a company/project not in original → REMOVE IT
+   - CRITICAL: Remove no-op changes where original and suggested text are identical (waste of user attention)
 
 2. Validate changes follow analysis patterns:
    - Distinguish between rewrite patterns and addable content:

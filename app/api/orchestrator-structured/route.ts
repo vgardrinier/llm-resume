@@ -229,6 +229,37 @@ export async function POST(request: NextRequest) {
     // Use validated resume if curator provided one, otherwise use original
     let finalOptimizedResume = curatorData.validatedOptimizedResume || generatorData.optimizedResume
     
+    // CRITICAL: Filter out no-op changes (where original === suggested)
+    // This prevents wasting user attention on changes that don't actually change anything
+    const beforeNoOpFilter = curatorData.validatedChanges.length
+    const validatedChangesWithoutNoOps = curatorData.validatedChanges.filter((change: any) => {
+      // For modifications, check if original and suggested are identical
+      if (change.type === 'modification' && change.original && change.suggested) {
+        const normalizedOriginal = change.original.trim().toLowerCase()
+        const normalizedSuggested = change.suggested.trim().toLowerCase()
+        
+        if (normalizedOriginal === normalizedSuggested) {
+          console.log('[Orchestrator-Structured] Filtered out no-op change:', {
+            id: change.id,
+            section: change.section,
+            original: change.original.substring(0, 50),
+            suggested: change.suggested.substring(0, 50)
+          })
+          return false
+        }
+      }
+      
+      return true
+    })
+    
+    const noOpsRemoved = beforeNoOpFilter - validatedChangesWithoutNoOps.length
+    if (noOpsRemoved > 0) {
+      console.log(`[Orchestrator-Structured] Removed ${noOpsRemoved} no-op change(s) (original === suggested)`)
+    }
+    
+    // Update curatorData to use filtered changes
+    curatorData.validatedChanges = validatedChangesWithoutNoOps
+    
     // Filter out empty sections before finalizing
     const beforeFilterCount = finalOptimizedResume.sections?.length || 0
     finalOptimizedResume = filterEmptySections(finalOptimizedResume)
