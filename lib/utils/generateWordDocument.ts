@@ -110,7 +110,8 @@ export async function generateWordDocument(
     } else if (Array.isArray(section.content)) {
       if (section.type === 'experience' || section.type === 'projects') {
         // Experience/Projects sections
-        for (const entry of section.content) {
+        for (const entry of section.content as any[]) {
+          if (typeof entry === 'string') continue // Skip if not an object
           // Job title (bold) with dates on same line (right-aligned is tricky, so use tabs)
           children.push(
             new Paragraph({
@@ -178,7 +179,7 @@ export async function generateWordDocument(
         }
       } else if (section.type === 'skills') {
         // Skills section - display as comma-separated list
-        const skillsText = section.content.slice(0, 10).join(', ')
+        const skillsText = (section.content as string[]).slice(0, 10).join(', ')
         children.push(
           new Paragraph({
             children: [
@@ -193,7 +194,8 @@ export async function generateWordDocument(
         )
       } else if (section.type === 'education') {
         // Education section
-        for (const entry of section.content) {
+        for (const entry of section.content as any[]) {
+          if (typeof entry === 'string') continue // Skip if not an object
           children.push(
             new Paragraph({
               children: [
