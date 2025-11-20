@@ -6,6 +6,8 @@ import { useReactToPrint } from 'react-to-print'
 import type { StructuredResume, ResumeChange } from '@/types/api'
 import { Check, X, Info, Download } from 'lucide-react'
 import { Button } from './Button'
+import { DownloadModal, FeedbackData } from './DownloadModal'
+import { generateWordDocument } from '@/lib/utils/generateWordDocument'
 
 interface ResumeEditorProps {
   optimizedResume: StructuredResume
@@ -131,6 +133,7 @@ export function ResumeEditor({
   companyName
 }: ResumeEditorProps) {
   const [hoveredChange, setHoveredChange] = useState<string | null>(null)
+  const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false)
   const resumeRef = useRef<HTMLDivElement>(null)
 
   const handlePrint = useReactToPrint({
@@ -153,6 +156,36 @@ export function ResumeEditor({
       }
     `
   })
+
+  const handleDownload = async (format: 'pdf' | 'word', feedback: FeedbackData) => {
+    // Log feedback to console
+    console.log('Download initiated:', {
+      format,
+      feedback,
+      timestamp: new Date().toISOString(),
+      jobTitle,
+      companyName
+    })
+
+    const fileName = `${optimizedResume.contactInfo.name.replace(/\s+/g, '_')}_${companyName && companyName.toLowerCase() !== 'company' ? companyName.replace(/\s+/g, '_') : 'Rightfit'}`
+
+    if (format === 'pdf') {
+      // Close modal and trigger print dialog
+      setIsDownloadModalOpen(false)
+      setTimeout(() => {
+        handlePrint()
+      }, 300) // Small delay to let modal close animation finish
+    } else if (format === 'word') {
+      // Generate and download Word document
+      try {
+        await generateWordDocument(optimizedResume, `${fileName}.docx`)
+        setIsDownloadModalOpen(false)
+      } catch (error) {
+        console.error('Error generating Word document:', error)
+        alert('Failed to generate Word document. Please try again.')
+      }
+    }
+  }
 
   // Pre-index changes once (O(n) setup, O(1) lookups)
   const changeIndex = useMemo(() => {
@@ -863,9 +896,16 @@ export function ResumeEditor({
   }
 
   return (
-    <div className="space-y-6 h-full flex flex-col">
-      {/* Action Bar - Inside glass container */}
-      <div className="bg-white/80 backdrop-blur-sm border border-gray-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.05)] rounded-lg px-6 py-4 flex items-center justify-between">
+    <>
+      <DownloadModal
+        isOpen={isDownloadModalOpen}
+        onClose={() => setIsDownloadModalOpen(false)}
+        onDownload={handleDownload}
+      />
+      
+      <div className="space-y-6 h-full flex flex-col">
+        {/* Action Bar - Inside glass container */}
+        <div className="bg-white/80 backdrop-blur-sm border border-gray-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.05)] rounded-lg px-6 py-4 flex items-center justify-between">
         <div>
           <p className="text-sm text-gray-600 font-sans">
             {getVisibleChanges.length} suggestions • {acceptedChanges.size} accepted
@@ -882,12 +922,12 @@ export function ResumeEditor({
             {rejectedChanges.size > 0 ? 'Accept Remaining' : 'Accept All'}
           </Button>
           <Button
-            onClick={() => handlePrint()}
+            onClick={() => setIsDownloadModalOpen(true)}
             variant="primary"
             className="flex items-center gap-2"
           >
             <Download className="h-4 w-4" />
-            Download PDF
+            Download
           </Button>
         </div>
       </div>
@@ -983,7 +1023,8 @@ export function ResumeEditor({
             })}
         </div>
       </div>
-    </div>
+      </div>
+    </>
   )
 }
 
