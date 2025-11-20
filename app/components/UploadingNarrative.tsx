@@ -334,9 +334,9 @@ export function UploadingNarrative({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ delay: 0.2 }}
-                  className="mt-3 text-sm text-gray-600 font-serif"
+                  className="mt-3 text-sm text-gray-500 font-sans"
                 >
-                  Almost there…
+                  Still working…
                 </motion.p>
               )}
             </>

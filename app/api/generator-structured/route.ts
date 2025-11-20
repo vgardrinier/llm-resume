@@ -168,11 +168,13 @@ CRITICAL RULES:
 - Skip illogical transformations
 - Never invent facts/metrics/technologies
 - Omit empty sections
-- Change generation: Generate ONE change entry per resume bullet/sentence that you modify or add
+- CRITICAL CHANGE TRACKING: Generate ONE change entry for EVERY modification you make to the resume
+- If you modify a bullet/sentence in optimizedResume, you MUST create a corresponding change entry
+- NEVER make "silent" changes - ALL modifications must be tracked (passive→active voice, keyword additions, etc.)
 - Be comprehensive: Review EVERY bullet point in the resume and generate changes for ALL that can be improved
 - Generate changes for: summary section (if adding/improving), ALL relevant experience bullets, skills section updates, and any other applicable sections
 - When addressing whatsMissing gaps, reference them in change reasons (e.g., "Addresses whatsMissing: [gap]" or "Incorporates [keyword] from whatsMissing")
-- Aim for 5-15 changes depending on resume length and improvement opportunities
+- Expect 10-30+ changes for a typical resume - track every modification, no matter how small
 
 CHANGE REASON GUIDELINES (CRITICAL - Write in direct, honest, conversational tone like a helpful coach):
 - For ADDITIONS (new content): Explain WHY we're adding it, not HOW. Examples:
@@ -217,6 +219,10 @@ Return ONLY valid JSON (no markdown, escape newlines as \\n) with this structure
     }
   ]
 }
+
+CRITICAL: The changes array MUST include ALL modifications between the original resume and optimizedResume.
+If a bullet/sentence in optimizedResume differs from the original, there MUST be a corresponding change entry.
+DO NOT make silent changes - users need to review and approve every modification.
 
 Job Description:
 ${job_description}

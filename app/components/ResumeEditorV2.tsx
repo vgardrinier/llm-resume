@@ -269,38 +269,39 @@ export function ResumeEditor({
     // CRITICAL: Filter out rejected changes FIRST - they should not affect highlighting or styling
     const nonRejectedChanges = changes.filter(c => getChangeStatus(c.id) !== 'rejected')
     
-    // If all changes are rejected, handle based on change type
+    // If all changes are rejected, we must show the ORIGINAL text (revert the change)
+    // CRITICAL: Since we're now displaying suggested text by default, the originalText parameter
+    // contains the suggested/new text from optimizedResume. We MUST use change.original instead.
     if (nonRejectedChanges.length === 0) {
-      // Check if any rejected change was an addition (new content)
-      const rejectedAdditions = changes.filter(c => 
-        getChangeStatus(c.id) === 'rejected' && c.type === 'addition'
-      )
+      // Get the most recent rejected change to determine what original text to show
+      const rejectedChange = changes[changes.length - 1]
       
-      // If rejected changes include additions, return empty (new content should disappear when rejected)
-      if (rejectedAdditions.length > 0) {
-        // For additions, if rejected, show nothing (or original if it existed)
-        const hasOriginal = changes.some(c => c.original && c.original.trim().length > 0)
-        return hasOriginal 
-          ? <span className="text-gray-700 font-sans">{changes.find(c => c.original)?.original || ''}</span>
-          : <span></span> // Empty - addition was rejected, so remove it
-      }
-      
-      // For modifications/deletions, return the ORIGINAL text from the change object
-      // CRITICAL: When a modification is rejected, we must show the original text from the change,
-      // not the optimized text (originalText parameter might be the optimized version)
-      const rejectedModifications = changes.filter(c => 
-        getChangeStatus(c.id) === 'rejected' && c.type === 'modification' && c.original
-      )
-      
-      if (rejectedModifications.length > 0) {
-        // Use the original text from the most recent rejected modification
-        const originalFromChange = rejectedModifications[rejectedModifications.length - 1].original
-        if (originalFromChange && originalFromChange.trim().length > 0) {
-          return <span className="text-gray-700 font-sans">{originalFromChange}</span>
+      // For additions: if rejected, show nothing (new content disappears)
+      if (rejectedChange.type === 'addition') {
+        // If addition had an original (unlikely), show it; otherwise show empty
+        if (rejectedChange.original && rejectedChange.original.trim().length > 0) {
+          return <span className="text-gray-700 font-sans">{rejectedChange.original}</span>
         }
+        return <span></span> // Empty - addition was rejected, so remove it
       }
       
-      // Fallback: return originalText parameter (for deletions or if no original found)
+      // For modifications/deletions: show the original text from the change object
+      // CRITICAL: NEVER use originalText parameter here - it's the suggested text!
+      if (rejectedChange.original && rejectedChange.original.trim().length > 0) {
+        return <span className="text-gray-700 font-sans">{rejectedChange.original}</span>
+      }
+      
+      // Fallback: If change.original is missing (data issue), we can't revert properly
+      // Log this issue and show originalText as last resort
+      if (process.env.NODE_ENV === 'development') {
+        console.error('[ResumeEditor] Rejected change missing original text - cannot revert properly:', {
+          changeId: rejectedChange.id,
+          type: rejectedChange.type,
+          section: rejectedChange.section
+        })
+      }
+      
+      // This is a data issue - we don't have the original to revert to
       return <span className="text-gray-700 font-sans">{originalText}</span>
     }
 
@@ -349,14 +350,16 @@ export function ResumeEditor({
         hasOriginal: !!(firstChange.original && firstChange.original.trim().length > 0),
         originalPreview: firstChange.original?.substring(0, 50),
         suggestedPreview: firstChange.suggested?.substring(0, 50),
-        displayTextWillBe: firstChange.original || originalText
+        displayTextWillBe: firstChange.suggested || originalText
       })
     }
     
-    // For additions, show the suggested text (new content)
-    // For modifications/deletions, show the original text (what's being changed)
-    // CRITICAL: For modifications, we MUST use firstChange.original if it exists
-    // If original is missing for a modification, that's a data issue - log it and show optimized text
+    // CRITICAL CHANGE: Show the NEW/SUGGESTED text highlighted (not the original)
+    // Users want to see what the resume WILL look like with changes applied
+    // The modal will still show the original text for comparison
+    // - For additions: show the suggested text (new content)
+    // - For modifications: show the suggested text (what it will become)
+    // - For deletions: show the original text with strikethrough styling
     
     // VALIDATION: Check if suggested text is valid (not just the section title)
     const isValidSuggestion = (text: string | undefined) => {
@@ -370,23 +373,11 @@ export function ResumeEditor({
       return true
     }
 
-    const displayText = isAddition 
-      ? (isValidSuggestion(firstChange.suggested) ? firstChange.suggested : originalText)
-      : (firstChange.original && firstChange.original.trim().length > 0)
-        ? firstChange.original  // Use original from change object (most reliable)
-        : (() => {
-            // DEBUG: Log missing original for modifications
-            if (isModification && process.env.NODE_ENV === 'development') {
-              console.warn(`[ResumeEditor] Modification change ${firstChange.id} missing original field`, {
-                changeId: firstChange.id,
-                section: firstChange.section,
-                suggested: firstChange.suggested?.substring(0, 50),
-                originalText: originalText?.substring(0, 50)
-              })
-            }
-            // For modifications without original, show optimized text (no highlight - data issue)
-            return originalText
-          })()
+    const displayText = isDeletion
+      ? (firstChange.original && firstChange.original.trim().length > 0)
+        ? firstChange.original  // For deletions, show original (what will be removed)
+        : originalText
+      : (isValidSuggestion(firstChange.suggested) ? firstChange.suggested : originalText) // For additions/modifications, show suggested (what it will become)
 
     // Use different colors for different change types
     // Yellow for modifications (edits), Green/Blue for additions (new content)
@@ -495,7 +486,7 @@ export function ResumeEditor({
   // Helper: Filter changes to only include visible/actionable ones
   // This ensures consistent counting across the UI
   // NOTE: Education changes are ALWAYS filtered out - education should never be modified
-  // CRITICAL: Rejected changes are excluded - they should not count as "visible"
+  // IMPORTANT: Include ALL changes (pending, accepted, rejected) in the count for accurate totals
   const getVisibleChanges = useMemo(() => {
     return changes.filter(c => {
       // Always exclude education changes - education should never be modified
@@ -503,9 +494,26 @@ export function ResumeEditor({
         return false
       }
 
-      // Always exclude rejected changes - they're not actionable
-      if (getChangeStatus(c.id) === 'rejected') {
-        return false
+      // Don't filter by rejection status here - we want to count ALL changes
+      // Rejection status is handled during rendering, not counting
+      
+      // CRITICAL: Filter out no-op changes (modifications where original === suggested)
+      // Frontend safety net - backend should filter these out, but this catches any that slip through
+      if (c.type === 'modification' && c.original && c.suggested) {
+        const normalizedOriginal = c.original.trim().toLowerCase()
+        const normalizedSuggested = c.suggested.trim().toLowerCase()
+        
+        if (normalizedOriginal === normalizedSuggested) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[ResumeEditor] Filtered out no-op change in frontend:', {
+              id: c.id,
+              section: c.section,
+              original: c.original.substring(0, 50),
+              suggested: c.suggested.substring(0, 50)
+            })
+          }
+          return false
+        }
       }
       
       // For ADDITIONS (new content), always count them if they're not rejected
@@ -548,16 +556,18 @@ export function ResumeEditor({
     // Use core section name for consistent matching (handles "Professional Summary" vs "Summary")
     const coreSectionName = getCoreSectionName(section.title)
     const sectionKey = `section-${coreSectionName}`
+    // CRITICAL: Pass ALL changes (including rejected) to renderTextWithChanges
+    // The render function needs rejected changes to access their .original text for reverting
     let sectionChanges = (changeIndex.bySection.get(sectionKey) || [])
-      .filter(c => getChangeStatus(c.id) !== 'rejected') // CRITICAL: Exclude rejected changes
 
     // Debug: Log if we're not finding changes but they should exist
     // (This helps identify section matching issues)
     if (sectionChanges.length === 0 && changes.length > 0) {
       // Try to find changes that might match this section by checking all changes
+      // Include ALL changes (even rejected) so renderTextWithChanges can access original text
       const potentialMatches = changes.filter(c => {
         const changeCoreSection = getCoreSectionName(c.section)
-        return changeCoreSection === coreSectionName && getChangeStatus(c.id) !== 'rejected'
+        return changeCoreSection === coreSectionName
       })
       if (potentialMatches.length > 0) {
         sectionChanges = potentialMatches
@@ -570,18 +580,21 @@ export function ResumeEditor({
       // Some generators might incorrectly add positions to summary changes
       const nonPositionedChanges = sectionChanges.filter(c => !c.position?.sectionIndex && !c.position?.bulletIndex)
 
-      // Check if this is a pure addition (new section) that was rejected
-      const isPureAddition = nonPositionedChanges.length === 0 && 
-        changes.some(c => {
-          const changeCoreSection = getCoreSectionName(c.section)
-          return changeCoreSection === coreSectionName && 
-                 c.type === 'addition' && 
-                 getChangeStatus(c.id) === 'rejected' &&
-                 (!c.original || c.original.trim().length === 0)
-        })
+      // CRITICAL: Check if this section is a rejected addition (new content that was rejected)
+      // If ALL changes for this section are rejected additions with no original text, hide the entire section
+      const allSectionChanges = changes.filter(c => {
+        const changeCoreSection = getCoreSectionName(c.section)
+        return changeCoreSection === coreSectionName
+      })
+      
+      const isRejectedAddition = allSectionChanges.length > 0 && allSectionChanges.every(c => 
+        c.type === 'addition' && 
+        getChangeStatus(c.id) === 'rejected' &&
+        (!c.original || c.original.trim().length === 0)
+      )
 
-      // If it's a rejected pure addition, don't render the section content
-      if (isPureAddition) {
+      // If it's a rejected addition, don't render the section at all (including title)
+      if (isRejectedAddition) {
         return null
       }
 
@@ -612,8 +625,9 @@ export function ResumeEditor({
                   {entry.bullets && entry.bullets.map((bullet: string, bulletIdx: number) => {
                     // O(1) lookup using pre-indexed map (uses core section name for consistent matching)
                     const bulletKey = `${coreSectionName}-${entryIdx}-${bulletIdx}`
+                    // CRITICAL: Pass ALL changes (including rejected) to renderTextWithChanges
+                    // The render function needs rejected changes to access their .original text for reverting
                     let bulletChanges = (changeIndex.bySectionAndBullet.get(bulletKey) || [])
-                      .filter(c => getChangeStatus(c.id) !== 'rejected') // CRITICAL: Exclude rejected changes
 
                     // Fallback: If no changes found via indexed lookup, try multiple matching strategies
                     // CRITICAL: This handles cases where section name matching failed during indexing OR positions don't match
@@ -624,22 +638,24 @@ export function ResumeEditor({
                         const matchesCore = changeCoreSection === coreSectionName
                         const matchesPosition = c.position?.sectionIndex === entryIdx &&
                           c.position?.bulletIndex === bulletIdx
-                        const notRejected = getChangeStatus(c.id) !== 'rejected'
                         
-                        return matchesCore && matchesPosition && notRejected
+                        // Include ALL changes (even rejected) - renderTextWithChanges needs them
+                        return matchesCore && matchesPosition
                       })
                       
                       // Strategy 2: If still no matches, try content-based matching for modifications
                       // This handles cases where generator didn't provide correct positions
                       if (bulletChanges.length === 0) {
+                        // Include ALL changes (even rejected) so renderTextWithChanges can access original text
                         const sectionChanges = changes.filter(c => {
                           const changeCoreSection = getCoreSectionName(c.section || '')
-                          return changeCoreSection === coreSectionName && getChangeStatus(c.id) !== 'rejected'
+                          return changeCoreSection === coreSectionName
                         })
                         
                         // For modifications, try to match by content similarity
                         // We check BOTH original (old) and suggested (new) text against the bullet (new)
                         // because we are rendering the optimized resume (new text)
+                        // Note: sectionChanges already filtered out rejected in the parent filter
                         bulletChanges = sectionChanges.filter(c => {
                           if (c.type === 'modification') {
                             const bulletLower = bullet.toLowerCase().trim()
@@ -753,9 +769,8 @@ export function ResumeEditor({
       }
 
       if (section.type === 'skills') {
-        // Get actionable changes for skills section
+        // Get ALL changes for skills section (including rejected for proper rendering)
         const skillChanges = (changeIndex.bySection.get(sectionKey) || [])
-          .filter(c => getChangeStatus(c.id) !== 'rejected')
 
         return (
           <div className="flex flex-wrap gap-2">
@@ -765,6 +780,11 @@ export function ResumeEditor({
                 c.type === 'addition' && 
                 c.suggested?.toLowerCase().trim() === skill.toLowerCase().trim()
               )
+              
+              // CRITICAL: If this skill is an addition that was rejected, don't render it at all
+              if (change && change.type === 'addition' && getChangeStatus(change.id) === 'rejected') {
+                return null // Skill addition was rejected, so remove it from display
+              }
               
               // Determine styling based on change status
               let classes = "bg-gray-100 text-gray-700 border border-transparent"
@@ -848,7 +868,8 @@ export function ResumeEditor({
       <div className="bg-white/80 backdrop-blur-sm border border-gray-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.05)] rounded-lg px-6 py-4 flex items-center justify-between">
         <div>
           <p className="text-sm text-gray-600 font-sans">
-            {getVisibleChanges.length} suggestions • {getVisibleChanges.filter(c => acceptedChanges.has(c.id)).length} accepted
+            {getVisibleChanges.length} suggestions • {acceptedChanges.size} accepted
+            {rejectedChanges.size > 0 && ` • ${rejectedChanges.size} rejected`}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -858,7 +879,7 @@ export function ResumeEditor({
             className="flex items-center gap-2"
           >
             <Check className="h-4 w-4" />
-            Accept All
+            {rejectedChanges.size > 0 ? 'Accept Remaining' : 'Accept All'}
           </Button>
           <Button
             onClick={() => handlePrint()}

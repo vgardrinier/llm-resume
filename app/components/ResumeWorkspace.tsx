@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import type { StructuredResumeResponse } from '@/types/api'
 import { TheBrain } from './TheBrain'
@@ -59,11 +59,16 @@ export function ResumeWorkspace({ data, onStartOver }: ResumeWorkspaceProps) {
   // Filter changes to only include visible/actionable ones
   // This ensures consistent counting across the UI
   // NOTE: Education changes are ALWAYS filtered out - education should never be modified
-  const visibleChanges = data.changes.filter(c => {
+  // IMPORTANT: Include ALL changes (pending, accepted, rejected) in the count
+  // We filter rejected changes when RENDERING, but not when COUNTING
+  const visibleChanges = useMemo(() => data.changes.filter(c => {
     // Always exclude education changes - education should never be modified
     if (c.section === 'Education' || c.section === 'education') {
       return false
     }
+    
+    // Don't filter by rejection status - we want to count ALL changes (pending + accepted + rejected)
+    // This ensures "X suggestions" shows the true total count
     
     // Only count changes that are actually visible/actionable
     // Filter out changes for sections that don't exist or are empty
@@ -87,7 +92,7 @@ export function ResumeWorkspace({ data, onStartOver }: ResumeWorkspaceProps) {
     }
     
     return hasSectionContent(section)
-  })
+  }), [data.changes, data.optimizedResume.sections])
 
   const handleAcceptChange = (changeId: string) => {
     setAcceptedChanges(prev => new Set(prev).add(changeId))
@@ -108,8 +113,11 @@ export function ResumeWorkspace({ data, onStartOver }: ResumeWorkspaceProps) {
   }
 
   const handleAcceptAll = () => {
-    setAcceptedChanges(new Set(visibleChanges.map(c => c.id)))
-    setRejectedChanges(new Set())
+    // Only accept changes that haven't been rejected
+    // This preserves the user's rejection decisions
+    const changesToAccept = visibleChanges.filter(c => !rejectedChanges.has(c.id))
+    setAcceptedChanges(new Set(changesToAccept.map(c => c.id)))
+    // Keep rejectedChanges as-is - don't clear them!
   }
 
   // Animation timing constants (must match TheBrain.tsx)
