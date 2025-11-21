@@ -23,22 +23,31 @@ function isJobPlatform(url: string): boolean {
   }
 }
 
-// Helper to remove emojis and decorative characters from text
-function removeEmojis(text: string | null | undefined): string {
+// Helper to remove emojis but keep flags for locations
+function removeEmojis(text: string | null | undefined, keepFlags: boolean = false): string {
   if (!text) return ''
-  // Remove emojis and other Unicode symbols using RegExp constructor to avoid ES5/ES6 target issues
-  // This regex matches most emoji ranges including flags, symbols, pictographs, etc.
-  // We use new RegExp with the 'u' flag to properly handle unicode ranges
-  const ranges = [
+  
+  // If we want to keep flags, only remove non-flag emojis
+  const ranges = keepFlags ? [
     '[\\u{1F300}-\\u{1F9FF}]', // Miscellaneous Symbols and Pictographs
     '[\\u{1F600}-\u{1F64F}]', // Emoticons
     '[\\u{1F680}-\u{1F6FF}]', // Transport and Map Symbols
     '[\\u{2600}-\u{26FF}]',   // Miscellaneous Symbols
     '[\\u{2700}-\u{27BF}]',   // Dingbats
-    '[\\u{1F1E0}-\u{1F1FF}]', // Regional Indicator Symbols (flags)
+    // Skip: '[\\u{1F1E0}-\u{1F1FF}]', // Regional Indicator Symbols (flags) - KEEP THESE
     '[\\u{1F900}-\u{1F9FF}]', // Supplemental Symbols and Pictographs
     '[\\u{1FA00}-\u{1FA6F}]', // Chess Symbols
     '[\\u{1FA70}-\u{1FAFF}]', // Symbols and Pictographs Extended-A
+  ].join('|') : [
+    '[\\u{1F300}-\\u{1F9FF}]',
+    '[\\u{1F600}-\u{1F64F}]',
+    '[\\u{1F680}-\u{1F6FF}]',
+    '[\\u{2600}-\u{26FF}]',
+    '[\\u{2700}-\u{27BF}]',
+    '[\\u{1F1E0}-\u{1F1FF}]', // Remove flags if not keeping
+    '[\\u{1F900}-\u{1F9FF}]',
+    '[\\u{1FA00}-\u{1FA6F}]',
+    '[\\u{1FA70}-\u{1FAFF}]',
   ].join('|')
   
   try {
@@ -200,7 +209,7 @@ function extractFromJsonLd(html: string): { jobDescription?: string; companyName
             jobDescription: removeEmojis(fullDesc), 
             companyName: company || undefined, 
             jobTitle: title || undefined, 
-            location: location ? removeEmojis(location) : undefined 
+            location: location ? removeEmojis(location, true) : undefined // Keep flags for location
           }
         }
       }
@@ -314,7 +323,7 @@ Please respond in JSON format:
     const cleanedData = {
       companyName: removeEmojis(extractedData.companyName) || null,
       jobTitle: removeEmojis(extractedData.jobTitle) || null,
-      location: removeEmojis(extractedData.location) || null,
+      location: removeEmojis(extractedData.location, true) || null, // Keep flags for location
     }
 
     console.log(`[FetchJob] Quick extraction result - Job: "${cleanedData.jobTitle}", Company: "${cleanedData.companyName}", Location: "${cleanedData.location}"`)
@@ -462,7 +471,7 @@ Please respond in JSON format:
       jobDescription: removeEmojis(extractedData.jobDescription),
       companyName: removeEmojis(extractedData.companyName) || null,
       jobTitle: removeEmojis(extractedData.jobTitle) || null,
-      location: removeEmojis(extractedData.location) || null,
+      location: removeEmojis(extractedData.location, true) || null, // Keep flags
     }
 
     const jobDescLength = cleanedData.jobDescription?.length || 0
@@ -611,7 +620,7 @@ CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. 
       const cleanedQuickData = {
         companyName: removeEmojis(quickData.companyName) || null,
         jobTitle: removeEmojis(quickData.jobTitle) || null,
-        location: removeEmojis(quickData.location) || null,
+        location: removeEmojis(quickData.location, true) || null, // Keep flags
       }
       
       if (cleanedQuickData.companyName || cleanedQuickData.jobTitle || cleanedQuickData.location) {
@@ -687,7 +696,7 @@ ${htmlContent.slice(0, 80000)}`
       jobDescription: removeEmojis(extractedData.jobDescription),
       companyName: removeEmojis(extractedData.companyName) || null,
       jobTitle: removeEmojis(extractedData.jobTitle) || null,
-      location: removeEmojis(extractedData.location) || null,
+      location: removeEmojis(extractedData.location, true) || null, // Keep flags
     }
 
     if (!cleanedData.jobDescription || cleanedData.jobDescription.trim().length < 40) {
@@ -837,7 +846,7 @@ CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. 
       const cleanedQuickData = {
         companyName: removeEmojis(quickData.companyName) || null,
         jobTitle: removeEmojis(quickData.jobTitle) || null,
-        location: removeEmojis(quickData.location) || null,
+        location: removeEmojis(quickData.location, true) || null, // Keep flags
       }
       
       if (cleanedQuickData.companyName || cleanedQuickData.jobTitle || cleanedQuickData.location) {
@@ -949,7 +958,7 @@ ${htmlSlice}`
       jobDescription: removeEmojis(extractedData.jobDescription),
       companyName: removeEmojis(extractedData.companyName) || null,
       jobTitle: removeEmojis(extractedData.jobTitle) || null,
-      location: removeEmojis(extractedData.location) || null,
+      location: removeEmojis(extractedData.location, true) || null, // Keep flags
     }
 
     if (!cleanedData.jobDescription || cleanedData.jobDescription.trim().length < 40) {

@@ -34,14 +34,27 @@ export function UploadingNarrative({
   const [baselineScore, setBaselineScore] = useState<BaselineScore | null>(null)
   const [progress, setProgress] = useState(0)
 
-  const beats = [
+  // Generic fallback beats
+  const genericBeats = [
     "Analyzing your resume",
     "Finding key signals",
     "Tightening phrasing",
     "Finalizing edits"
   ]
 
-  // Fetch baseline score immediately
+  const [beats, setBeats] = useState<string[]>(genericBeats)
+
+  // Reset state when loading starts
+  useEffect(() => {
+    if (isLoading) {
+      setProgress(0)
+      setStep(0)
+      setBaselineScore(null)
+      setBeats(genericBeats)
+    }
+  }, [isLoading])
+
+  // Fetch baseline score immediately and generate personalized beats
   useEffect(() => {
     if (!isLoading || !jobDescription || !resume) return
     
@@ -60,7 +73,35 @@ export function UploadingNarrative({
 
         if (!response.ok) throw new Error('Failed')
         const data = await response.json()
-        if (!cancelled) setBaselineScore(data)
+        if (!cancelled) {
+          setBaselineScore(data)
+          
+          // Generate personalized beats based on score
+          const score = data.score
+          const breakdown = data.breakdown
+          
+          // Find weakest area to focus on
+          const areas = [
+            { name: 'keywords', score: breakdown.keywordMatch },
+            { name: 'themes', score: breakdown.themeAlignment },
+            { name: 'experience', score: breakdown.experienceRelevance },
+            { name: 'skills', score: breakdown.skillOverlap }
+          ]
+          const weakest = areas.sort((a, b) => a.score - b.score)[0]
+          
+          // Personalized beats
+          const personalizedBeats = [
+            "Analyzing your resume",
+            weakest.name === 'keywords' ? "Adding missing keywords" :
+            weakest.name === 'themes' ? "Strengthening key themes" :
+            weakest.name === 'experience' ? "Highlighting experience" :
+            "Matching skills",
+            "Tightening phrasing",
+            "Finalizing edits"
+          ]
+          
+          setBeats(personalizedBeats)
+        }
       } catch (error) {
         console.warn('[Loading] Baseline score failed:', error)
       }
@@ -104,13 +145,13 @@ export function UploadingNarrative({
     return () => clearInterval(interval)
   }, [isLoading, progress])
 
-  // Advance beats every 10 seconds
+  // Advance beats every 7 seconds
   useEffect(() => {
     if (!isLoading) return
     
     const interval = setInterval(() => {
       setStep(s => Math.min(s + 1, beats.length - 1))
-    }, 10000)
+    }, 7000)
     
     return () => clearInterval(interval)
   }, [isLoading, beats.length])
@@ -166,7 +207,7 @@ export function UploadingNarrative({
           </AnimatePresence>
         </div>
 
-        {/* Baseline score - tiny, ghosted */}
+        {/* Baseline score - tiny, ghosted, personalized */}
         {baselineScore && isLoading && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -175,9 +216,13 @@ export function UploadingNarrative({
             className="mt-6 pt-4 border-t border-gray-200/50 text-center"
           >
             <p className="text-sm text-gray-500">
-              Fit: <span className="font-medium text-gray-700">{baselineScore.score}/100</span> <span className="text-gray-400">(early estimate)</span>
+              Current fit: <span className="font-medium text-gray-700">{baselineScore.score}/100</span>
             </p>
-            <p className="text-xs text-gray-400 mt-1">Refining it</p>
+            <p className="text-xs text-gray-400 mt-1">
+              {baselineScore.score < 50 ? "We'll get you there" :
+               baselineScore.score < 70 ? "Improving it now" :
+               "Making it stronger"}
+            </p>
           </motion.div>
         )}
       </div>
