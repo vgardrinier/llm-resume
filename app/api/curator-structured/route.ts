@@ -148,9 +148,7 @@ ${jobDescription}`
       whatsMissingCount: result.whatsMissing?.length || 0,
       cannotInventCount: result.constraints?.cannot_invent?.length || 0,
       requiresInputCount: result.constraints?.requires_user_input?.length || 0,
-      semanticTransformationsCount: result.semantic_transformations?.length || 0,
-      candidateDomainsCount: result.candidate_domains?.length || 0,
-      jobRequirementDomainsCount: result.job_requirement_domains?.length || 0
+      semanticTransformationsCount: result.semantic_transformations?.length || 0
     })
 
     return NextResponse.json({

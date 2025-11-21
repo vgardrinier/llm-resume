@@ -153,8 +153,6 @@ export async function POST(request: NextRequest) {
         cannotInventCount: analysisData?.constraints?.cannot_invent?.length || 0,
         // DSM metrics
         semanticTransformationsCount: analysisData?.semantic_transformations?.length || 0,
-        candidateDomainsCount: analysisData?.candidate_domains?.length || 0,
-        jobRequirementDomainsCount: analysisData?.job_requirement_domains?.length || 0,
         safeRewritesCount: analysisData?.safe_rewrites?.length || 0,
         unmetRequirementsCount: analysisData?.unmet_requirements?.length || 0
       })
