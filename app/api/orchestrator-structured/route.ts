@@ -314,11 +314,8 @@ export async function POST(request: NextRequest) {
       jobDescription: job_description,
       candidateResume: candidate_resume,
       generatedResume: resumeMarkdown,
-      keywordsUsed: generatorData.analysis.keywordsToTarget.verbs.concat(
-        generatorData.analysis.keywordsToTarget.nouns,
-        generatorData.analysis.keywordsToTarget.techStack
-      ),
-      themesCovered: generatorData.analysis.keywordsToTarget.concepts
+      keywordsUsed: [], // Keywords extracted naturally by Generator from job description
+      themesCovered: [] // Themes handled via semantic_transformations instead
     })
     
     // Use baseline calculated at the start (in parallel with analyzer)

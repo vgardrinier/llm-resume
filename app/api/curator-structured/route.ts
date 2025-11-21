@@ -45,33 +45,30 @@ Your goal is to identify safe transformation opportunities, constraints, and opt
 </background_information>
 
 <instructions>
-Perform the following analysis steps:
+Analyze and extract:
 
-1. Extract candidate_domains[] (5-12 themes from résumé: "project coordination", "stakeholder communication", etc.)
+1. semantic_transformations[] - How to reframe candidate's experience to match job language (FROM domain → TO domain, with confidence 0-1 and reasoning)
 
-2. Extract job_requirement_domains[] (5-12 themes from job: "engineering project management", "risk tracking", etc.)
+2. unmet_requirements[] - Job requirements that need new facts (cannot be satisfied from resume)
 
-3. Compute semantic_transformations[] (FROM candidate domain → TO job domain, with confidence 0-1 and reasoning)
+3. safe_rewrites[] - Rules for reframing existing content (one sentence per rule)
 
-4. Identify unmet_requirements[] (job domains requiring new facts)
+4. constraints:
+   - cannot_invent[] - Categories forbidden (metrics, technologies, tasks not in résumé)
+   - safe_to_add[] - What's allowed (keywords, voice changes, etc.)
+   - requires_user_input[] - Specific questions for unmet requirements
 
-5. Define safe_rewrites[] (one sentence per rule: how to reframe existing content)
+5. whatWorks[] - Existing strengths to preserve
 
-6. Define cannot_invent[] (categories forbidden: metrics, technologies, tasks not in résumé)
+6. whatsMissing[] - Gaps to address
 
-7. Define requires_user_input[] (specific questions for unmet requirements)
-
-8. Extract keywordsToTarget {verbs, nouns, concepts, techStack, softSkills, compliance}
-
-9. Identify whatWorks[] and whatsMissing[]
-
-10. Provide rationaleForChanges (strategy summary)
+7. rationaleForChanges - Strategy summary
 
 RULES:
 - Only create transformations if relationship is genuine and safe
-- Never invent tasks/metrics/technologies
+- Never invent facts, metrics, or technologies
 - Be explicit about constraints
-- If no safe mapping exists, don't force one
+- Generator will extract keywords naturally from job description
 </instructions>
 
 ## Output description
@@ -79,16 +76,11 @@ RULES:
 Return valid JSON with this structure:
 
 {
-  "candidate_domains": [...],
-  "job_requirement_domains": [...],
   "semantic_transformations": [{"from": "...", "to": "...", "confidence": 0.88, "reasoning": "..."}],
   "unmet_requirements": [...],
   "safe_rewrites": [...],
-  "cannot_invent": [...],
-  "requires_user_input": [...],
   "whatWorks": [...],
   "whatsMissing": [...],
-  "keywordsToTarget": {"verbs": [...], "nouns": [...], "concepts": [...], "techStack": [...], "softSkills": [...], "compliance": []},
   "rationaleForChanges": "...",
   "constraints": {"cannot_invent": [...], "safe_to_add": [...], "requires_user_input": [...]}
 }
@@ -106,8 +98,8 @@ ${jobDescription}`
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514', // Use Sonnet for strategic thinking
-      max_tokens: 4000,
-      temperature: 0.3,
+      max_tokens: 3000, // Reduced (no keyword extraction overhead)
+      temperature: 0.2, // Slightly lower for faster, more focused output
       messages: [{ role: 'user', content: analysisPrompt }]
     })
 
