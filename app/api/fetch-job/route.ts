@@ -394,7 +394,7 @@ async function extractWithVision(url: string, quick: boolean = false) {
     })
 
     const message = await anthropic.messages.create({
-      model: 'claude-3-7-sonnet-20250219',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 32000, // Increased to ensure full job description extraction (no truncation)
       messages: [
         {
@@ -669,7 +669,7 @@ ${htmlContent.slice(0, 80000)}`
     })
 
     const message = await anthropic.messages.create({
-      model: 'claude-3-7-sonnet-20250219',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 32000, // Increased to ensure full job description extraction (no truncation)
       messages: [
         {
@@ -904,7 +904,7 @@ ${htmlSlice}`
     })
 
     const message = await anthropic.messages.create({
-      model: 'claude-3-7-sonnet-20250219',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 32000, // Increased to ensure full job description extraction (no truncation)
       messages: [
         {

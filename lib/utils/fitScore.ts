@@ -114,7 +114,7 @@ ${generatedResume}`
     })
 
     const message = await anthropic.messages.create({
-      model: 'claude-3-7-sonnet-20250219',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 1000,
       temperature: 0.0, // Zero temperature for maximum consistency - same inputs should produce same scores
       messages: [
@@ -302,7 +302,7 @@ IMPORTANT: Use varied, realistic scores (not just multiples of 5). Scores like 7
     })
 
     const message = await anthropic.messages.create({
-      model: 'claude-3-7-sonnet-20250219',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 800,
       temperature: 0.0, // Zero temperature for maximum consistency - same inputs should produce same scores
       messages: [{ role: 'user', content: prompt }]

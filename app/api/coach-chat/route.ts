@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
     })
 
     const message = await anthropic.messages.create({
-      model: 'claude-3-7-sonnet-20250219',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 800,
       temperature: 0.8, // Higher for personality
       messages: [{

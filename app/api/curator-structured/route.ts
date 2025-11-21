@@ -105,7 +105,7 @@ ${jobDescription}`
     })
 
     const message = await anthropic.messages.create({
-      model: 'claude-3-7-sonnet-20250219', // Use Sonnet for strategic thinking
+      model: 'claude-sonnet-4-20250514', // Use Sonnet for strategic thinking
       max_tokens: 4000,
       temperature: 0.3,
       messages: [{ role: 'user', content: analysisPrompt }]
@@ -166,7 +166,7 @@ ${jobDescription}`
       feedback: 'Analysis generated with explicit constraints',
       metadata: {
         evaluation_timestamp: new Date().toISOString(),
-        model_used: 'claude-3-7-sonnet-20250219'
+        model_used: 'claude-sonnet-4-20250514'
       }
     })
 

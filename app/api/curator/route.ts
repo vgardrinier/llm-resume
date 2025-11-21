@@ -125,7 +125,7 @@ Return ONLY JSON:
     })
 
     const message = await anthropic.messages.create({
-      model: 'claude-3-7-sonnet-20250219',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 1500,
       temperature: 0.2, // Low temperature for consistent evaluation
       messages: [
@@ -160,7 +160,7 @@ Return ONLY JSON:
         metadata: {
           feedback_tone: feedbackTone,
           evaluation_timestamp: new Date().toISOString(),
-          model_used: 'claude-3-7-sonnet-20250219',
+          model_used: 'claude-sonnet-4-20250514',
           raw_scores: {
             clarity: rawClarity,
             relevance: rawRelevance,
