@@ -916,7 +916,33 @@ ${htmlSlice}`
 
     const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
     console.log(`[FetchJob] Claude response length: ${responseText.length} chars`)
-    const extractedData = parseClaudeResponse(responseText)
+    
+    let extractedData
+    try {
+      extractedData = parseClaudeResponse(responseText)
+    } catch (parseError) {
+      console.error('[FetchJob] JSON parse failed, raw response:', responseText.substring(0, 2000))
+      console.error('[FetchJob] Parse error details:', parseError)
+      
+      // Try a more lenient parsing approach
+      try {
+        // Remove any text before first { and after last }
+        const firstBrace = responseText.indexOf('{')
+        const lastBrace = responseText.lastIndexOf('}')
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          const jsonStr = responseText.substring(firstBrace, lastBrace + 1)
+          extractedData = JSON.parse(jsonStr)
+        } else {
+          throw new Error('No JSON object found in response')
+        }
+      } catch (fallbackError) {
+        console.error('[FetchJob] Fallback parsing also failed')
+        return NextResponse.json(
+          { error: 'Failed to parse job description from AI response. The page may not contain valid job posting information.' },
+          { status: 500 }
+        )
+      }
+    }
 
     // Remove emojis from extracted data
     const cleanedData = {
