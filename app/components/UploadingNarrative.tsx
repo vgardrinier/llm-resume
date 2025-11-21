@@ -35,10 +35,10 @@ export function UploadingNarrative({
   const [progress, setProgress] = useState(0)
 
   const beats = [
-    "Analyzing your resume and the job requirements",
-    "Identifying key skills and experiences to highlight",
-    "Optimizing language for ATS systems",
-    "Finalizing improvements"
+    "Analyzing your resume",
+    "Finding key signals",
+    "Tightening phrasing",
+    "Finalizing edits"
   ]
 
   // Fetch baseline score immediately
@@ -70,11 +70,25 @@ export function UploadingNarrative({
     return () => { cancelled = true }
   }, [jobDescription, resume, isLoading])
 
-  // Simple progress: steady increment to 90%, jump to 100% when done
+  // Simple progress: steady increment to 90%, ease to 100% when done
   useEffect(() => {
     if (!isLoading) {
-      setProgress(100)
-      return
+      // Animate from current to 100 over 300ms
+      const current = progress
+      const start = Date.now()
+      const duration = 300
+
+      const interval = setInterval(() => {
+        const elapsed = Date.now() - start
+        const t = Math.min(elapsed / duration, 1)
+        const eased = t * t * (3 - 2 * t) // smoothstep easing
+        const newProgress = Math.round(current + (100 - current) * eased)
+        setProgress(newProgress)
+        
+        if (t >= 1) clearInterval(interval)
+      }, 16)
+
+      return () => clearInterval(interval)
     }
 
     const start = Date.now()
@@ -88,7 +102,7 @@ export function UploadingNarrative({
     }, 200)
 
     return () => clearInterval(interval)
-  }, [isLoading])
+  }, [isLoading, progress])
 
   // Advance beats every 10 seconds
   useEffect(() => {
@@ -107,7 +121,7 @@ export function UploadingNarrative({
 
   return (
     <div className="flex flex-col items-center gap-6 py-8">
-      <div className="backdrop-blur-sm bg-white/50 border border-gray-200 rounded-2xl shadow-sm px-8 py-8 max-w-lg w-full">
+      <div className="backdrop-blur-sm bg-white/50 border border-gray-200 rounded-2xl shadow-sm px-6 py-6 max-w-lg w-full">
         {/* Progress ring */}
         <div className="relative flex justify-center mb-6">
           <svg width="64" height="64" viewBox="0 0 64 64" className="transform -rotate-90">
@@ -163,7 +177,7 @@ export function UploadingNarrative({
             <p className="text-sm text-gray-500">
               Fit: <span className="font-medium text-gray-700">{baselineScore.score}/100</span> <span className="text-gray-400">(early estimate)</span>
             </p>
-            <p className="text-xs text-gray-400 mt-1">improving this now...</p>
+            <p className="text-xs text-gray-400 mt-1">Refining it</p>
           </motion.div>
         )}
       </div>
