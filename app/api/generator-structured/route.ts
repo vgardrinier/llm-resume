@@ -237,7 +237,7 @@ ${candidate_resume}`
     })
 
     const message = await anthropic.messages.create({
-      model: 'claude-3-haiku-20240307',
+      model: 'claude-sonnet-4-20250514', // Upgraded from Haiku - generator needs intelligence for high-quality changes
       max_tokens: 4096, // Increased to handle full structured resume with all sections and changes
       temperature: creative_mode === 'assertive' ? 0.55 : creative_mode === 'conservative' ? 0.2 : 0.4,
       messages: [
