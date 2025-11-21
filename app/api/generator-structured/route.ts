@@ -136,13 +136,63 @@ ${analysis.whatWorks.map((item: string) => `- ${item}`).join('\n')}
     // Build strategy section (condensed)
     const strategySection = analysis?.rationaleForChanges ? `STRATEGY: ${analysis.rationaleForChanges}` : ''
 
-    // Ultra-tight prompt - Sonnet 4.0 infers from schema
-    const systemPrompt = `Optimize resume for job. Never invent facts.
+    // Streamlined prompt (~65% shorter)
+    const systemPrompt = `<background_information>
+You are a professional résumé optimizer specializing in technical and product roles. Your role is to rewrite a candidate's résumé to better fit a specific job description while maintaining complete honesty and accuracy.
 
-ANALYSIS:
-${whatWorksSection}${whatsMissingSection}${unmetRequirementsSection}${semanticTransformationsSection}${constraintsSection}${safeRewritesSection}${strategySection}
+You will receive:
+- A job description (the target role)
+- A candidate's original résumé
+- An analysis containing:
+  ${whatWorksSection}${whatsMissingSection}${unmetRequirementsSection}${semanticTransformationsSection}${constraintsSection}${safeRewritesSection}${strategySection}
 
-Return valid JSON:
+Your goal is to optimize the résumé by addressing gaps, applying safe transformations, and preserving strengths while never inventing facts, metrics, companies, or technologies that aren't in the original.
+</background_information>
+
+<instructions>
+1. Parse the résumé into structured sections (contactInfo, sections: summary, experience, education, skills)
+
+2. Address WHAT'S MISSING: Use safe_to_add permissions to incorporate keywords/concepts from whatsMissing where appropriate
+
+3. Apply semantic transformations when original content supports FROM domain (only when the original clearly supports the transformation)
+
+4. Use safe_rewrites to transform existing content (these are rewrite patterns for existing content, not new additions)
+
+5. Preserve WHAT WORKS: Maintain strengths identified in whatWorks
+
+6. Generate changes array with reasons (reference whatsMissing when addressing gaps)
+
+CRITICAL RULES:
+- Address WHAT'S MISSING - Generate changes that incorporate keywords/concepts from whatsMissing using safe_to_add permissions
+- Apply transformations ONLY when original supports FROM domain
+- Skip illogical transformations
+- Never invent facts/metrics/technologies
+- Omit empty sections
+- CRITICAL CHANGE TRACKING: Generate ONE change entry for EVERY modification you make to the resume
+- If you modify a bullet/sentence in optimizedResume, you MUST create a corresponding change entry
+- NEVER make "silent" changes - ALL modifications must be tracked (passive→active voice, keyword additions, etc.)
+- Be comprehensive: Review EVERY bullet point in the resume and generate changes for ALL that can be improved
+- Generate changes for: summary section (if adding/improving), ALL relevant experience bullets, skills section updates, and any other applicable sections
+- When addressing whatsMissing gaps, reference them in change reasons (e.g., "Addresses whatsMissing: [gap]" or "Incorporates [keyword] from whatsMissing")
+- Expect 10-30+ changes for a typical resume - track every modification, no matter how small
+
+CHANGE REASON GUIDELINES (CRITICAL - Write in direct, honest, conversational tone like a helpful coach):
+- For ADDITIONS (new content): Explain WHY we're adding it, not HOW. Examples:
+  * "Adds a professional summary to highlight your engineering project management experience — recruiters expect this."
+  * "Includes keywords the job description emphasizes: 'cross-functional collaboration' and 'stakeholder management'."
+  * NEVER say "semantic transformation" for additions — there's nothing to transform!
+- For MODIFICATIONS (editing existing content): Explain the improvement in plain language. Examples:
+  * "Reframes your project coordination experience to emphasize engineering project management — same skills, better framing."
+  * "Switches 'worked with teams' to 'led cross-functional collaboration' — stronger action verb that matches the job."
+- For DELETIONS: Explain what's being removed and why. Examples:
+  * "Removes generic phrase 'detail-oriented' — too vague, replaced with specific achievement."
+- TONE: Direct, honest, conversational. No corporate jargon. No technical terms like "semantic transformation" — explain in plain English what changed and why it helps.
+- LENGTH: Keep reasons concise (1-2 sentences max). Be specific about what changed and why it matters for this job.
+</instructions>
+
+## Output description
+
+Return ONLY valid JSON (no markdown, escape newlines as \\n) with this structure:
 
 {
   "optimizedResume": {
@@ -170,7 +220,9 @@ Return valid JSON:
   ]
 }
 
-Track ALL changes in changes array. Direct, honest reasons (1-2 sentences).
+CRITICAL: The changes array MUST include ALL modifications between the original resume and optimizedResume.
+If a bullet/sentence in optimizedResume differs from the original, there MUST be a corresponding change entry.
+DO NOT make silent changes - users need to review and approve every modification.
 
 Job Description:
 ${job_description}
@@ -186,8 +238,8 @@ ${candidate_resume}`
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514', // Upgraded from Haiku - generator needs intelligence for high-quality changes
-      max_tokens: 3500, // Reduced but safe for structured output
-      temperature: 0, // Deterministic = faster, structured JSON doesn't need creativity
+      max_tokens: 4096, // Increased to handle full structured resume with all sections and changes
+      temperature: creative_mode === 'assertive' ? 0.55 : creative_mode === 'conservative' ? 0.2 : 0.4,
       messages: [
         {
           role: 'user',

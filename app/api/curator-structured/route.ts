@@ -34,9 +34,49 @@ function filterEmptySections(resume: StructuredResume): StructuredResume {
 
 // Analysis mode: Generate analysis with DSM (Dynamic Semantic Mapping)
 async function runAnalysisMode(originalResume: string, jobDescription: string) {
-  const analysisPrompt = `Analyze resume vs job. Map candidate experience to job requirements. Never invent facts.
+  const analysisPrompt = `<background_information>
+You are a résumé analysis expert performing Dynamic Semantic Mapping (DSM) to identify how a candidate's experience can be reinterpreted to match job requirements WITHOUT inventing facts.
 
-Return valid JSON:
+You will analyze:
+- An original candidate résumé
+- A job description
+
+Your goal is to identify safe transformation opportunities, constraints, and optimization strategies while maintaining complete honesty.
+</background_information>
+
+<instructions>
+Perform the following analysis steps:
+
+1. Extract candidate_domains[] (5-12 themes from résumé: "project coordination", "stakeholder communication", etc.)
+
+2. Extract job_requirement_domains[] (5-12 themes from job: "engineering project management", "risk tracking", etc.)
+
+3. Compute semantic_transformations[] (FROM candidate domain → TO job domain, with confidence 0-1 and reasoning)
+
+4. Identify unmet_requirements[] (job domains requiring new facts)
+
+5. Define safe_rewrites[] (one sentence per rule: how to reframe existing content)
+
+6. Define cannot_invent[] (categories forbidden: metrics, technologies, tasks not in résumé)
+
+7. Define requires_user_input[] (specific questions for unmet requirements)
+
+8. Extract keywordsToTarget {verbs, nouns, concepts, techStack, softSkills, compliance}
+
+9. Identify whatWorks[] and whatsMissing[]
+
+10. Provide rationaleForChanges (strategy summary)
+
+RULES:
+- Only create transformations if relationship is genuine and safe
+- Never invent tasks/metrics/technologies
+- Be explicit about constraints
+- If no safe mapping exists, don't force one
+</instructions>
+
+## Output description
+
+Return valid JSON with this structure:
 
 {
   "candidate_domains": [...],
@@ -66,8 +106,8 @@ ${jobDescription}`
 
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514', // Use Sonnet for strategic thinking
-      max_tokens: 3500, // Slightly reduced but safe for complex JSON
-      temperature: 0, // Deterministic = faster inference
+      max_tokens: 4000,
+      temperature: 0.3,
       messages: [{ role: 'user', content: analysisPrompt }]
     })
 
