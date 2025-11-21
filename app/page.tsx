@@ -261,16 +261,16 @@ export default function Home() {
             'TOTAL CLIENT TIME': `${timingBreakdown.total.toFixed(0)}ms (${(timingBreakdown.total / 1000).toFixed(1)}s)`
           },
           'Server-Side (from API)': {
-            'Analyzer (Sonnet)': serverTiming.analyzer_ms ? `${serverTiming.analyzer_ms}ms (${(serverTiming.analyzer_ms / 1000).toFixed(1)}s)` : 'N/A',
+            'Analyzer+Baseline (parallel)': serverTiming.parallel_ms ? `${serverTiming.parallel_ms}ms (${(serverTiming.parallel_ms / 1000).toFixed(1)}s)` : 'N/A',
             'Generator (Haiku)': serverTiming.generator_ms ? `${serverTiming.generator_ms}ms (${(serverTiming.generator_ms / 1000).toFixed(1)}s)` : 'N/A',
             'Curator (Haiku)': serverTiming.curator_ms ? `${serverTiming.curator_ms}ms (${(serverTiming.curator_ms / 1000).toFixed(1)}s)` : 'N/A',
-            'Fit Score Calc': serverTiming.fitScore_ms ? `${serverTiming.fitScore_ms}ms (${(serverTiming.fitScore_ms / 1000).toFixed(1)}s)` : 'N/A',
+            'Final Fit Score': serverTiming.final_fitScore_ms ? `${serverTiming.final_fitScore_ms}ms (${(serverTiming.final_fitScore_ms / 1000).toFixed(1)}s)` : 'N/A',
             'TOTAL SERVER TIME': serverTiming.total_ms ? `${serverTiming.total_ms}ms (${(serverTiming.total_ms / 1000).toFixed(1)}s)` : 'N/A'
           },
           'Bottleneck Analysis': (() => {
             const bottlenecks: string[] = []
-            if (serverTiming.analyzer_ms && serverTiming.analyzer_ms > 30000) {
-              bottlenecks.push(`⚠️ Analyzer (Sonnet) is slow: ${(serverTiming.analyzer_ms / 1000).toFixed(1)}s`)
+            if (serverTiming.parallel_ms && serverTiming.parallel_ms > 30000) {
+              bottlenecks.push(`⚠️ Analyzer+Baseline (parallel) is slow: ${(serverTiming.parallel_ms / 1000).toFixed(1)}s`)
             }
             if (serverTiming.generator_ms && serverTiming.generator_ms > 20000) {
               bottlenecks.push(`⚠️ Generator (Haiku) is slow: ${(serverTiming.generator_ms / 1000).toFixed(1)}s`)
@@ -278,8 +278,8 @@ export default function Home() {
             if (serverTiming.curator_ms && serverTiming.curator_ms > 15000) {
               bottlenecks.push(`⚠️ Curator (Haiku) is slow: ${(serverTiming.curator_ms / 1000).toFixed(1)}s`)
             }
-            if (serverTiming.fitScore_ms && serverTiming.fitScore_ms > 10000) {
-              bottlenecks.push(`⚠️ Fit Score calculation is slow: ${(serverTiming.fitScore_ms / 1000).toFixed(1)}s`)
+            if (serverTiming.final_fitScore_ms && serverTiming.final_fitScore_ms > 10000) {
+              bottlenecks.push(`⚠️ Final Fit Score calculation is slow: ${(serverTiming.final_fitScore_ms / 1000).toFixed(1)}s`)
             }
             if (timingBreakdown.apiCall > 120000) {
               bottlenecks.push(`⚠️ Total API call is very long: ${(timingBreakdown.apiCall / 1000).toFixed(1)}s`)
