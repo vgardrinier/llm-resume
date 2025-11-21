@@ -12,6 +12,16 @@ interface UploadingNarrativeProps {
   isLoading?: boolean // Whether the API call is still in progress
 }
 
+interface BaselineScore {
+  score: number
+  breakdown: {
+    keywordMatch: number
+    themeAlignment: number
+    experienceRelevance: number
+    skillOverlap: number
+  }
+}
+
 // Best-effort, non-blocking client extraction; skips if not found
 function extractCompanyNameClient(text?: string): string | null {
   if (!text) return null
@@ -39,6 +49,48 @@ export function UploadingNarrative({
   const [step, setStep] = useState(0)
   const [beats, setBeats] = useState<string[]>([])
   const [isGeneratingBeats, setIsGeneratingBeats] = useState(true)
+  const [baselineScore, setBaselineScore] = useState<BaselineScore | null>(null)
+
+  // Fetch baseline score immediately for early feedback (only while loading)
+  useEffect(() => {
+    if (!isLoading || !jobDescription || !resume) return
+    
+    let cancelled = false
+
+    async function fetchBaselineScore() {
+      try {
+        const response = await fetch('/api/baseline-fit', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            job_description: jobDescription,
+            candidate_resume: resume
+          })
+        })
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch baseline score')
+        }
+
+        const data = await response.json()
+        if (!cancelled) {
+          setBaselineScore(data)
+          console.log('[UploadingNarrative] Baseline score fetched:', data.score)
+        }
+      } catch (error) {
+        console.warn('[UploadingNarrative] Failed to fetch baseline score:', error)
+        // Silently fail - this is just nice-to-have early feedback
+      }
+    }
+
+    fetchBaselineScore()
+
+    return () => {
+      cancelled = true
+    }
+  }, [jobDescription, resume, isLoading])
 
   // Generate dynamic beats on mount
   useEffect(() => {
@@ -342,6 +394,93 @@ export function UploadingNarrative({
             </>
           )}
         </div>
+
+        {/* Baseline score - subtle, faded, in background */}
+        {baselineScore && isLoading && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: "easeOut", delay: 0.2 }}
+            className="mt-6 pt-4 border-t border-gray-200/50"
+          >
+            {/* Main score - with fade effect on text */}
+            <div className="text-center">
+              <p 
+                className="text-sm text-gray-600 font-sans mb-1"
+                style={{
+                  background: 'linear-gradient(90deg, rgba(107, 114, 128, 0.7) 0%, rgba(107, 114, 128, 0.4) 70%, rgba(107, 114, 128, 0.1) 100%)',
+                  backgroundClip: 'text',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent'
+                }}
+              >
+                Your current fit
+              </p>
+              <div 
+                className="text-3xl font-semibold font-serif"
+                style={{
+                  background: 'linear-gradient(90deg, rgba(30, 41, 59, 0.8) 0%, rgba(30, 41, 59, 0.5) 70%, rgba(30, 41, 59, 0.15) 100%)',
+                  backgroundClip: 'text',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent'
+                }}
+              >
+                {baselineScore.score}/100
+              </div>
+            </div>
+
+            {/* Subscores - very subtle, fade more */}
+            <div className="grid grid-cols-2 gap-2 mt-3 text-xs">
+              {[
+                { label: 'Keywords', value: baselineScore.breakdown.keywordMatch },
+                { label: 'Themes', value: baselineScore.breakdown.themeAlignment },
+                { label: 'Experience', value: baselineScore.breakdown.experienceRelevance },
+                { label: 'Skills', value: baselineScore.breakdown.skillOverlap }
+              ].map((item) => (
+                <div 
+                  key={item.label}
+                  className="text-center"
+                >
+                  <div 
+                    className="font-sans"
+                    style={{
+                      background: 'linear-gradient(90deg, rgba(107, 114, 128, 0.5) 0%, rgba(107, 114, 128, 0.3) 70%, rgba(107, 114, 128, 0.05) 100%)',
+                      backgroundClip: 'text',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent'
+                    }}
+                  >
+                    {item.label}
+                  </div>
+                  <div 
+                    className="font-medium font-sans"
+                    style={{
+                      background: 'linear-gradient(90deg, rgba(30, 41, 59, 0.6) 0%, rgba(30, 41, 59, 0.4) 70%, rgba(30, 41, 59, 0.1) 100%)',
+                      backgroundClip: 'text',
+                      WebkitBackgroundClip: 'text',
+                      WebkitTextFillColor: 'transparent'
+                    }}
+                  >
+                    {item.value}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Subtle hint text - most faded */}
+            <p 
+              className="text-xs text-center mt-3 font-sans italic"
+              style={{
+                background: 'linear-gradient(90deg, rgba(107, 114, 128, 0.4) 0%, rgba(107, 114, 128, 0.2) 60%, rgba(107, 114, 128, 0.0) 100%)',
+                backgroundClip: 'text',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent'
+              }}
+            >
+              We're improving this right now...
+            </p>
+          </motion.div>
+        )}
       </div>
     </div>
   )
