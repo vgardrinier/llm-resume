@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 interface UploadingNarrativeProps {
@@ -112,10 +112,12 @@ export function UploadingNarrative({
   }, [jobDescription, resume, isLoading])
 
   // Simple progress: steady increment to 90%, ease to 100% when done
+  const progressRef = useRef(0)
+  
   useEffect(() => {
     if (!isLoading) {
       // Animate from current to 100 over 300ms
-      const current = progress
+      const current = progressRef.current
       const start = Date.now()
       const duration = 300
 
@@ -124,6 +126,7 @@ export function UploadingNarrative({
         const t = Math.min(elapsed / duration, 1)
         const eased = t * t * (3 - 2 * t) // smoothstep easing
         const newProgress = Math.round(current + (100 - current) * eased)
+        progressRef.current = newProgress
         setProgress(newProgress)
         
         if (t >= 1) clearInterval(interval)
@@ -139,11 +142,13 @@ export function UploadingNarrative({
     const interval = setInterval(() => {
       const elapsed = Date.now() - start
       const calculated = Math.min((elapsed / targetDuration) * maxProgress, maxProgress)
-      setProgress(Math.round(calculated))
+      const rounded = Math.round(calculated)
+      progressRef.current = rounded
+      setProgress(rounded)
     }, 200)
 
     return () => clearInterval(interval)
-  }, [isLoading, progress])
+  }, [isLoading])
 
   // Advance beats every 7 seconds
   useEffect(() => {
