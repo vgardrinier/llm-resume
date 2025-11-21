@@ -83,30 +83,57 @@ export async function POST(request: NextRequest) {
     // Construct base URL for internal API calls
     const baseUrl = request.nextUrl.origin || process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
 
-    // Step 1: Curator-Analyzer (Sonnet) - Generate analysis with constraints
-    const analyzerStart = Date.now()
-    console.log('[Orchestrator-Structured] Step 1: Calling curator-analyzer to generate analysis...')
-    const analyzerResponse = await fetch(`${baseUrl}/api/curator-structured`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-generation-id': generationId,
-        'x-session-id': sessionId
-      },
-      body: JSON.stringify({
-        mode: 'analyze',
-        originalResume: candidate_resume,
-        jobDescription: job_description
+    // Step 1: Parallel execution - Analyzer + Baseline Fit Score
+    // The baseline fit score can start immediately and show early feedback to user
+    const parallelStart = Date.now()
+    console.log('[Orchestrator-Structured] Step 1: Starting analyzer and baseline fit score in parallel...')
+    
+    const [analyzerResponse, baselineFitScore] = await Promise.all([
+      // Analyzer (main work - ~15s)
+      fetch(`${baseUrl}/api/curator-structured`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-generation-id': generationId,
+          'x-session-id': sessionId
+        },
+        body: JSON.stringify({
+          mode: 'analyze',
+          originalResume: candidate_resume,
+          jobDescription: job_description
+        })
+      }),
+      // Baseline fit score (fast - ~2s, can show to user immediately!)
+      calculateBaselineFitScore({
+        jobDescription: job_description,
+        originalResume: candidate_resume
+      }).catch(() => {
+        // Fallback if baseline fails
+        console.warn('[Orchestrator-Structured] Baseline fit score calculation failed, using estimate')
+        return {
+          score: 60,
+          breakdown: {
+            keywordMatch: 60,
+            themeAlignment: 60,
+            experienceRelevance: 60,
+            skillOverlap: 60
+          },
+          explanation: 'Baseline estimate'
+        }
       })
+    ])
+    
+    const parallelTime = Date.now() - parallelStart
+    console.log(`[Orchestrator-Structured] Parallel execution completed in ${parallelTime}ms`, {
+      step: 'parallel_complete',
+      baselineScore: baselineFitScore.score
     })
 
     let analysisData
-    let analyzerTime: number
 
     if (!analyzerResponse.ok) {
       const errorData = await analyzerResponse.json()
-      analyzerTime = Date.now() - analyzerStart
-      console.error(`[Orchestrator-Structured] Analyzer failed after ${analyzerTime}ms:`, errorData)
+      console.error(`[Orchestrator-Structured] Analyzer failed after ${parallelTime}ms:`, errorData)
       // Generator now requires analysis - fail fast if analyzer fails
       return NextResponse.json(
         { 
@@ -118,9 +145,8 @@ export async function POST(request: NextRequest) {
       )
     } else {
       const analyzerResult = await analyzerResponse.json()
-      analyzerTime = Date.now() - analyzerStart
       analysisData = analyzerResult.analysis
-      console.log(`[Orchestrator-Structured] Analyzer completed in ${analyzerTime}ms`, {
+      console.log(`[Orchestrator-Structured] Analyzer completed in ${parallelTime}ms`, {
         step: 'analyzer_complete',
         hasAnalysis: !!analysisData,
         hasConstraints: !!analysisData?.constraints,
@@ -280,41 +306,26 @@ export async function POST(request: NextRequest) {
     // (fit score system expects markdown text)
     const resumeMarkdown = convertStructuredResumeToMarkdown(finalOptimizedResume)
 
-    // Calculate fit scores (before and after)
+    // Calculate final fit score (baseline already calculated in parallel at start)
     const fitScoreStart = Date.now()
-    console.log('[Orchestrator-Structured] Calculating fit scores...')
+    console.log('[Orchestrator-Structured] Calculating final fit score...')
 
-    const [fitScore, baseline] = await Promise.all([
-      calculateFitScore({
-        jobDescription: job_description,
-        candidateResume: candidate_resume,
-        generatedResume: resumeMarkdown,
-        keywordsUsed: generatorData.analysis.keywordsToTarget.verbs.concat(
-          generatorData.analysis.keywordsToTarget.nouns,
-          generatorData.analysis.keywordsToTarget.techStack
-        ),
-        themesCovered: generatorData.analysis.keywordsToTarget.concepts
-      }),
-      calculateBaselineFitScore({
-        jobDescription: job_description,
-        originalResume: candidate_resume
-      }).catch(() => {
-        // Fallback if baseline fails
-        return {
-          score: 60,
-          breakdown: {
-            keywordMatch: 60,
-            themeAlignment: 60,
-            experienceRelevance: 60,
-            skillOverlap: 60
-          },
-          explanation: 'Baseline estimate'
-        }
-      })
-    ])
+    const fitScore = await calculateFitScore({
+      jobDescription: job_description,
+      candidateResume: candidate_resume,
+      generatedResume: resumeMarkdown,
+      keywordsUsed: generatorData.analysis.keywordsToTarget.verbs.concat(
+        generatorData.analysis.keywordsToTarget.nouns,
+        generatorData.analysis.keywordsToTarget.techStack
+      ),
+      themesCovered: generatorData.analysis.keywordsToTarget.concepts
+    })
+    
+    // Use baseline calculated at the start (in parallel with analyzer)
+    const baseline = baselineFitScore
 
     const fitScoreTime = Date.now() - fitScoreStart
-    console.log(`[Orchestrator-Structured] Fit scores calculated in ${fitScoreTime}ms`, {
+    console.log(`[Orchestrator-Structured] Final fit score calculated in ${fitScoreTime}ms`, {
       step: 'fit_score_complete',
       scoreBefore: baseline.score,
       scoreAfter: fitScore.score,
@@ -418,10 +429,11 @@ export async function POST(request: NextRequest) {
         },
         timing: {
           total_ms: Date.now() - overallStart,
-          analyzer_ms: analyzerTime || 0,
+          parallel_ms: parallelTime, // Analyzer + baseline fit score (parallel)
           generator_ms: generatorTime,
           curator_ms: curatorTime,
-          fitScore_ms: fitScoreTime
+          final_fitScore_ms: fitScoreTime, // Just the final fit score (baseline calculated in parallel)
+          baseline_available_at_ms: parallelTime // When baseline score is available to show user
         }
       }
     }
@@ -436,10 +448,11 @@ export async function POST(request: NextRequest) {
       fitScoreBefore: response.analysis.fitScoreBefore,
       changesCount: response.changes.length,
       timingBreakdown: {
-        analyzer: `${analyzerTime || 0}ms (${((analyzerTime || 0) / 1000).toFixed(1)}s)`,
+        parallel: `${parallelTime}ms (${(parallelTime / 1000).toFixed(1)}s) - Analyzer + Baseline Fit Score`,
         generator: `${generatorTime}ms (${(generatorTime / 1000).toFixed(1)}s)`,
         curator: `${curatorTime}ms (${(curatorTime / 1000).toFixed(1)}s)`,
-        fitScore: `${fitScoreTime}ms (${(fitScoreTime / 1000).toFixed(1)}s)`,
+        finalFitScore: `${fitScoreTime}ms (${(fitScoreTime / 1000).toFixed(1)}s)`,
+        baselineAvailableAt: `${parallelTime}ms (${(parallelTime / 1000).toFixed(1)}s) - Early feedback to user!`,
         total: `${totalTime}ms (${(totalTime / 1000).toFixed(1)}s)`
       }
     })

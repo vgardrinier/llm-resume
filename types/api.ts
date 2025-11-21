@@ -150,10 +150,11 @@ export interface StructuredResumeResponse {
     }
     timing: {
       total_ms: number
-      analyzer_ms?: number
+      parallel_ms: number // Analyzer + baseline fit score (parallel)
       generator_ms: number
       curator_ms: number
-      fitScore_ms?: number
+      final_fitScore_ms: number // Just the final fit score calculation
+      baseline_available_at_ms: number // When baseline score is available to show user
     }
   }
 }
