@@ -1,5 +1,7 @@
-import { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, convertInchesToTwip, Packer } from 'docx'
+import * as docx from 'docx'
 import type { StructuredResume } from '@/types/api'
+
+const { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, convertInchesToTwip, Packer } = docx
 
 export async function generateWordDocument(
   resume: StructuredResume,
