@@ -260,13 +260,22 @@ export async function POST(request: NextRequest) {
 
     const totalTime = Date.now() - startTime
 
+    // Ensure optimizedResume has required structure
+    const optimizedResume = curatorResult?.validatedOptimizedResume || generatorResult.optimizedResume
+
+    // Safety check: ensure sections array exists
+    if (!optimizedResume?.sections) {
+      console.warn('[Premium-Orchestrator] optimizedResume missing sections, using fallback')
+      optimizedResume.sections = []
+    }
+
     // NORMALIZED RESPONSE
     return NextResponse.json({
       success: true,
       premium_available: true,
 
       // Resume data
-      optimizedResume: curatorResult?.validatedOptimizedResume || generatorResult.optimizedResume,
+      optimizedResume,
       changes: curatorResult?.validatedChanges || generatorResult.changes,
 
       // Analysis (normalized structure)
