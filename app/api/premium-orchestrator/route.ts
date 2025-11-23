@@ -181,32 +181,44 @@ export async function POST(request: NextRequest) {
       throw new Error('Generator failed')
     }
 
-    // STEP 4: Curator validation
+    // STEP 4: Curator validation (with fallback)
     const curatorStart = Date.now()
-    const curatorResponse = await fetch(`${baseUrl}/api/curator-structured`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        mode: 'validate',
-        changes: generatorResult.changes,
-        optimizedResume: generatorResult.optimizedResume,
-        originalResume: candidate_resume,
-        jobDescription: job_description,
-        analysis: mergedAnalysis
+    let curatorResult = null
+    let curatorTime = 0
+
+    try {
+      const curatorResponse = await fetch(`${baseUrl}/api/curator-structured`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'validate',
+          changes: generatorResult.changes,
+          optimizedResume: generatorResult.optimizedResume,
+          originalResume: candidate_resume,
+          jobDescription: job_description,
+          analysis: mergedAnalysis
+        })
       })
-    })
 
-    const curatorResult = await curatorResponse.json()
-    const curatorTime = Date.now() - curatorStart
-
-    console.log(`[Premium-Orchestrator] Curator complete (${curatorTime}ms)`, {
-      validatedCount: curatorResult.validatedChanges?.length
-    })
+      if (curatorResponse.ok) {
+        curatorResult = await curatorResponse.json()
+        curatorTime = Date.now() - curatorStart
+        console.log(`[Premium-Orchestrator] Curator complete (${curatorTime}ms)`, {
+          validatedCount: curatorResult.validatedChanges?.length
+        })
+      } else {
+        console.error('[Premium-Orchestrator] Curator HTTP error:', curatorResponse.status)
+      }
+    } catch (error) {
+      curatorTime = Date.now() - curatorStart
+      console.error('[Premium-Orchestrator] Curator failed:', error)
+      // Continue without curator validation - use generator results directly
+    }
 
     // STEP 5: Final fit score
     const finalFitStart = Date.now()
     const optimizedResumeText = JSON.stringify(
-      curatorResult.validatedOptimizedResume || generatorResult.optimizedResume
+      curatorResult?.validatedOptimizedResume || generatorResult.optimizedResume
     )
 
     const finalFitResult = await calculateBaselineFitScore({
@@ -251,8 +263,8 @@ export async function POST(request: NextRequest) {
       premium_available: true,
 
       // Resume data
-      optimizedResume: curatorResult.validatedOptimizedResume || generatorResult.optimizedResume,
-      changes: curatorResult.validatedChanges || generatorResult.changes,
+      optimizedResume: curatorResult?.validatedOptimizedResume || generatorResult.optimizedResume,
+      changes: curatorResult?.validatedChanges || generatorResult.changes,
 
       // Analysis (normalized structure)
       analysis: {
@@ -269,9 +281,9 @@ export async function POST(request: NextRequest) {
       salary: salaryData,
 
       // Quality metrics
-      clarity: curatorResult.clarity ?? null,
-      relevance: curatorResult.relevance ?? null,
-      honesty: curatorResult.honesty ?? null,
+      clarity: curatorResult?.clarity ?? null,
+      relevance: curatorResult?.relevance ?? null,
+      honesty: curatorResult?.honesty ?? null,
 
       // Metadata
       metadata: {
