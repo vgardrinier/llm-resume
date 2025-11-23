@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { calculateBaselineFitScore } from '@/lib/utils/fitScore'
 
+// Increase timeout for long-running premium analysis
+export const maxDuration = 120 // 120 seconds for premium flow
+
 /**
  * PREMIUM ORCHESTRATOR - Coordinates 2-Call Analysis
  *
