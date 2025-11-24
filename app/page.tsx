@@ -44,6 +44,17 @@ export default function Home() {
   // Quick extraction state
   const [quickMetadata, setQuickMetadata] = useState<{ companyName?: string | null; jobTitle?: string | null; location?: string | null } | null>(null)
   const [fullJdPromise, setFullJdPromise] = useState<Promise<string> | null>(null)
+  
+  // Baseline fit score state (appears during loading)
+  const [baselineFit, setBaselineFit] = useState<{
+    overallScore: number
+    breakdown: {
+      keywordMatch: number
+      themeAlignment: number
+      experienceRelevance: number
+      skillOverlap: number
+    }
+  } | null>(null)
 
   // State to store resolved flags for display (location -> flag emoji)
   const [resolvedFlags, setResolvedFlags] = useState<Map<string, string>>(new Map())
@@ -148,6 +159,7 @@ export default function Home() {
     setPhase('output')
     setLoading(true)
     setShowResume(false) // Reset resume visibility
+    setBaselineFit(null) // Reset baseline fit score for new analysis
     
     timingBreakdown.buttonClick = performance.now() - userClickStart
     
@@ -227,6 +239,12 @@ export default function Home() {
           const status = await statusResponse.json()
 
           console.log(`[Frontend Poll ${attempts}] ${status.status} | ${status.progress}% | ${status.currentStep || ''}`)
+
+          // Capture baseline fit score when it becomes available (~5s in)
+          if (status.baselineFit && !baselineFit) {
+            setBaselineFit(status.baselineFit)
+            console.log('[Frontend] Baseline fit score received:', status.baselineFit.overallScore)
+          }
 
           if (status.status === 'completed') {
             data = status.result
@@ -788,16 +806,34 @@ export default function Home() {
                           className="flex-1 min-h-[56px] px-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all hover:border-gray-400 backdrop-blur-sm bg-white/60 placeholder:text-gray-500 text-gray-900 text-sm md:text-base font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
                           disabled={urlLoading}
                         />
-                        <Tooltip key="fetch-job-tooltip" content="Fetch job description" position="top" align="left" delay={200}>
+                        <Tooltip key="fetch-job-tooltip" content={urlFetchSuccess ? "Job description extracted successfully" : "Fetch job description"} position="top" align="left" delay={200}>
                           <button
                             type="button"
                             onClick={handleFetchJobFromUrl}
                             disabled={urlLoading || !jobUrl.trim()}
-                            className="min-h-[56px] min-w-[56px] rounded-xl bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white flex items-center justify-center transition-all flex-shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
+                            className={`min-h-[56px] min-w-[56px] rounded-xl text-white border flex items-center justify-center transition-all flex-shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.05)] ${
+                              urlFetchSuccess
+                                ? 'bg-green-600 hover:bg-green-700 border-green-600'
+                                : urlLoading
+                                ? 'bg-gray-300 border-gray-300'
+                                : 'bg-gray-900 hover:bg-gray-800 border-gray-900'
+                            }`}
                             aria-label="Fetch job description"
                           >
                             {urlLoading ? (
                               <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                            ) : urlFetchSuccess ? (
+                              <motion.svg
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                                className="h-5 w-5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </motion.svg>
                             ) : (
                               <Link2 className="h-4 w-4" />
                             )}
@@ -881,37 +917,6 @@ export default function Home() {
                           </AnimatePresence>
                         </div>
                       </div>
-                    </div>
-
-                    {/* Mobile: Upload text below icon */}
-                    <div className="md:hidden flex justify-center">
-                      <AnimatePresence mode="wait">
-                        {uploadedFile && currentResume && !parseLoading ? (
-                          <motion.div
-                            key="success-mobile"
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 10 }}
-                            transition={{ duration: 0.3 }}
-                            className="text-xs text-green-900 backdrop-blur-sm bg-green-50/80 px-3 py-2 rounded-xl border border-green-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
-                          >
-                            ✓ {uploadedFile.name}
-                          </motion.div>
-                        ) : parseError ? (
-                          <motion.div
-                            key="error-mobile"
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 10 }}
-                            transition={{ duration: 0.3 }}
-                            className="text-xs text-red-900 backdrop-blur-sm bg-red-50/80 px-3 py-2 rounded-xl border border-red-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
-                          >
-                            ⚠️ {parseError}
-                          </motion.div>
-                        ) : (
-                          <span className="text-xs text-gray-500 font-serif">Upload résumé (PDF)</span>
-                        )}
-                      </AnimatePresence>
                     </div>
 
                     {/* Helper text and status messages */}
@@ -1055,6 +1060,7 @@ export default function Home() {
                           location={quickMetadata?.location || null}
                           resume={currentResume}
                           isLoading={loading}
+                          baselineFit={baselineFit ?? undefined}
                         />
                       )}
 

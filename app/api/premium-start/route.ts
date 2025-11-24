@@ -101,6 +101,17 @@ async function runPremiumAnalysis(
       }),
     ])
 
+    // Store baseline fit score immediately (available ~5s in)
+    if (baselineResult.status === 'fulfilled') {
+      updateJob(jobId, {
+        baselineFit: {
+          overallScore: baselineResult.value.score,
+          breakdown: baselineResult.value.breakdown,
+        },
+      })
+      console.log(`[Job ${jobId}] Baseline fit score available:`, baselineResult.value.score)
+    }
+
     if (structuralRes.status !== 'fulfilled') {
       throw new Error('Structural analysis failed')
     }
@@ -232,34 +243,150 @@ async function runPremiumAnalysis(
 
     const totalTime = Date.now() - startTime
 
-    // Map premium analysis to legacy format for TheBrain component
-    const whatWorks = []
-    const whatsMissing = []
+    // Map premium analysis to diagnostic panel format
+    const whatWorks: string[] = []
+    const whatsMissing: string[] = []
+    const jobThemes: string[] = []
+    const resumeThemes: string[] = []
+    const missingThemes: string[] = []
 
-    // Extract strengths from experience highlights
+    // 1. STRENGTHS WE FOUND
+    // From culture.mappable_resume_signals
+    if (mergedAnalysis.culture?.mappable_resume_signals && Array.isArray(mergedAnalysis.culture.mappable_resume_signals)) {
+      mergedAnalysis.culture.mappable_resume_signals.slice(0, 4).forEach(signal => {
+        if (signal && signal.theme) {
+          whatWorks.push(`Strong ${signal.theme.toLowerCase()} signals${signal.bullet_hint ? `: "${signal.bullet_hint}"` : ''}`)
+        }
+      })
+    }
+    
+    // Add ownership signals from scope
+    if (mergedAnalysis.scope?.ownership && Array.isArray(mergedAnalysis.scope.ownership)) {
+      const ownershipSignal = mergedAnalysis.scope.ownership[0]
+      if (ownershipSignal && whatWorks.length < 5) {
+        whatWorks.push(`Clear ownership signals: ${ownershipSignal}`)
+      }
+    }
+    
+    // Add high-relevance experience
     if (mergedAnalysis.experience && Array.isArray(mergedAnalysis.experience)) {
-      mergedAnalysis.experience.slice(0, 3).forEach(exp => {
-        if (exp.highlights && exp.highlights.length > 0) {
-          whatWorks.push(exp.highlights[0])
-        }
-      })
+      const highRelevanceRoles = mergedAnalysis.experience
+        .filter(exp => exp.relevance >= 7)
+        .slice(0, 1)
+      if (highRelevanceRoles.length > 0 && whatWorks.length < 5) {
+        whatWorks.push(`Relevant experience in ${highRelevanceRoles[0].title || 'similar roles'}`)
+      }
     }
 
-    // Extract gaps from red_flags (they're objects with {type, message, location, severity})
+    // Fallback if no strengths found
+    if (whatWorks.length === 0) {
+      whatWorks.push('Your experience shows relevant background')
+      whatWorks.push('Strong foundation for the role')
+    }
+
+    // 2. GAPS TO CLOSE FOR THIS ROLE
+    // High/critical red flags
     if (mergedAnalysis.red_flags && Array.isArray(mergedAnalysis.red_flags)) {
-      mergedAnalysis.red_flags.slice(0, 3).forEach(flag => {
-        if (flag && typeof flag === 'object' && flag.message) {
+      mergedAnalysis.red_flags
+        .filter(flag => flag.severity === 'high' || flag.severity === 'critical')
+        .slice(0, 3)
+        .forEach(flag => {
           whatsMissing.push(flag.message)
+        })
+    }
+
+    // Missing cultural themes (themes in JD but not in resume signals)
+    if (mergedAnalysis.culture?.themes && Array.isArray(mergedAnalysis.culture.themes)) {
+      const mappedThemes = new Set(
+        (mergedAnalysis.culture.mappable_resume_signals || []).map(s => s.theme?.toLowerCase())
+      )
+      mergedAnalysis.culture.themes.slice(0, 6).forEach(theme => {
+        if (!mappedThemes.has(theme.toLowerCase()) && whatsMissing.length < 6) {
+          whatsMissing.push(`Missing explicit ${theme.toLowerCase()} signals`)
         }
       })
     }
 
-    // Build rationale from summary and competitive feedback
-    let rationale = 'Analysis completed successfully.'
-    if (mergedAnalysis.summary?.draft_summary) {
-      rationale = mergedAnalysis.summary.draft_summary
-    } else if (mergedAnalysis.competitive?.honest_feedback) {
+    // Add medium-severity red flags if we have room
+    if (whatsMissing.length < 3 && mergedAnalysis.red_flags) {
+      mergedAnalysis.red_flags
+        .filter(flag => flag.severity === 'medium')
+        .slice(0, 3 - whatsMissing.length)
+        .forEach(flag => {
+          whatsMissing.push(flag.message)
+        })
+    }
+
+    // 3. KEYWORDS & THEMES
+    // Job themes from culture analysis
+    if (mergedAnalysis.culture?.themes && Array.isArray(mergedAnalysis.culture.themes)) {
+      jobThemes.push(...mergedAnalysis.culture.themes.slice(0, 8))
+    }
+
+    // Resume themes from mappable signals
+    if (mergedAnalysis.culture?.mappable_resume_signals && Array.isArray(mergedAnalysis.culture.mappable_resume_signals)) {
+      const resumeThemeSet = new Set<string>()
+      mergedAnalysis.culture.mappable_resume_signals.forEach(signal => {
+        if (signal.theme) {
+          resumeThemeSet.add(signal.theme)
+        }
+      })
+      resumeThemes.push(...Array.from(resumeThemeSet).slice(0, 6))
+    }
+
+    // Missing themes = job themes not in resume themes
+    const resumeThemesLower = new Set(resumeThemes.map(t => t.toLowerCase()))
+    jobThemes.forEach(theme => {
+      if (!resumeThemesLower.has(theme.toLowerCase())) {
+        missingThemes.push(theme)
+      }
+    })
+
+    // 4. RATIONALE FOR CHANGES (Strategic coaching)
+    let rationale = ''
+    
+    // Start with honest feedback if available
+    if (mergedAnalysis.competitive?.honest_feedback) {
       rationale = mergedAnalysis.competitive.honest_feedback
+    }
+    
+    // Add experience strategy summary
+    if (mergedAnalysis.experience && Array.isArray(mergedAnalysis.experience)) {
+      const expandCount = mergedAnalysis.experience.filter(e => e.strategy === 'EXPAND').length
+      const compressCount = mergedAnalysis.experience.filter(e => e.strategy === 'COMPRESS').length
+      const minimizeCount = mergedAnalysis.experience.filter(e => e.strategy === 'MINIMIZE').length
+      
+      let strategyNote = ''
+      if (expandCount > 0) {
+        strategyNote += `We expanded ${expandCount} relevant ${expandCount === 1 ? 'role' : 'roles'} with detailed impact. `
+      }
+      if (compressCount > 0) {
+        strategyNote += `We compressed ${compressCount} supporting ${compressCount === 1 ? 'role' : 'roles'}. `
+      }
+      if (minimizeCount > 0) {
+        strategyNote += `We minimized ${minimizeCount} less-relevant ${minimizeCount === 1 ? 'role' : 'roles'}. `
+      }
+      
+      if (strategyNote && rationale) {
+        rationale += '\n\n' + strategyNote.trim()
+      } else if (strategyNote) {
+        rationale = strategyNote.trim()
+      }
+    }
+    
+    // Add altitude/tone strategy if available
+    if (mergedAnalysis.altitude?.overall_level && mergedAnalysis.summary?.tone) {
+      const altitudeNote = `We lifted your résumé language to emphasize ${mergedAnalysis.summary.tone} while staying honest about your ${mergedAnalysis.scope?.seniority || 'professional'} experience level.`
+      if (rationale) {
+        rationale += '\n\n' + altitudeNote
+      } else {
+        rationale = altitudeNote
+      }
+    }
+    
+    // Fallback
+    if (!rationale) {
+      rationale = 'We optimized your résumé to better match the role requirements while maintaining complete honesty and accuracy.'
     }
 
     const result = {
@@ -268,13 +395,17 @@ async function runPremiumAnalysis(
       optimizedResume,
       changes: curatorData?.validatedChanges || generatorData.changes,
       analysis: {
-        // Legacy fields for TheBrain component compatibility
-        whatWorks: whatWorks.length > 0 ? whatWorks : ['Your experience shows relevant background', 'Strong foundation for the role'],
-        whatsMissing: whatsMissing.length > 0 ? whatsMissing : [],
+        // Diagnostic panel fields (premium UX)
+        whatWorks,
+        whatsMissing,
         keywordsToTarget: {
-          verbs: mergedAnalysis.metrics?.slice(0, 5).map(m => m.question || m.metric_type || '') || [],
+          jobThemes,
+          resumeThemes,
+          missingThemes,
+          // Legacy fields (kept for backwards compatibility)
+          verbs: jobThemes.slice(0, 5),
           techStack: [],
-          concepts: []
+          concepts: resumeThemes
         },
         rationaleForChanges: rationale,
 
