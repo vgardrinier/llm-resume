@@ -921,8 +921,9 @@ export default function Home() {
 
                     {/* Helper text and status messages */}
                     <div className="space-y-2">
+                      {/* LinkedIn/Indeed/Glassdoor logos - Hidden on mobile to save space */}
                       {!urlError && !urlFetchSuccess && (
-                        <div className="flex items-center gap-2">
+                        <div className="hidden md:flex items-center gap-2">
                           <div className="flex items-center gap-1.5">
                             <img 
                               src="/linkedin_icon.png" 

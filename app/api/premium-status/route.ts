@@ -39,6 +39,11 @@ export async function GET(request: NextRequest) {
       currentStep: job.currentStep,
     }
 
+    // Include baseline fit score if available (appears ~5s in)
+    if (job.baselineFit) {
+      response.baselineFit = job.baselineFit
+    }
+
     if (job.status === 'completed' && job.result) {
       response.result = job.result
       response.completedAt = job.completedAt

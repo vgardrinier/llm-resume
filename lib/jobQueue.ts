@@ -16,6 +16,15 @@ export interface PremiumJob {
   error?: string
   createdAt: number
   completedAt?: number
+  baselineFit?: {
+    overallScore: number
+    breakdown: {
+      keywordMatch: number
+      themeAlignment: number
+      experienceRelevance: number
+      skillOverlap: number
+    }
+  }
 }
 
 // In-memory job storage (replace with Redis for production)
@@ -34,7 +43,7 @@ const JOB_EXPIRY_MS = 600000 // 10 minutes
 
 setInterval(() => {
   const now = Date.now()
-  for (const [jobId, job] of jobs.entries()) {
+  for (const [jobId, job] of Array.from(jobs.entries())) {
     if (now - job.createdAt > JOB_EXPIRY_MS) {
       jobs.delete(jobId)
       console.log(`[JobQueue] Cleaned up expired job: ${jobId}`)

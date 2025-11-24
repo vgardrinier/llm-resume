@@ -135,6 +135,41 @@ export function ResumeEditor({
   const [hoveredChange, setHoveredChange] = useState<string | null>(null)
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false)
   const resumeRef = useRef<HTMLDivElement>(null)
+  
+  // Track user input for [X] placeholders: Map<changeId, Map<placeholderIndex, value>>
+  const [metricInputs, setMetricInputs] = useState<Map<string, Map<number, string>>>(new Map())
+  
+  // Helper: Set metric value for a change
+  const setMetricValue = (changeId: string, placeholderIndex: number, value: string) => {
+    setMetricInputs(prev => {
+      const next = new Map(prev)
+      if (!next.has(changeId)) {
+        next.set(changeId, new Map())
+      }
+      next.get(changeId)!.set(placeholderIndex, value)
+      return next
+    })
+  }
+  
+  // Helper: Get display text with [X] replaced by user input
+  const getTextWithMetrics = (text: string, changeId: string): string => {
+    if (!text.includes('[X]')) return text
+    
+    const changeInputs = metricInputs.get(changeId)
+    if (!changeInputs) return text
+    
+    let result = text
+    let placeholderIndex = 0
+    
+    // Replace each [X] with user input (if provided)
+    while (result.includes('[X]')) {
+      const value = changeInputs.get(placeholderIndex) || '[X]'
+      result = result.replace('[X]', value)
+      placeholderIndex++
+    }
+    
+    return result
+  }
 
   const handlePrint = useReactToPrint({
     contentRef: resumeRef,
@@ -157,6 +192,46 @@ export function ResumeEditor({
     `
   })
 
+  // Helper: Apply metric inputs to resume structure (for download)
+  const applyMetricsToResume = (resume: StructuredResume): StructuredResume => {
+    // Deep clone to avoid mutating original
+    const cloned = JSON.parse(JSON.stringify(resume)) as StructuredResume
+    
+    // Find all changes that have metrics and apply them
+    changes.forEach(change => {
+      if (!change.suggested.includes('[X]')) return
+      if (getChangeStatus(change.id) === 'rejected') return // Skip rejected changes
+      
+      const textWithMetrics = getTextWithMetrics(change.suggested, change.id)
+      
+      // Find and replace in the cloned resume
+      cloned.sections.forEach(section => {
+        if (typeof section.content === 'string') {
+          // Simple string replacement for summary sections
+          if (section.content === change.suggested) {
+            section.content = textWithMetrics
+          }
+        } else if (Array.isArray(section.content)) {
+          if (section.type === 'experience' || section.type === 'projects') {
+            section.content.forEach((entry: any) => {
+              if (entry.bullets && Array.isArray(entry.bullets)) {
+                entry.bullets = entry.bullets.map((bullet: string) => {
+                  // Replace if this bullet matches the change
+                  if (bullet === change.suggested) {
+                    return textWithMetrics
+                  }
+                  return bullet
+                })
+              }
+            })
+          }
+        }
+      })
+    })
+    
+    return cloned
+  }
+  
   const handleDownload = async (format: 'pdf' | 'word', feedback: FeedbackData) => {
     // Log feedback to console
     console.log('Download initiated:', {
@@ -168,6 +243,9 @@ export function ResumeEditor({
     })
 
     const fileName = `${optimizedResume.contactInfo.name.replace(/\s+/g, '_')}_${companyName && companyName.toLowerCase() !== 'company' ? companyName.replace(/\s+/g, '_') : 'Rightfit'}`
+    
+    // Apply metric values before download
+    const resumeWithMetrics = applyMetricsToResume(optimizedResume)
 
     if (format === 'pdf') {
       // Close modal and trigger print dialog
@@ -176,9 +254,9 @@ export function ResumeEditor({
         handlePrint()
       }, 300) // Small delay to let modal close animation finish
     } else if (format === 'word') {
-      // Generate and download Word document
+      // Generate and download Word document with metrics applied
       try {
-        await generateWordDocument(optimizedResume, `${fileName}.docx`)
+        await generateWordDocument(resumeWithMetrics, `${fileName}.docx`)
         setIsDownloadModalOpen(false)
       } catch (error) {
         console.error('Error generating Word document:', error)
@@ -410,23 +488,45 @@ export function ResumeEditor({
       ? (firstChange.original && firstChange.original.trim().length > 0)
         ? firstChange.original  // For deletions, show original (what will be removed)
         : originalText
-      : (isValidSuggestion(firstChange.suggested) ? firstChange.suggested : originalText) // For additions/modifications, show suggested (what it will become)
+      : (isValidSuggestion(firstChange.suggested) 
+          ? getTextWithMetrics(firstChange.suggested, firstChange.id) // Replace [X] with user input
+          : originalText) // For additions/modifications, show suggested (what it will become)
 
+    // Check if any pending changes have unfilled [X] placeholders
+    const hasUnfilledPlaceholders = pendingChanges.some(c => {
+      if (!c.suggested.includes('[X]')) return false
+      const changeInputs = metricInputs.get(c.id)
+      if (!changeInputs) return true // No inputs at all
+      const placeholderCount = (c.suggested.match(/\[X\]/g) || []).length
+      // Check if all placeholders have values
+      for (let i = 0; i < placeholderCount; i++) {
+        const value = changeInputs.get(i)
+        if (!value || value.trim().length === 0) return true
+      }
+      return false
+    })
+    
     // Use different colors for different change types
-    // Yellow for modifications (edits), Green/Blue for additions (new content)
-    const highlightClasses = isAddition
+    // Yellow for modifications (edits), Green/Blue for additions (new content), Orange for unfilled metrics
+    const highlightClasses = hasUnfilledPlaceholders
+      ? `bg-orange-200/90 border-b-2 border-orange-600 px-1 rounded-sm cursor-pointer transition-all duration-200 hover:bg-orange-300/90 hover:border-orange-700`
+      : isAddition
       ? `bg-green-200/90 border-b-2 border-green-600 px-1 rounded-sm cursor-pointer transition-all duration-200 hover:bg-green-300/90 hover:border-green-700`
       : isDeletion
       ? `bg-red-200/90 border-b-2 border-red-600 px-1 rounded-sm cursor-pointer transition-all duration-200 hover:bg-red-300/90 hover:border-red-700`
       : `bg-yellow-200/90 border-b-2 border-yellow-600 px-1 rounded-sm cursor-pointer transition-all duration-200 hover:bg-yellow-300/90 hover:border-yellow-700`
     
-    const badgeColor = isAddition
+    const badgeColor = hasUnfilledPlaceholders
+      ? 'bg-orange-600'
+      : isAddition
       ? 'bg-green-600'
       : isDeletion
       ? 'bg-red-600'
       : 'bg-yellow-600'
     
-    const shadowColor = isAddition
+    const shadowColor = hasUnfilledPlaceholders
+      ? 'rgba(249, 115, 22, 0.2)' // orange
+      : isAddition
       ? 'rgba(34, 197, 94, 0.2)' // green
       : isDeletion
       ? 'rgba(239, 68, 68, 0.2)' // red
@@ -465,6 +565,8 @@ export function ResumeEditor({
             onAccept={(changeId) => onAcceptChange(changeId)}
             onReject={(changeId) => onRejectChange(changeId)}
             multipleChanges={hasMultipleChanges}
+            metricInputs={metricInputs}
+            onSetMetricValue={setMetricValue}
           />
         )}
       </span>
@@ -611,7 +713,14 @@ export function ResumeEditor({
       // Simple text section (e.g., summary)
       // For summary sections, include ALL changes for this section (both positioned and non-positioned)
       // Some generators might incorrectly add positions to summary changes
-      const nonPositionedChanges = sectionChanges.filter(c => !c.position?.sectionIndex && !c.position?.bulletIndex)
+      let nonPositionedChanges = sectionChanges.filter(c => !c.position?.sectionIndex && !c.position?.bulletIndex)
+      
+      // FALLBACK: If no non-positioned changes found, but section has changes, use ALL section changes
+      // This catches cases where generator incorrectly added positions to summary changes
+      if (nonPositionedChanges.length === 0 && sectionChanges.length > 0) {
+        console.log(`[ResumeEditor] Summary section "${section.title}" has ${sectionChanges.length} positioned changes, using them as fallback`)
+        nonPositionedChanges = sectionChanges
+      }
 
       // CRITICAL: Check if this section is a rejected addition (new content that was rejected)
       // If ALL changes for this section are rejected additions with no original text, hide the entire section
@@ -685,10 +794,30 @@ export function ResumeEditor({
                           return changeCoreSection === coreSectionName
                         })
                         
+                        // Helper: Fuzzy string similarity (0-1 score)
+                        const similarity = (a: string, b: string): number => {
+                          const longer = a.length > b.length ? a : b
+                          const shorter = a.length > b.length ? b : a
+                          if (longer.length === 0) return 1.0
+                          if (shorter.length === 0) return 0.0
+                          
+                          // Check if shorter is contained in longer
+                          if (longer.includes(shorter)) {
+                            return shorter.length / longer.length
+                          }
+                          
+                          // Check word overlap
+                          const wordsA = a.split(/\s+/)
+                          const wordsB = b.split(/\s+/)
+                          const commonWords = wordsA.filter(w => wordsB.includes(w) && w.length > 3)
+                          const overlap = commonWords.length / Math.max(wordsA.length, wordsB.length)
+                          
+                          return overlap
+                        }
+                        
                         // For modifications, try to match by content similarity
                         // We check BOTH original (old) and suggested (new) text against the bullet (new)
                         // because we are rendering the optimized resume (new text)
-                        // Note: sectionChanges already filtered out rejected in the parent filter
                         bulletChanges = sectionChanges.filter(c => {
                           if (c.type === 'modification') {
                             const bulletLower = bullet.toLowerCase().trim()
@@ -697,10 +826,16 @@ export function ResumeEditor({
                             // This is the most reliable check since bullet IS the suggested text
                             if (c.suggested) {
                               const suggestedLower = c.suggested.toLowerCase().trim()
-                              // Exact match or close enough
+                              const sim = similarity(suggestedLower, bulletLower)
+                              
+                              // Match if: exact, contains, or high similarity (>60%)
                               if (suggestedLower === bulletLower || 
                                   bulletLower.includes(suggestedLower) || 
-                                  (suggestedLower.length > 20 && suggestedLower.includes(bulletLower))) {
+                                  suggestedLower.includes(bulletLower) ||
+                                  sim > 0.6) {
+                                if (process.env.NODE_ENV === 'development' && sim < 1.0) {
+                                  console.log(`[ResumeEditor] Fuzzy match (suggested) for bullet ${entryIdx}-${bulletIdx}, similarity: ${sim.toFixed(2)}`)
+                                }
                                 return true
                               }
                             }
@@ -709,16 +844,20 @@ export function ResumeEditor({
                             // This happens if the bullet hasn't been updated yet or if matching logic is fuzzy
                             if (c.original) {
                               const originalLower = c.original.toLowerCase().trim()
-                              // Check if original text is similar to bullet (exact match or bullet contains original)
+                              const sim = similarity(originalLower, bulletLower)
+                              
+                              // Match if: exact, contains, or high similarity (>60%)
                               const isMatch = originalLower === bulletLower || 
                                              bulletLower.includes(originalLower) ||
-                                             originalLower.includes(bulletLower)
+                                             originalLower.includes(bulletLower) ||
+                                             sim > 0.6
                               
                               if (isMatch && process.env.NODE_ENV === 'development') {
                                 console.log(`[ResumeEditor] Found modification via content matching for bullet ${entryIdx}-${bulletIdx}:`, {
                                   changeId: c.id,
                                   original: c.original.substring(0, 50),
                                   bullet: bullet.substring(0, 50),
+                                  similarity: sim.toFixed(2),
                                   position: c.position,
                                   expectedPosition: { sectionIndex: entryIdx, bulletIndex: bulletIdx }
                                 })
@@ -727,6 +866,21 @@ export function ResumeEditor({
                               return isMatch
                             }
                           }
+                          
+                          // Check 3: For additions, match if suggested text is similar to bullet
+                          if (c.type === 'addition' && c.suggested) {
+                            const bulletLower = bullet.toLowerCase().trim()
+                            const suggestedLower = c.suggested.toLowerCase().trim()
+                            const sim = similarity(suggestedLower, bulletLower)
+                            
+                            if (sim > 0.8) { // Higher threshold for additions (80%)
+                              if (process.env.NODE_ENV === 'development') {
+                                console.log(`[ResumeEditor] Found addition via content matching for bullet ${entryIdx}-${bulletIdx}, similarity: ${sim.toFixed(2)}`)
+                              }
+                              return true
+                            }
+                          }
+                          
                           return false
                         })
                       }
@@ -843,6 +997,8 @@ export function ResumeEditor({
                       onLeave={() => setHoveredChange(null)}
                       onAccept={onAcceptChange}
                       onReject={onRejectChange}
+                      metricInputs={metricInputs}
+                      onSetMetricValue={setMetricValue}
                     />
                   )}
                 </span>
@@ -895,6 +1051,24 @@ export function ResumeEditor({
     return null
   }
 
+  // Count changes with unfilled [X] placeholders
+  const unfilledMetricsCount = useMemo(() => {
+    return changes.filter(c => {
+      if (getChangeStatus(c.id) === 'rejected') return false
+      if (!c.suggested.includes('[X]')) return false
+      
+      const changeInputs = metricInputs.get(c.id)
+      if (!changeInputs) return true
+      
+      const placeholderCount = (c.suggested.match(/\[X\]/g) || []).length
+      for (let i = 0; i < placeholderCount; i++) {
+        const value = changeInputs.get(i)
+        if (!value || value.trim().length === 0) return true
+      }
+      return false
+    }).length
+  }, [changes, metricInputs, acceptedChanges, rejectedChanges])
+  
   return (
     <>
       <DownloadModal
@@ -910,6 +1084,11 @@ export function ResumeEditor({
           <p className="text-sm text-gray-600 font-sans">
             {getVisibleChanges.length} suggestions • {acceptedChanges.size} accepted
             {rejectedChanges.size > 0 && ` • ${rejectedChanges.size} rejected`}
+            {unfilledMetricsCount > 0 && (
+              <span className="text-orange-600 font-medium">
+                {' '}• {unfilledMetricsCount} need value{unfilledMetricsCount !== 1 ? 's' : ''}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -1040,6 +1219,8 @@ interface ChangeOverlayProps {
   onReject: (changeId: string) => void
   multipleChanges?: boolean
   changeIndex?: number
+  metricInputs: Map<string, Map<number, string>>
+  onSetMetricValue: (changeId: string, placeholderIndex: number, value: string) => void
 }
 
 function ChangeOverlay({
@@ -1051,8 +1232,47 @@ function ChangeOverlay({
   onLeave,
   onAccept,
   onReject,
-  multipleChanges = false
+  multipleChanges = false,
+  metricInputs,
+  onSetMetricValue
 }: ChangeOverlayProps) {
+  // Helper: Check if change has [X] placeholders
+  const hasPlaceholders = (text: string | undefined): boolean => {
+    return !!text && text.includes('[X]')
+  }
+  
+  // Helper: Count [X] placeholders in text
+  const countPlaceholders = (text: string): number => {
+    return (text.match(/\[X\]/g) || []).length
+  }
+  
+  // Helper: Get placeholder label from reason (e.g., "team size", "revenue", "users")
+  const getPlaceholderLabel = (reason: string, index: number): string => {
+    const lower = reason.toLowerCase()
+    
+    // Common patterns
+    if (lower.includes('team') && (lower.includes('size') || lower.includes('people') || lower.includes('member'))) {
+      return 'team size'
+    }
+    if (lower.includes('revenue') || lower.includes('sales') || lower.includes('dollar')) {
+      return 'revenue/amount'
+    }
+    if (lower.includes('user') || lower.includes('customer')) {
+      return 'users/customers'
+    }
+    if (lower.includes('percent') || lower.includes('%')) {
+      return 'percentage'
+    }
+    if (lower.includes('time') || lower.includes('hour') || lower.includes('day')) {
+      return 'time/duration'
+    }
+    if (lower.includes('project')) {
+      return 'project count'
+    }
+    
+    // Fallback
+    return `value ${index + 1}`
+  }
   return (
     <>
       {/* Invisible hover area that covers the highlighted text */}
@@ -1092,6 +1312,39 @@ function ChangeOverlay({
                         <span className="font-medium">Original:</span> {c.original}
                       </div>
                     )}
+                    
+                    {/* Metric Input Fields for [X] placeholders */}
+                    {hasPlaceholders(c.suggested) && (
+                      <div className="mb-2 p-2 bg-amber-50 border border-amber-200 rounded">
+                        <div className="text-xs font-medium text-amber-900 mb-2 font-sans">
+                          📝 Enter values:
+                        </div>
+                        {Array.from({ length: countPlaceholders(c.suggested) }).map((_, pidx) => {
+                          const currentValue = metricInputs.get(c.id)?.get(pidx) || ''
+                          const label = getPlaceholderLabel(c.reason, pidx)
+                          
+                          return (
+                            <div key={pidx} className="mb-1 last:mb-0">
+                              <label className="block text-xs text-gray-600 mb-0.5 font-sans capitalize">
+                                {label}:
+                              </label>
+                              <input
+                                type="text"
+                                value={currentValue}
+                                onChange={(e) => {
+                                  e.stopPropagation()
+                                  onSetMetricValue(c.id, pidx, e.target.value)
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                placeholder={`Enter ${label}...`}
+                                className="w-full px-2 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white font-sans"
+                              />
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                    
                     <div className="flex items-center gap-2">
                       <button
                         onClick={(e) => {
@@ -1131,6 +1384,39 @@ function ChangeOverlay({
                     <span className="font-medium">Original:</span> {change.original}
                   </div>
                 )}
+                
+                {/* Metric Input Fields for [X] placeholders */}
+                {hasPlaceholders(change.suggested) && (
+                  <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded">
+                    <div className="text-xs font-medium text-amber-900 mb-2 font-sans">
+                      📝 Enter values for [X]:
+                    </div>
+                    {Array.from({ length: countPlaceholders(change.suggested) }).map((_, idx) => {
+                      const currentValue = metricInputs.get(change.id)?.get(idx) || ''
+                      const label = getPlaceholderLabel(change.reason, idx)
+                      
+                      return (
+                        <div key={idx} className="mb-2 last:mb-0">
+                          <label className="block text-xs text-gray-600 mb-1 font-sans capitalize">
+                            {label}:
+                          </label>
+                          <input
+                            type="text"
+                            value={currentValue}
+                            onChange={(e) => {
+                              e.stopPropagation()
+                              onSetMetricValue(change.id, idx, e.target.value)
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            placeholder={`Enter ${label}...`}
+                            className="w-full px-2 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white font-sans"
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                
                 <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
                   <button
                     onClick={(e) => {
