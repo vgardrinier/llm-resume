@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
 
     const message = await anthropic.messages.create({
       model: 'claude-3-5-haiku-20241022',
-      max_tokens: 800, // Tight budget for shallow JSON
+      max_tokens: 2048, // Enough for complete JSON response
       temperature: 0, // Deterministic extraction
       messages: [{ role: 'user', content: prompt }]
     })

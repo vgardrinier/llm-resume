@@ -175,7 +175,7 @@ export function TheBrain({
           What Works
         </h3>
         <ul className="space-y-2">
-          {analysis.whatWorks.map((item, idx) => (
+          {(analysis.whatWorks || []).map((item, idx) => (
             <li key={idx} className="text-sm text-gray-700 flex gap-2 font-sans">
               <span className="text-green-600 flex-shrink-0">•</span>
               <span>{item}</span>
@@ -197,7 +197,7 @@ export function TheBrain({
           What's Missing
         </h3>
         <ul className="space-y-2">
-          {analysis.whatsMissing.map((item, idx) => (
+          {(analysis.whatsMissing || []).map((item, idx) => (
             <li key={idx} className="text-sm text-gray-700 flex gap-2 font-sans">
               <span className="text-amber-600 flex-shrink-0">•</span>
               <span>{item}</span>
@@ -218,7 +218,7 @@ export function TheBrain({
           Keywords & Themes
         </h3>
         <div className="space-y-3">
-          {analysis.keywordsToTarget.verbs.length > 0 && (
+          {analysis.keywordsToTarget?.verbs?.length > 0 && (
             <div>
               <div className="text-xs text-gray-500 mb-1 font-sans">Action Verbs</div>
               <div className="flex flex-wrap gap-1">
@@ -234,7 +234,7 @@ export function TheBrain({
             </div>
           )}
 
-          {analysis.keywordsToTarget.techStack.length > 0 && (
+          {analysis.keywordsToTarget?.techStack?.length > 0 && (
             <div>
               <div className="text-xs text-gray-500 mb-1 font-sans">Tech Stack</div>
               <div className="flex flex-wrap gap-1">
@@ -250,7 +250,7 @@ export function TheBrain({
             </div>
           )}
 
-          {analysis.keywordsToTarget.concepts.length > 0 && (
+          {analysis.keywordsToTarget?.concepts?.length > 0 && (
             <div>
               <div className="text-xs text-gray-500 mb-1 font-sans">Key Concepts</div>
               <div className="flex flex-wrap gap-1">
@@ -285,7 +285,7 @@ export function TheBrain({
       </motion.div>
 
       {/* Salary (if available) */}
-      {salary && (
+      {salary && salary.median && (
         <motion.div
           variants={cardVariants}
           initial="hidden"
@@ -302,9 +302,11 @@ export function TheBrain({
           <div className="text-xs text-gray-600 font-sans">
             Median salary for {salary.role} in {salary.location}
           </div>
-          <div className="text-xs text-gray-500 mt-2 font-sans">
-            Range: ${salary.range[0].toLocaleString()} – ${salary.range[1].toLocaleString()}
-          </div>
+          {salary.range && salary.range.length === 2 && (
+            <div className="text-xs text-gray-500 mt-2 font-sans">
+              Range: ${salary.range[0].toLocaleString()} – ${salary.range[1].toLocaleString()}
+            </div>
+          )}
         </motion.div>
       )}
 

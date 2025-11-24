@@ -180,63 +180,128 @@ export default function Home() {
       })
 
       // Choose API endpoint based on feature flag
-      const apiEndpoint = useStructuredFlow ? '/api/orchestrator-structured' : '/api/orchestrator'
+      const apiEndpoint = useStructuredFlow ? '/api/premium-start' : '/api/orchestrator'
+      const usePolling = useStructuredFlow // Premium uses polling
 
       const apiCallStart = performance.now()
-      const response = await fetch(apiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          job_description: finalJobDescription,
-          candidate_resume: currentResume,
-          creative_mode: creativeMode,
-        }),
-      })
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        console.error('[Frontend] API error response', {
-          step: 'api_error',
-          status: response.status,
-          statusText: response.statusText,
-          error: errorData,
+      let data: any
+
+      if (usePolling) {
+        // POLLING FLOW for premium (async)
+        console.log('[Frontend] Starting async premium job...')
+
+        // Step 1: Start the job
+        const startResponse = await fetch(apiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            job_description: finalJobDescription,
+            candidate_resume: currentResume,
+            creative_mode: creativeMode,
+          }),
         })
 
-        // Provide user-friendly error messages based on status code
-        let userMessage = 'Failed to generate resume. Please try again.'
-        if (response.status === 400) {
-          // Check if it's a job description length issue
-          if (errorData.error?.includes('incomplete') || errorData.error?.includes('minimum')) {
-            userMessage = errorData.error + (errorData.details ? ` ${errorData.details}` : '')
-          } else {
-            userMessage = errorData.error || 'Invalid request. Please check your inputs and try again.'
-          }
-        } else if (response.status === 429) {
-          userMessage = 'Too many requests. Please wait a moment and try again.'
-        } else if (response.status === 500) {
-          userMessage = errorData.error || 'Our servers encountered an issue. Please try again in a moment.'
-        } else if (response.status >= 500) {
-          userMessage = 'Service temporarily unavailable. Please try again shortly.'
+        if (!startResponse.ok) {
+          const errorData = await startResponse.json().catch(() => ({}))
+          throw new Error(errorData.error || 'Failed to start analysis')
         }
 
-        throw new Error(userMessage)
+        const { jobId } = await startResponse.json()
+        console.log(`[Frontend] Job started: ${jobId}, polling for results...`)
+
+        // Step 2: Poll for completion
+        let attempts = 0
+        const maxAttempts = 90 // 3 minutes max (2s interval)
+
+        while (attempts < maxAttempts) {
+          attempts++
+          await new Promise(resolve => setTimeout(resolve, 2000)) // 2s poll interval
+
+          const statusResponse = await fetch(`/api/premium-status?jobId=${jobId}`)
+
+          if (!statusResponse.ok) {
+            throw new Error('Failed to check job status')
+          }
+
+          const status = await statusResponse.json()
+
+          console.log(`[Frontend Poll ${attempts}] ${status.status} | ${status.progress}% | ${status.currentStep || ''}`)
+
+          if (status.status === 'completed') {
+            data = status.result
+            console.log(`[Frontend] Job completed after ${attempts} polls`)
+            break
+          }
+
+          if (status.status === 'failed') {
+            throw new Error(status.error || 'Analysis failed')
+          }
+        }
+
+        if (!data) {
+          throw new Error('Analysis timeout after 3 minutes')
+        }
+
+      } else {
+        // ORIGINAL FLOW for non-premium (synchronous)
+        const response = await fetch(apiEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            job_description: finalJobDescription,
+            candidate_resume: currentResume,
+            creative_mode: creativeMode,
+          }),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}))
+          console.error('[Frontend] API error response', {
+            step: 'api_error',
+            status: response.status,
+            statusText: response.statusText,
+            error: errorData,
+          })
+
+          // Provide user-friendly error messages based on status code
+          let userMessage = 'Failed to generate resume. Please try again.'
+          if (response.status === 400) {
+            // Check if it's a job description length issue
+            if (errorData.error?.includes('incomplete') || errorData.error?.includes('minimum')) {
+              userMessage = errorData.error + (errorData.details ? ` ${errorData.details}` : '')
+            } else {
+              userMessage = errorData.error || 'Invalid request. Please check your inputs and try again.'
+            }
+          } else if (response.status === 429) {
+            userMessage = 'Too many requests. Please wait a moment and try again.'
+          } else if (response.status === 500) {
+            userMessage = errorData.error || 'Our servers encountered an issue. Please try again in a moment.'
+          } else if (response.status >= 500) {
+            userMessage = 'Service temporarily unavailable. Please try again shortly.'
+          }
+
+          throw new Error(userMessage)
+        }
+
+        data = await response.json()
       }
 
       // Parse response based on which flow we're using
       timingBreakdown.apiCall = performance.now() - apiCallStart
       const parseStart = performance.now()
-      
+
       if (useStructuredFlow) {
-        const data: StructuredResumeResponse = await response.json()
+        const structuredData: StructuredResumeResponse = data
         timingBreakdown.responseParse = performance.now() - parseStart
 
         // Extract server-side timing if available
-        const serverTiming = data.metadata?.timing || {}
-        
+        const serverTiming = structuredData.metadata?.timing || {}
+
         const stateUpdateStart = performance.now()
-        setStructuredResult(data)
+        setStructuredResult(structuredData)
         timingBreakdown.stateUpdate = performance.now() - stateUpdateStart
         
         timingBreakdown.total = performance.now() - userClickStart
@@ -540,7 +605,10 @@ export default function Home() {
                 finalJobDescription = `${prefixParts.join('\n')}\n\n${fullData.jobDescription}`
               }
             }
-            
+
+            // Update state so button becomes enabled
+            setJobDescription(finalJobDescription)
+
             return finalJobDescription
           })
           .catch((error) => {
@@ -938,10 +1006,10 @@ export default function Home() {
                         disabled={(!jobDescription && !quickMetadata) || !currentResume || loading}
                         variant={(jobDescription || quickMetadata) && currentResume && !loading ? 'gradient' : 'primary'}
                         loading={loading}
-                        loadingText="Analyzing..."
+                        loadingText="Optimizing..."
                         className="text-base px-8 py-4"
                       >
-                        Analyze My Résumé
+                        Optimize My Résumé
                       </Button>
                     </div>
                   </div>
@@ -1027,13 +1095,13 @@ export default function Home() {
         >
           <Button
             onClick={generateResume}
-            disabled={(!jobDescription && !quickMetadata) || !currentResume || loading}
-            variant={(jobDescription || quickMetadata) && currentResume && !loading ? 'gradient' : 'primary'}
+            disabled={!jobDescription || !currentResume || loading}
+            variant={jobDescription && currentResume && !loading ? 'gradient' : 'primary'}
             loading={loading}
-            loadingText="Analyzing..."
+            loadingText="Optimizing..."
             className="w-full text-lg font-medium shadow-lg"
           >
-            Analyze My Résumé
+            Optimize My Résumé
           </Button>
         </motion.div>
       )}

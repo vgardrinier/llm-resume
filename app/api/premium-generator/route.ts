@@ -14,8 +14,10 @@ export async function POST(request: NextRequest) {
     console.log('[Premium-Generator] Starting transformation...')
     const startTime = Date.now()
 
-    // LEAN PROMPT - Sonnet 4 is smart, we don't need verbose examples
-    const prompt = `Transform this resume based on strategic analysis.
+    // EXECUTION PROMPT - Sonnet 4 for reliable structure generation
+    const prompt = `You are a PREMIUM RESUME TRANSFORMER.
+
+Execute the transformation plan based on strategic analysis.
 
 ORIGINAL RESUME:
 ${originalResume}
@@ -23,46 +25,105 @@ ${originalResume}
 TARGET JOB:
 ${jobDescription}
 
-STRATEGIC ANALYSIS (your blueprint):
+STRATEGIC ANALYSIS:
 ${JSON.stringify(premiumAnalysis, null, 2)}
 
-EXECUTE TRANSFORMATION:
+YOUR TASKS:
 
-1. Apply experience architecture: EXPAND strong roles (6-7 bullets), COMPRESS weak ones (2-3), MINIMIZE irrelevant
-2. Lift altitude per analysis guidance (only if can_lift=true)
-3. Map bullets to company culture (LP alignment for Amazon, innovation for Google, etc.)
-4. Add metric placeholders with [X] where analysis flagged opportunities
-5. Rewrite summary using industry lens from analysis
-6. Remove red flags identified
-7. Ensure altitude coherence across all sections
+1. STRUCTURE GENERATION
+Parse the original resume and output a complete structured resume with:
+- contactInfo: Extract name, email, phone, location
+- sections: Array of section objects, each with:
+  - title: "Summary" | "Experience" | "Education" | "Skills" | etc.
+  - type: "summary" | "experience" | "education" | "skills" | "other"
+  - content: Array of items (for experience: company, role, dates, bullets)
 
-CRITICAL:
-- Generate 15-25 changes (strategic, not cosmetic)
-- Every change needs Grammarly-style reason (1 sentence, why it helps)
-- Track position for each change
-- Flag requires_user_input=true for metric placeholders
-- Be aggressive but honest (stay within realistic_altitude_ceiling)
+2. APPLY TRANSFORMATIONS
+Based on analysis.experience strategy:
+- EXPAND roles: 6-7 detailed bullets with metrics and impact
+- COMPRESS roles: 2-3 focused bullets
+- MINIMIZE roles: 1 bullet or title-only
 
-OUTPUT (valid JSON only):
+Based on analysis.altitude:
+- Lift language from current_level to ceiling_level (if can_lift=true)
+- Level 2→3: "coordinated" → "owned", "assisted" → "led"
+- Level 3→4: add strategic framing, business context
+
+Based on analysis.culture (if available):
+- Map bullets to detected themes
+- Align language to culture_type (ownership for Amazon, innovation for Google)
+
+Based on analysis.metrics (if available):
+- Add [X] placeholders where metrics questions exist
+- Flag requires_user_input=true
+
+Based on analysis.summary (if available):
+- Rewrite summary using industry_lens and tone
+
+3. TRACK CHANGES
+For each modification, create a change object with:
+- original text vs suggested text
+- reason (1 sentence explaining strategic value)
+- impactScore (1-10)
+- position in structure
+
+CRITICAL REQUIREMENTS:
+- optimizedResume MUST have contactInfo AND sections array
+- sections array MUST be complete with all parsed sections
+- Generate 10-25 strategic changes (not cosmetic)
+- Stay within structural ceilings (respect altitude.ceiling_level)
+- Be aggressive but honest
+
+OUTPUT STRUCTURE (valid JSON only, no markdown):
 {
   "optimizedResume": {
-    "contactInfo": {...},
-    "sections": [...]
+    "contactInfo": {
+      "name": "string",
+      "email": "string",
+      "phone": "string",
+      "location": "string"
+    },
+    "sections": [
+      {
+        "title": "Summary",
+        "type": "summary",
+        "content": "string"
+      },
+      {
+        "title": "Experience",
+        "type": "experience",
+        "content": [
+          {
+            "company": "string",
+            "role": "string",
+            "dates": "string",
+            "bullets": ["string"]
+          }
+        ]
+      },
+      {
+        "title": "Skills",
+        "type": "skills",
+        "content": "string or array"
+      }
+    ]
   },
   "changes": [
     {
-      "id": "change-1",
+      "id": "change-N",
       "type": "addition|modification",
-      "section": "Summary|Experience|Skills",
-      "original": "...",
-      "suggested": "...",
+      "section": "Summary|Experience|Skills|Education",
+      "original": "exact text from original",
+      "suggested": "improved text",
       "reason": "Concise explanation of strategic value",
-      "impactScore": 1-10,
-      "position": {"sectionIndex": 0, "bulletIndex": 0},
+      "impactScore": 8,
+      "position": {
+        "sectionIndex": 0,
+        "bulletIndex": 0
+      },
       "requires_user_input": false,
-      "altitude_shift": "Level 2 → Level 3" (if applicable),
-      "lp_alignment": ["Ownership"] (if applicable),
-      "questions": ["Ask user this"] (if requires_user_input)
+      "altitude_shift": "Level 2 → Level 3",
+      "questions": []
     }
   ]
 }`
@@ -70,9 +131,9 @@ OUTPUT (valid JSON only):
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
     const message = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022', // Haiku for speed - analyzer provides the strategy
-      max_tokens: 6000,
-      temperature: 0.5, // Slightly higher for more aggressive changes
+      model: 'claude-sonnet-4-20250514', // Sonnet 4 for reliable structure generation
+      max_tokens: 8000, // Increased for full resume + changes
+      temperature: 0.4, // Balanced: creative but controlled
       messages: [{ role: 'user', content: prompt }]
     })
 
@@ -84,11 +145,19 @@ OUTPUT (valid JSON only):
     const result = parseClaudeJson(responseText, { attemptEscapeFix: true, errorPrefix: '[Premium-Generator]' })
 
     if (!result.optimizedResume || !result.changes) {
-      throw new Error('Invalid generator response')
+      throw new Error('Invalid generator response structure')
+    }
+
+    // Validate required structure
+    if (!result.optimizedResume.sections || !Array.isArray(result.optimizedResume.sections)) {
+      console.error('[Premium-Generator] Missing sections array, adding fallback')
+      result.optimizedResume.sections = []
     }
 
     console.log('[Premium-Generator] Complete:', {
       changesCount: result.changes.length,
+      sectionsCount: result.optimizedResume.sections.length,
+      optimizedResumeLength: JSON.stringify(result.optimizedResume).length,
       hasUserInputNeeded: result.changes.some((c: any) => c.requires_user_input)
     })
 

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import puppeteer from 'puppeteer'
 
+// Allow up to 60 seconds for job fetching (vision extraction can take 10-20s)
+export const maxDuration = 60
+
 // Known job platforms that typically block scraping
 const JOB_PLATFORMS = [
   'linkedin.com',
