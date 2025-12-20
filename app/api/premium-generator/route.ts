@@ -54,8 +54,11 @@ Based on analysis.culture (if available):
 - Align language to culture_type (ownership for Amazon, innovation for Google)
 
 Based on analysis.metrics (if available):
-- Add [X] placeholders where metrics questions exist
-- Flag requires_user_input=true
+- For bullets with metric_opportunity: generate TWO variants:
+  1. suggested: uses neutral_fallback (e.g. "improved performance measurably")
+  2. suggested_with_metric: uses placeholder_format (e.g. "improved performance by [X]%")
+- For bullets WITHOUT metric_opportunity: generate single suggested variant (normal rewrite)
+- NEVER invent numbers. Use fallback by default.
 
 Based on analysis.summary (if available):
 - Rewrite summary using industry_lens and tone
@@ -114,16 +117,20 @@ OUTPUT STRUCTURE (valid JSON only, no markdown):
       "type": "addition|modification",
       "section": "Summary|Experience|Skills|Education",
       "original": "exact text from original",
-      "suggested": "improved text",
+      "suggested": "improved text (always valid, uses fallback if needed)",
+      "suggested_with_metric": "version with placeholder (only if metric_opportunity exists)",
+      "metric_opportunity": {
+        "question": "string",
+        "placeholder_format": "[X]%",
+        "neutral_fallback": "measurably"
+      },
       "reason": "Concise explanation of strategic value",
       "impactScore": 8,
       "position": {
         "sectionIndex": 0,
         "bulletIndex": 0
       },
-      "requires_user_input": false,
-      "altitude_shift": "Level 2 → Level 3",
-      "questions": []
+      "altitude_shift": "Level 2 → Level 3"
     }
   ]
 }`

@@ -49,12 +49,12 @@ TASKS:
 
 2) METRIC OPPORTUNITIES (NO FAKE NUMBERS)
 Using structural analysis:
-- Focus only on roles marked "EXPAND" or with high impact_potential.
-- For each promising bullet or responsibility:
-  - Suggest what metric would best signal impact (e.g. "team size", "on-time delivery %", "customer count", "revenue", "cycle time", "NPS").
-  - Write a SINGLE concrete question for the user to answer (e.g. "Roughly how many stakeholders did you coordinate in this project?").
-- Do NOT propose arbitrary percentages or invented baselines.
-- Do NOT output fake metrics. Ask instead.
+- Only flag bullets where impact is CLAIMED but NO metric exists (e.g. "improved", "increased", "reduced", "scaled").
+- Cap at 3 opportunities TOTAL across entire resume. Pick highest impact only.
+- For each opportunity:
+  - Write a SINGLE concrete question for the user (e.g. "What % did you improve performance by?").
+  - Provide placeholder_format (e.g. "[X]%", "[X] users", "[X]ms") OR a neutral_fallback phrase (e.g. "measurably", "by notable margin"). Choose one, keep minimal.
+- Do NOT invent numbers. Do NOT propose baselines.
 
 3) SUMMARY STRATEGY
 Based on:
@@ -98,8 +98,10 @@ Return ONLY valid JSON. No commentary, no markdown.
   "metrics": [
     {
       "role_index": 0,
+      "bullet_hint": "short quote from resume bullet",
       "question": "string",
-      "metric_type": "team_size|revenue|users|throughput|quality|time|other",
+      "placeholder_format": "[X]%",
+      "neutral_fallback": "measurably",
       "reason": "string"
     }
   ],
