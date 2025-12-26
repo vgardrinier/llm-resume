@@ -424,9 +424,23 @@ JSON only, no markdown.`
       const textContent = textMessage.content[0].type === 'text' ? textMessage.content[0].text : '{}'
       const textResult = JSON.parse(textContent.replace(/```json\n?/g, '').replace(/```\n?/g, ''))
 
+      // Fallback: Extract job title from URL if not found in content
+      let jobTitle = textResult.jobTitle
+      if (!jobTitle || jobTitle === 'N/A' || jobTitle.length < 3) {
+        const urlMatch = url.match(/\/([^/]+)(?:\/?)$/)
+        if (urlMatch) {
+          // Convert URL slug to title case: "founding-product-engineer" -> "Founding Product Engineer"
+          jobTitle = urlMatch[1]
+            .split(/[-_]/)
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ')
+          console.log(`[FetchJob] Extracted job title from URL: "${jobTitle}"`)
+        }
+      }
+
       const jobDesc = textResult.fullDescription || renderedText
       console.log(`[FetchJob] ✅ Text extraction completed: ${jobDesc.length} characters`, {
-        jobTitle: textResult.jobTitle || 'N/A',
+        jobTitle: jobTitle || 'N/A',
         company: textResult.companyName || 'N/A',
         location: textResult.location || 'N/A',
         method: 'text-after-render'
@@ -435,7 +449,7 @@ JSON only, no markdown.`
       return NextResponse.json({
         jobDescription: jobDesc,
         companyName: textResult.companyName || null,
-        jobTitle: textResult.jobTitle || null,
+        jobTitle: jobTitle || null,
         location: textResult.location || 'N/A',
       })
     }
