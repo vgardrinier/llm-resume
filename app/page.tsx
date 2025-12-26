@@ -1013,35 +1013,27 @@ export default function Home() {
                     </div>
 
                     {/* Mode Selection */}
-                    <div className="flex flex-col items-center gap-2 pt-4">
-                      <div className="flex justify-center gap-4">
-                        <div className="flex flex-col items-center gap-1">
-                          <button
-                            onClick={() => setAnalysisMode('fast')}
-                            className={`px-6 py-3 rounded-xl font-sans text-sm font-medium transition-all ${
-                              analysisMode === 'fast'
-                                ? 'bg-gray-900 text-white shadow-lg'
-                                : 'bg-white/60 text-gray-700 border border-gray-300 hover:border-gray-400'
-                            }`}
-                          >
-                            Quick Optimize
-                          </button>
-                          <span className="text-xs text-gray-500 font-sans">Fast, CV + changes only</span>
-                        </div>
-                        <div className="flex flex-col items-center gap-1">
-                          <button
-                            onClick={() => setAnalysisMode('deep')}
-                            className={`px-6 py-3 rounded-xl font-sans text-sm font-medium transition-all ${
-                              analysisMode === 'deep'
-                                ? 'bg-gray-900 text-white shadow-lg'
-                                : 'bg-white/60 text-gray-700 border border-gray-300 hover:border-gray-400'
-                            }`}
-                          >
-                            Full Analysis
-                          </button>
-                          <span className="text-xs text-gray-500 font-sans">Slower, includes fit scores and insights</span>
-                        </div>
-                      </div>
+                    <div className="flex justify-center gap-3 pt-4">
+                      <button
+                        onClick={() => setAnalysisMode('fast')}
+                        className={`px-5 py-2.5 rounded-xl font-sans text-sm font-medium transition-all ${
+                          analysisMode === 'fast'
+                            ? 'bg-gray-900 text-white shadow-lg'
+                            : 'bg-white/60 text-gray-700 border border-gray-300 hover:border-gray-400'
+                        }`}
+                      >
+                        Quick Optimize
+                      </button>
+                      <button
+                        onClick={() => setAnalysisMode('deep')}
+                        className={`px-5 py-2.5 rounded-xl font-sans text-sm font-medium transition-all ${
+                          analysisMode === 'deep'
+                            ? 'bg-gray-900 text-white shadow-lg'
+                            : 'bg-white/60 text-gray-700 border border-gray-300 hover:border-gray-400'
+                        }`}
+                      >
+                        Full Analysis
+                      </button>
                     </div>
 
                     {/* CTA Button - Hidden on mobile (shown as sticky bottom button) */}

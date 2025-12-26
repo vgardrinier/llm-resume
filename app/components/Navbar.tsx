@@ -105,6 +105,13 @@ export function Navbar({ jobUrl, uploadedFileName, onHomeClick }: NavbarProps) {
                 </div>
               )}
               <Link
+                href="/modes"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block text-base text-gray-900 hover:text-gray-600 transition-colors font-serif py-2"
+              >
+                Modes
+              </Link>
+              <Link
                 href="/about"
                 onClick={() => setMobileMenuOpen(false)}
                 className="block text-base text-gray-900 hover:text-gray-600 transition-colors font-serif py-2"
