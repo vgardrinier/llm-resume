@@ -1038,6 +1038,7 @@ export default function Home() {
                     <ResumeWorkspace
                       data={structuredResult}
                       mode={analysisMode}
+                      loading={loading}
                       onStartOver={startOver}
                       onRunFullAnalysis={analysisMode === 'fast' ? () => {
                         setAnalysisMode('deep')

@@ -9,11 +9,12 @@ import { ResumeEditor } from './ResumeEditorV2'
 interface ResumeWorkspaceProps {
   data: StructuredResumeResponse
   mode?: 'fast' | 'deep'
+  loading?: boolean
   onStartOver: () => void
   onRunFullAnalysis?: () => void
 }
 
-export function ResumeWorkspace({ data, mode = 'deep', onStartOver, onRunFullAnalysis }: ResumeWorkspaceProps) {
+export function ResumeWorkspace({ data, mode = 'deep', loading = false, onStartOver, onRunFullAnalysis }: ResumeWorkspaceProps) {
   // Track which changes have been accepted/rejected
   const [acceptedChanges, setAcceptedChanges] = useState<Set<string>>(new Set())
   const [rejectedChanges, setRejectedChanges] = useState<Set<string>>(new Set())
@@ -181,8 +182,10 @@ export function ResumeWorkspace({ data, mode = 'deep', onStartOver, onRunFullAna
         variants={rightPanelVariants}
         initial="hidden"
         animate="visible"
-        className={`overflow-y-auto ${
-          mode === 'fast' ? 'w-full max-w-[1200px]' : 'flex-1 min-w-[700px]'
+        className={`${
+          mode === 'fast'
+            ? 'w-full max-w-[1200px] overflow-y-auto'
+            : 'flex-1 min-w-[700px] h-[calc(100vh-8rem)] overflow-y-auto'
         }`}
       >
         {/* Fast Mode Header - Show above CV */}
@@ -194,16 +197,28 @@ export function ResumeWorkspace({ data, mode = 'deep', onStartOver, onRunFullAna
                   Quick Optimize
                 </h2>
                 <p className="text-sm text-gray-200 font-sans">
-                  Your CV has been optimized with high-impact changes in ~20-30s. Review suggestions below.
+                  Your CV has been optimized with high-impact changes. Review suggestions below.
                 </p>
               </div>
               <div className="flex items-center gap-3">
                 {onRunFullAnalysis && (
                   <button
                     onClick={onRunFullAnalysis}
-                    className="bg-white text-gray-900 py-2 px-6 rounded-xl hover:bg-gray-100 transition-all shadow-lg font-sans text-sm font-medium"
+                    disabled={loading}
+                    className={`py-2 px-6 rounded-xl transition-all shadow-lg font-sans text-sm font-medium flex items-center gap-2 ${
+                      loading
+                        ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                        : 'bg-white text-gray-900 hover:bg-gray-100'
+                    }`}
                   >
-                    Run Full Analysis
+                    {loading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-600 border-t-transparent"></div>
+                        <span>Running...</span>
+                      </>
+                    ) : (
+                      'Run Full Analysis'
+                    )}
                   </button>
                 )}
                 <button
