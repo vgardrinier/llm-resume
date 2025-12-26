@@ -799,6 +799,32 @@ export default function Home() {
 
                   {/* Floating capsule */}
                   <div className="backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.05)] rounded-2xl px-4 py-4 md:px-6 md:py-5 lg:px-8 lg:py-6 space-y-3">
+                    {/* Mode Toggle - Pill style at top of form */}
+                    <div className="flex justify-center pb-3">
+                      <div className="inline-flex bg-gray-100 rounded-full p-1 gap-1">
+                        <button
+                          onClick={() => setAnalysisMode('fast')}
+                          className={`px-6 py-2 rounded-full font-sans text-sm font-medium transition-all ${
+                            analysisMode === 'fast'
+                              ? 'bg-gray-900 text-white shadow-sm'
+                              : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                        >
+                          Quick Optimize
+                        </button>
+                        <button
+                          onClick={() => setAnalysisMode('deep')}
+                          className={`px-6 py-2 rounded-full font-sans text-sm font-medium transition-all ${
+                            analysisMode === 'deep'
+                              ? 'bg-gray-900 text-white shadow-sm'
+                              : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                        >
+                          Full Analysis
+                        </button>
+                      </div>
+                    </div>
+
                     {/* Desktop: URL Input and Upload side by side, Mobile: stacked */}
                     <div className="flex flex-col md:flex-row gap-2">
                       {/* Job URL Input */}
@@ -1010,30 +1036,6 @@ export default function Home() {
                           </div>
                         </div>
                       )}
-                    </div>
-
-                    {/* Mode Selection */}
-                    <div className="flex justify-center gap-3 pt-4">
-                      <button
-                        onClick={() => setAnalysisMode('fast')}
-                        className={`px-5 py-2.5 rounded-xl font-sans text-sm font-medium transition-all ${
-                          analysisMode === 'fast'
-                            ? 'bg-gray-900 text-white shadow-lg'
-                            : 'bg-white/60 text-gray-700 border border-gray-300 hover:border-gray-400'
-                        }`}
-                      >
-                        Quick Optimize
-                      </button>
-                      <button
-                        onClick={() => setAnalysisMode('deep')}
-                        className={`px-5 py-2.5 rounded-xl font-sans text-sm font-medium transition-all ${
-                          analysisMode === 'deep'
-                            ? 'bg-gray-900 text-white shadow-lg'
-                            : 'bg-white/60 text-gray-700 border border-gray-300 hover:border-gray-400'
-                        }`}
-                      >
-                        Full Analysis
-                      </button>
                     </div>
 
                     {/* CTA Button - Hidden on mobile (shown as sticky bottom button) */}

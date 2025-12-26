@@ -339,7 +339,8 @@ Please respond in JSON format:
     }
 
     console.error('[FetchJob] Quick extraction error:', error)
-    // Fall back to full extraction if quick fails
+    // Fall back to full extraction if quick fails - return null to signal failure
+    // The caller (extractWithVision) will handle null and continue with full extraction
     return null
   }
 }
@@ -656,7 +657,8 @@ async function extractWithFirecrawl(url: string, quick: boolean = false) {
     
     // If quick mode, try a fast extraction with smaller prompt
     if (quick) {
-      const quickPrompt = `Extract ONLY these 3 fields from this job posting:
+      try {
+        const quickPrompt = `Extract ONLY these 3 fields from this job posting:
 
 1. Company name
 2. Full job title
@@ -674,34 +676,38 @@ Respond in JSON:
 
 CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. Extract only plain text.`
 
-      const anthropic = new Anthropic({
-        apiKey: process.env.ANTHROPIC_API_KEY,
-      })
-
-      const quickMessage = await anthropic.messages.create({
-        model: 'claude-3-5-haiku-20241022',
-        max_tokens: 500,
-        messages: [{ role: 'user', content: quickPrompt }],
-      })
-
-      const quickResponseText = quickMessage.content[0].type === 'text' ? quickMessage.content[0].text : ''
-      const quickData = parseClaudeResponse(quickResponseText)
-      
-      // Remove emojis from quick extraction data
-      const cleanedQuickData = {
-        companyName: removeEmojis(quickData.companyName) || null,
-        jobTitle: removeEmojis(quickData.jobTitle) || null,
-        location: removeEmojis(quickData.location) || null,
-      }
-      
-      if (cleanedQuickData.companyName || cleanedQuickData.jobTitle || cleanedQuickData.location) {
-        console.log('[FetchJob] Quick extraction: Returning metadata from Claude')
-        return NextResponse.json({
-          companyName: cleanedQuickData.companyName,
-          jobTitle: cleanedQuickData.jobTitle,
-          location: cleanedQuickData.location,
-          quick: true,
+        const anthropic = new Anthropic({
+          apiKey: process.env.ANTHROPIC_API_KEY,
         })
+
+        const quickMessage = await anthropic.messages.create({
+          model: 'claude-3-5-haiku-20241022',
+          max_tokens: 500,
+          messages: [{ role: 'user', content: quickPrompt }],
+        })
+
+        const quickResponseText = quickMessage.content[0].type === 'text' ? quickMessage.content[0].text : ''
+        const quickData = parseClaudeResponse(quickResponseText)
+
+        // Remove emojis from quick extraction data
+        const cleanedQuickData = {
+          companyName: removeEmojis(quickData.companyName) || null,
+          jobTitle: removeEmojis(quickData.jobTitle) || null,
+          location: removeEmojis(quickData.location) || null,
+        }
+
+        if (cleanedQuickData.companyName || cleanedQuickData.jobTitle || cleanedQuickData.location) {
+          console.log('[FetchJob] Quick extraction: Returning metadata from Claude via Firecrawl')
+          return NextResponse.json({
+            companyName: cleanedQuickData.companyName,
+            jobTitle: cleanedQuickData.jobTitle,
+            location: cleanedQuickData.location,
+            quick: true,
+          })
+        }
+      } catch (quickError) {
+        console.warn('[FetchJob] Quick extraction via Firecrawl failed, falling back to full extraction:', quickError)
+        // Fall through to full extraction
       }
     }
 
@@ -877,11 +883,12 @@ async function extractWithScraping(url: string, quick: boolean = false) {
       location: locationFromJsonLd,
     })
   }
-  
+
     // If quick mode, try a fast extraction with smaller prompt
     if (quick) {
-      const htmlSlice = htmlContent.slice(0, 5000)
-      const quickPrompt = `Extract ONLY these 3 fields from this HTML:
+      try {
+        const htmlSlice = htmlContent.slice(0, 5000)
+        const quickPrompt = `Extract ONLY these 3 fields from this HTML:
 
 1. Company name
 2. Full job title
@@ -899,40 +906,40 @@ Respond in JSON:
 
 CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. Extract only plain text.`
 
-    try {
-      const anthropic = new Anthropic({
-        apiKey: process.env.ANTHROPIC_API_KEY,
-      })
-
-      const quickMessage = await anthropic.messages.create({
-        model: 'claude-3-5-haiku-20241022',
-        max_tokens: 500,
-        messages: [{ role: 'user', content: quickPrompt }],
-      })
-
-      const quickResponseText = quickMessage.content[0].type === 'text' ? quickMessage.content[0].text : ''
-      const quickData = parseClaudeResponse(quickResponseText)
-      
-      // Remove emojis from quick extraction data
-      const cleanedQuickData = {
-        companyName: removeEmojis(quickData.companyName) || null,
-        jobTitle: removeEmojis(quickData.jobTitle) || null,
-        location: removeEmojis(quickData.location) || null,
-      }
-      
-      if (cleanedQuickData.companyName || cleanedQuickData.jobTitle || cleanedQuickData.location) {
-        console.log('[FetchJob] Quick extraction: Returning metadata from Claude')
-        return NextResponse.json({
-          companyName: cleanedQuickData.companyName,
-          jobTitle: cleanedQuickData.jobTitle,
-          location: cleanedQuickData.location,
-          quick: true,
+        const anthropic = new Anthropic({
+          apiKey: process.env.ANTHROPIC_API_KEY,
         })
+
+        const quickMessage = await anthropic.messages.create({
+          model: 'claude-3-5-haiku-20241022',
+          max_tokens: 500,
+          messages: [{ role: 'user', content: quickPrompt }],
+        })
+
+        const quickResponseText = quickMessage.content[0].type === 'text' ? quickMessage.content[0].text : ''
+        const quickData = parseClaudeResponse(quickResponseText)
+
+        // Remove emojis from quick extraction data
+        const cleanedQuickData = {
+          companyName: removeEmojis(quickData.companyName) || null,
+          jobTitle: removeEmojis(quickData.jobTitle) || null,
+          location: removeEmojis(quickData.location) || null,
+        }
+
+        if (cleanedQuickData.companyName || cleanedQuickData.jobTitle || cleanedQuickData.location) {
+          console.log('[FetchJob] Quick extraction: Returning metadata from Claude')
+          return NextResponse.json({
+            companyName: cleanedQuickData.companyName,
+            jobTitle: cleanedQuickData.jobTitle,
+            location: cleanedQuickData.location,
+            quick: true,
+          })
+        }
+      } catch (quickError) {
+        console.warn('[FetchJob] Quick extraction failed, falling back to full extraction:', quickError)
+        // Fall through to full extraction
       }
-    } catch (quickError) {
-      console.warn('[FetchJob] Quick extraction failed, falling back to full extraction:', quickError)
     }
-  }
 
   // Fallback to Claude HTML parsing
   try {
