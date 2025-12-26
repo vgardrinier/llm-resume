@@ -272,6 +272,9 @@ export default function Home() {
           body: JSON.stringify({
             originalResume: currentResume,
             jobDescription: finalJobDescription,
+            // Job metadata for Fast Mode
+            jobTitle: quickMetadata?.jobTitle || null,
+            companyName: companyName || quickMetadata?.companyName || null,
             // Legacy format fallback
             job_description: finalJobDescription,
             candidate_resume: currentResume,

@@ -20,7 +20,12 @@ function generateChangeId(section: string, originalText: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const { originalResume, jobDescription } = await request.json()
+    const body = await request.json()
+    const { originalResume, jobDescription } = body
+
+    // Extract job metadata from URL extraction (if available)
+    const jobTitle = body.job_title || body.jobTitle || 'Position'
+    const companyName = body.company || body.companyName || null
 
     if (!originalResume || !jobDescription) {
       return NextResponse.json(
@@ -252,7 +257,11 @@ CRITICAL:
       metadata: {
         generation_time_ms: genTime,
         model: 'claude-sonnet-4-20250514',
-        mode: 'fast'
+        mode: 'fast',
+        job_metadata: {
+          title: jobTitle,
+          company: companyName
+        }
       }
     })
 
