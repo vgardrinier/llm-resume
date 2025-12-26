@@ -1012,6 +1012,30 @@ export default function Home() {
                       )}
                     </div>
 
+                    {/* Mode Selection */}
+                    <div className="flex justify-center gap-4 pt-4">
+                      <button
+                        onClick={() => setAnalysisMode('fast')}
+                        className={`px-6 py-3 rounded-xl font-sans text-sm font-medium transition-all ${
+                          analysisMode === 'fast'
+                            ? 'bg-gray-900 text-white shadow-lg'
+                            : 'bg-white/60 text-gray-700 border border-gray-300 hover:border-gray-400'
+                        }`}
+                      >
+                        Quick Optimize
+                      </button>
+                      <button
+                        onClick={() => setAnalysisMode('deep')}
+                        className={`px-6 py-3 rounded-xl font-sans text-sm font-medium transition-all ${
+                          analysisMode === 'deep'
+                            ? 'bg-gray-900 text-white shadow-lg'
+                            : 'bg-white/60 text-gray-700 border border-gray-300 hover:border-gray-400'
+                        }`}
+                      >
+                        Full Analysis
+                      </button>
+                    </div>
+
                     {/* CTA Button - Hidden on mobile (shown as sticky bottom button) */}
                     <div className="hidden md:flex justify-center pt-6">
                       <Button
@@ -1044,8 +1068,10 @@ export default function Home() {
                       loading={loading}
                       onStartOver={startOver}
                       onRunFullAnalysis={analysisMode === 'fast' ? () => {
+                        // Go back to form with Full Analysis mode selected
                         setAnalysisMode('deep')
-                        generateResume()
+                        setStructuredResult(null)
+                        setPhase('input')
                       } : undefined}
                     />
                   )}

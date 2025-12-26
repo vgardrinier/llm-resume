@@ -197,7 +197,7 @@ export function ResumeWorkspace({ data, mode = 'deep', loading = false, onStartO
                   Quick Optimize
                 </h2>
                 <p className="text-sm text-gray-200 font-sans">
-                  Your CV has been optimized with high-impact changes. Review suggestions below.
+                  Your CV has been optimized with high-impact changes. Want fit scores and diagnostics?
                 </p>
               </div>
               <div className="flex items-center gap-3">
