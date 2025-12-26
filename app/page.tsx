@@ -23,6 +23,7 @@ export default function Home() {
   const [structuredResult, setStructuredResult] = useState<StructuredResumeResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [useStructuredFlow, setUseStructuredFlow] = useState(true) // Feature flag for new flow
+  const [analysisMode, setAnalysisMode] = useState<'fast' | 'deep'>('fast') // Default to Fast Mode
   const [generationError, setGenerationError] = useState<string | null>(null)
   const [companyName, setCompanyName] = useState<string | null>(null)
   const [showResume, setShowResume] = useState(false)
@@ -191,9 +192,9 @@ export default function Home() {
         waitedForFullJd: !!fullJdPromise,
       })
 
-      // Choose API endpoint based on feature flag
-      const apiEndpoint = useStructuredFlow ? '/api/premium-start' : '/api/orchestrator'
-      const usePolling = useStructuredFlow // Premium uses polling
+      // Choose API endpoint based on mode
+      const apiEndpoint = analysisMode === 'fast' ? '/api/premium-fast' : '/api/premium-start'
+      const usePolling = analysisMode === 'deep' // Only Deep Mode uses polling
 
       const apiCallStart = performance.now()
 
@@ -262,13 +263,16 @@ export default function Home() {
         }
 
       } else {
-        // ORIGINAL FLOW for non-premium (synchronous)
+        // SYNCHRONOUS FLOW (Fast Mode or legacy)
         const response = await fetch(apiEndpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
+            originalResume: currentResume,
+            jobDescription: finalJobDescription,
+            // Legacy format fallback
             job_description: finalJobDescription,
             candidate_resume: currentResume,
             creative_mode: creativeMode,
@@ -1033,7 +1037,12 @@ export default function Home() {
                   {structuredResult && (
                     <ResumeWorkspace
                       data={structuredResult}
+                      mode={analysisMode}
                       onStartOver={startOver}
+                      onRunFullAnalysis={analysisMode === 'fast' ? () => {
+                        setAnalysisMode('deep')
+                        generateResume()
+                      } : undefined}
                     />
                   )}
 

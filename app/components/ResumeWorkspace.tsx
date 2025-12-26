@@ -8,10 +8,12 @@ import { ResumeEditor } from './ResumeEditorV2'
 
 interface ResumeWorkspaceProps {
   data: StructuredResumeResponse
+  mode?: 'fast' | 'deep'
   onStartOver: () => void
+  onRunFullAnalysis?: () => void
 }
 
-export function ResumeWorkspace({ data, onStartOver }: ResumeWorkspaceProps) {
+export function ResumeWorkspace({ data, mode = 'deep', onStartOver, onRunFullAnalysis }: ResumeWorkspaceProps) {
   // Track which changes have been accepted/rejected
   const [acceptedChanges, setAcceptedChanges] = useState<Set<string>>(new Set())
   const [rejectedChanges, setRejectedChanges] = useState<Set<string>>(new Set())
@@ -166,7 +168,9 @@ export function ResumeWorkspace({ data, onStartOver }: ResumeWorkspaceProps) {
             changesCount={visibleChanges.length}
             acceptedCount={visibleChanges.filter(c => acceptedChanges.has(c.id)).length}
             rejectedCount={visibleChanges.filter(c => rejectedChanges.has(c.id)).length}
+            mode={mode}
             onStartOver={onStartOver}
+            onRunFullAnalysis={onRunFullAnalysis}
           />
         </div>
       </div>
