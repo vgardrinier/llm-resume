@@ -155,34 +155,69 @@ export function ResumeWorkspace({ data, mode = 'deep', onStartOver, onRunFullAna
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
-      className="w-full flex gap-8 py-8"
+      className={`w-full flex gap-8 py-8 ${mode === 'fast' ? 'justify-center' : ''}`}
       style={{ scrollbarGutter: 'stable' }}
     >
-      {/* Two-column desk layout */}
-      {/* Left Pane: Glass Dashboard - Fixed width (sections animate individually) */}
-      <div className="w-[360px] shrink-0 h-[calc(100vh-8rem)] overflow-y-auto">
-        <div className="backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.1)] rounded-2xl p-6">
-          <TheBrain
-            analysis={data.analysis}
-            salary={data.salary}
-            changesCount={visibleChanges.length}
-            acceptedCount={visibleChanges.filter(c => acceptedChanges.has(c.id)).length}
-            rejectedCount={visibleChanges.filter(c => rejectedChanges.has(c.id)).length}
-            mode={mode}
-            onStartOver={onStartOver}
-            onRunFullAnalysis={onRunFullAnalysis}
-          />
+      {/* Left Pane: Glass Dashboard - Only show in Deep Mode */}
+      {mode === 'deep' && (
+        <div className="w-[360px] shrink-0 h-[calc(100vh-8rem)] overflow-y-auto">
+          <div className="backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.1)] rounded-2xl p-6">
+            <TheBrain
+              analysis={data.analysis}
+              salary={data.salary}
+              changesCount={visibleChanges.length}
+              acceptedCount={visibleChanges.filter(c => acceptedChanges.has(c.id)).length}
+              rejectedCount={visibleChanges.filter(c => rejectedChanges.has(c.id)).length}
+              mode={mode}
+              onStartOver={onStartOver}
+              onRunFullAnalysis={onRunFullAnalysis}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Right Pane: Glass Resume Editor - Appears all at once after left panel sections */}
+      {/* Right Pane: Resume Editor */}
       <motion.div
         variants={rightPanelVariants}
         initial="hidden"
         animate="visible"
-        className="flex-1 min-w-[700px] h-[calc(100vh-8rem)] overflow-y-auto"
+        className={`overflow-y-auto ${
+          mode === 'fast' ? 'w-full max-w-[1200px]' : 'flex-1 min-w-[700px]'
+        }`}
       >
-        <div className="backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.1)] rounded-2xl p-6 h-full">
+        {/* Fast Mode Header - Show above CV */}
+        {mode === 'fast' && (
+          <div className="backdrop-blur-md bg-gradient-to-r from-gray-900 to-gray-700 border border-gray-800 shadow-[0_4px_30px_rgba(0,0,0,0.2)] rounded-2xl p-6 mb-6 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold mb-2 font-serif">
+                  Quick Optimize
+                </h2>
+                <p className="text-sm text-gray-200 font-sans">
+                  Your CV has been optimized with high-impact changes in ~20-30s. Review suggestions below.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                {onRunFullAnalysis && (
+                  <button
+                    onClick={onRunFullAnalysis}
+                    className="bg-white text-gray-900 py-2 px-6 rounded-xl hover:bg-gray-100 transition-all shadow-lg font-sans text-sm font-medium"
+                  >
+                    Run Full Analysis
+                  </button>
+                )}
+                <button
+                  onClick={onStartOver}
+                  className="text-gray-300 hover:text-white underline text-sm transition-colors font-sans"
+                >
+                  Start over
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className={`backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.1)] rounded-2xl p-6 ${mode === 'fast' ? 'h-auto' : 'h-full'}`}>
           <ResumeEditor
             optimizedResume={data.optimizedResume}
             changes={data.changes}
