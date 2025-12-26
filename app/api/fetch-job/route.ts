@@ -379,6 +379,62 @@ async function extractWithVision(url: string, quick: boolean = false) {
     // Wait for dynamic content
     await new Promise(resolve => setTimeout(resolve, 2000))
 
+    // Try text extraction first (cheaper than vision)
+    console.log('Extracting rendered text content...')
+    const renderedText = await page.evaluate(() => {
+      // Remove script, style, and hidden elements
+      const elementsToRemove = document.querySelectorAll('script, style, noscript, [hidden], [aria-hidden="true"]')
+      elementsToRemove.forEach(el => el.remove())
+
+      return document.body.innerText || document.body.textContent || ''
+    })
+
+    const renderedTextLength = renderedText.trim().length
+    console.log(`[FetchJob] Rendered text length: ${renderedTextLength} chars`)
+
+    // If we got substantial text (>500 chars) and it looks like a job posting, use it
+    const hasJobKeywords = /job|role|position|responsibilities|qualifications|requirements|experience|skills|apply/i.test(renderedText.slice(0, 2000))
+
+    if (renderedTextLength > 500 && hasJobKeywords) {
+      console.log('[FetchJob] ✅ Text extraction successful after JS render, skipping vision')
+      await browser.close()
+      browser = null
+
+      // Use fast text-based extraction instead of vision
+      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+      const textMessage = await anthropic.messages.create({
+        model: 'claude-3-7-sonnet-20250219',
+        max_tokens: 8000,
+        messages: [{
+          role: 'user',
+          content: `Extract job details from this career page text:
+
+${renderedText}
+
+Return JSON with:
+- jobTitle (exact title)
+- companyName
+- location (or "N/A")
+- fullDescription (complete job description with responsibilities, qualifications, etc.)
+
+JSON only, no markdown.`
+        }]
+      })
+
+      const textContent = textMessage.content[0].type === 'text' ? textMessage.content[0].text : '{}'
+      const textResult = JSON.parse(textContent.replace(/```json\n?/g, '').replace(/```\n?/g, ''))
+
+      return {
+        jobTitle: textResult.jobTitle || null,
+        companyName: textResult.companyName || null,
+        location: textResult.location || 'N/A',
+        fullDescription: textResult.fullDescription || renderedText,
+        method: 'text-after-render'
+      }
+    }
+
+    // Fallback to vision if text extraction didn't work
+    console.log('[FetchJob] Text extraction insufficient, falling back to vision')
     console.log('Taking screenshot...')
     const screenshot = await page.screenshot({
       fullPage: true,
