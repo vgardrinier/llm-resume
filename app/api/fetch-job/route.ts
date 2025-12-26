@@ -424,13 +424,20 @@ JSON only, no markdown.`
       const textContent = textMessage.content[0].type === 'text' ? textMessage.content[0].text : '{}'
       const textResult = JSON.parse(textContent.replace(/```json\n?/g, '').replace(/```\n?/g, ''))
 
-      return {
-        jobTitle: textResult.jobTitle || null,
-        companyName: textResult.companyName || null,
+      const jobDesc = textResult.fullDescription || renderedText
+      console.log(`[FetchJob] ✅ Text extraction completed: ${jobDesc.length} characters`, {
+        jobTitle: textResult.jobTitle || 'N/A',
+        company: textResult.companyName || 'N/A',
         location: textResult.location || 'N/A',
-        fullDescription: textResult.fullDescription || renderedText,
         method: 'text-after-render'
-      }
+      })
+
+      return NextResponse.json({
+        jobDescription: jobDesc,
+        companyName: textResult.companyName || null,
+        jobTitle: textResult.jobTitle || null,
+        location: textResult.location || 'N/A',
+      })
     }
 
     // Fallback to vision if text extraction didn't work
