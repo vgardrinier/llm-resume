@@ -377,36 +377,6 @@ export default function Home() {
             return bottlenecks.length > 0 ? bottlenecks : ['✅ All timings look reasonable']
           })()
         })
-      } else {
-        const data: GenerateInsightsResponse = await response.json()
-        timingBreakdown.responseParse = performance.now() - parseStart
-
-        const stateUpdateStart = performance.now()
-        setResult(data)
-        timingBreakdown.stateUpdate = performance.now() - stateUpdateStart
-        
-        timingBreakdown.total = performance.now() - userClickStart
-
-        console.log('[Frontend] Legacy API response received', {
-          step: 'api_response',
-          hasInsights: !!data.insights,
-          hasFitScore: !!data.insights?.fit,
-          fitScoreBefore: data.insights?.fit?.score_before,
-          fitScoreAfter: data.insights?.fit?.score_after,
-          hasOptimizedResume: !!data.optimized_resume,
-          optimizedResumeLength: data.optimized_resume?.length || 0,
-        })
-
-        console.log('⏱️ TIMING BREAKDOWN (Button Click → Output Reveal):', {
-          'Client-Side': {
-            'Button Click → Setup': `${timingBreakdown.buttonClick.toFixed(0)}ms`,
-            'Full JD Wait (if any)': `${timingBreakdown.fullJdWait.toFixed(0)}ms`,
-            'API Call (network + server)': `${timingBreakdown.apiCall.toFixed(0)}ms`,
-            'Response Parse': `${timingBreakdown.responseParse.toFixed(0)}ms`,
-            'State Update': `${timingBreakdown.stateUpdate.toFixed(0)}ms`,
-            'TOTAL CLIENT TIME': `${timingBreakdown.total.toFixed(0)}ms (${(timingBreakdown.total / 1000).toFixed(1)}s)`
-          }
-        })
       }
 
       setGenerationError(null) // Clear any previous errors on success

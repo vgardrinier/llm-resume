@@ -253,7 +253,7 @@ async function runDeepAnalysis(
     // 1. STRENGTHS WE FOUND
     // From culture.mappable_resume_signals
     if (mergedAnalysis.culture?.mappable_resume_signals && Array.isArray(mergedAnalysis.culture.mappable_resume_signals)) {
-      mergedAnalysis.culture.mappable_resume_signals.slice(0, 4).forEach(signal => {
+      mergedAnalysis.culture.mappable_resume_signals.slice(0, 4).forEach((signal: any) => {
         if (signal && signal.theme) {
           whatWorks.push(`Strong ${signal.theme.toLowerCase()} signals${signal.bullet_hint ? `: "${signal.bullet_hint}"` : ''}`)
         }
@@ -290,7 +290,7 @@ async function runDeepAnalysis(
       mergedAnalysis.red_flags
         .filter(flag => flag.severity === 'high' || flag.severity === 'critical')
         .slice(0, 3)
-        .forEach(flag => {
+        .forEach((flag: any) => {
           whatsMissing.push(flag.message)
         })
     }
@@ -298,9 +298,9 @@ async function runDeepAnalysis(
     // Missing cultural themes (themes in JD but not in resume signals)
     if (mergedAnalysis.culture?.themes && Array.isArray(mergedAnalysis.culture.themes)) {
       const mappedThemes = new Set(
-        (mergedAnalysis.culture.mappable_resume_signals || []).map(s => s.theme?.toLowerCase())
+        (mergedAnalysis.culture.mappable_resume_signals || []).map((s: any) => s.theme?.toLowerCase())
       )
-      mergedAnalysis.culture.themes.slice(0, 6).forEach(theme => {
+      mergedAnalysis.culture.themes.slice(0, 6).forEach((theme: string) => {
         if (!mappedThemes.has(theme.toLowerCase()) && whatsMissing.length < 6) {
           whatsMissing.push(`Missing explicit ${theme.toLowerCase()} signals`)
         }
@@ -310,9 +310,9 @@ async function runDeepAnalysis(
     // Add medium-severity red flags if we have room
     if (whatsMissing.length < 3 && mergedAnalysis.red_flags) {
       mergedAnalysis.red_flags
-        .filter(flag => flag.severity === 'medium')
+        .filter((flag: any) => flag.severity === 'medium')
         .slice(0, 3 - whatsMissing.length)
-        .forEach(flag => {
+        .forEach((flag: any) => {
           whatsMissing.push(flag.message)
         })
     }
@@ -326,7 +326,7 @@ async function runDeepAnalysis(
     // Resume themes from mappable signals
     if (mergedAnalysis.culture?.mappable_resume_signals && Array.isArray(mergedAnalysis.culture.mappable_resume_signals)) {
       const resumeThemeSet = new Set<string>()
-      mergedAnalysis.culture.mappable_resume_signals.forEach(signal => {
+      mergedAnalysis.culture.mappable_resume_signals.forEach((signal: any) => {
         if (signal.theme) {
           resumeThemeSet.add(signal.theme)
         }
@@ -336,7 +336,7 @@ async function runDeepAnalysis(
 
     // Missing themes = job themes not in resume themes
     const resumeThemesLower = new Set(resumeThemes.map(t => t.toLowerCase()))
-    jobThemes.forEach(theme => {
+    jobThemes.forEach((theme: string) => {
       if (!resumeThemesLower.has(theme.toLowerCase())) {
         missingThemes.push(theme)
       }

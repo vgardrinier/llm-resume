@@ -26,11 +26,20 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'en_US',
     siteName: 'Rightfit',
+    images: [
+      {
+        url: '/og-image.png',
+        width: 1200,
+        height: 630,
+        alt: 'Rightfit - Transform Your Resume',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Rightfit — Honest Résumé Feedback & Precise Improvements',
     description: 'Find out why recruiters skip your résumé and fix it, today. Honest feedback and precise improvements — no fluff.',
+    images: ['/og-image.png'],
   },
   icons: {
     icon: '/rightfit_logo.png',

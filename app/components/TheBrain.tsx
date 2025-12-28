@@ -235,9 +235,9 @@ export function TheBrain({
       )}
 
       {/* Keywords & Themes - Only show in Deep Mode */}
-      {mode === 'deep' && (analysis.keywordsToTarget?.jobThemes?.length > 0 ||
-        analysis.keywordsToTarget?.resumeThemes?.length > 0 ||
-        analysis.keywordsToTarget?.missingThemes?.length > 0) && (
+      {mode === 'deep' && ((analysis.keywordsToTarget?.jobThemes?.length ?? 0) > 0 ||
+        (analysis.keywordsToTarget?.resumeThemes?.length ?? 0) > 0 ||
+        (analysis.keywordsToTarget?.missingThemes?.length ?? 0) > 0) && (
         <motion.div
           variants={cardVariants}
           initial="hidden"
@@ -251,13 +251,13 @@ export function TheBrain({
           </h3>
 
           {/* Job Themes */}
-          {analysis.keywordsToTarget?.jobThemes?.length > 0 && (
+          {(analysis.keywordsToTarget?.jobThemes?.length ?? 0) > 0 && (
             <div className="mb-3">
               <div className="text-xs text-gray-500 mb-2 font-sans font-medium">
                 JOB REQUIRES
               </div>
               <div className="flex flex-wrap gap-2">
-                {analysis.keywordsToTarget.jobThemes.map((theme, idx) => (
+                {analysis.keywordsToTarget?.jobThemes?.map((theme, idx) => (
                   <span
                     key={idx}
                     className="px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-full text-xs font-medium font-sans"
@@ -270,13 +270,13 @@ export function TheBrain({
           )}
 
           {/* Resume Themes */}
-          {analysis.keywordsToTarget?.resumeThemes?.length > 0 && (
+          {(analysis.keywordsToTarget?.resumeThemes?.length ?? 0) > 0 && (
             <div className="mb-3">
               <div className="text-xs text-gray-500 mb-2 font-sans font-medium">
                 YOUR CURRENT SIGNALS
               </div>
               <div className="flex flex-wrap gap-2">
-                {analysis.keywordsToTarget.resumeThemes.map((theme, idx) => (
+                {analysis.keywordsToTarget?.resumeThemes?.map((theme, idx) => (
                   <span
                     key={idx}
                     className="px-3 py-1.5 bg-green-50 border border-green-200 text-green-700 rounded-full text-xs font-medium font-sans"
@@ -289,13 +289,13 @@ export function TheBrain({
           )}
 
           {/* Missing Themes */}
-          {analysis.keywordsToTarget?.missingThemes?.length > 0 && (
+          {(analysis.keywordsToTarget?.missingThemes?.length ?? 0) > 0 && (
             <div>
               <div className="text-xs text-gray-500 mb-2 font-sans font-medium">
                 MISSING (WE'LL ADDRESS)
               </div>
               <div className="flex flex-wrap gap-2">
-                {analysis.keywordsToTarget.missingThemes.map((theme, idx) => (
+                {analysis.keywordsToTarget?.missingThemes?.map((theme, idx) => (
                   <span
                     key={idx}
                     className="px-3 py-1.5 bg-gray-50 border border-gray-300 text-gray-600 rounded-full text-xs font-medium font-sans"
