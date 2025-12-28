@@ -28,7 +28,7 @@ export const metadata: Metadata = {
     siteName: 'Rightfit',
     images: [
       {
-        url: '/og-image.png',
+        url: '/og-image.jpg',
         width: 1200,
         height: 630,
         alt: 'Rightfit - Transform Your Resume',
@@ -39,7 +39,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Rightfit — Honest Résumé Feedback & Precise Improvements',
     description: 'Find out why recruiters skip your résumé and fix it, today. Honest feedback and precise improvements — no fluff.',
-    images: ['/og-image.png'],
+    images: ['/og-image.jpg'],
   },
   icons: {
     icon: '/rightfit_logo.png',
