@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion'
 import { CheckCircle2, AlertCircle, Target, Lightbulb } from 'lucide-react'
 
-interface PremiumAnalysisPanelProps {
+interface AnalysisPanelProps {
   whatWorks: string[]
   whatsMissing: string[]
   keywordsToTarget: {
@@ -14,12 +14,12 @@ interface PremiumAnalysisPanelProps {
   rationaleForChanges: string
 }
 
-export function PremiumAnalysisPanel({
+export function AnalysisPanel({
   whatWorks,
   whatsMissing,
   keywordsToTarget,
   rationaleForChanges,
-}: PremiumAnalysisPanelProps) {
+}: AnalysisPanelProps) {
   const jobThemes = keywordsToTarget.jobThemes || []
   const resumeThemes = keywordsToTarget.resumeThemes || []
   const missingThemes = keywordsToTarget.missingThemes || []

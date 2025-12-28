@@ -30,16 +30,16 @@ export async function POST(request: NextRequest) {
     const jobId = generateJobId()
     createJob(jobId)
 
-    console.log(`[Premium-Start] Created job ${jobId}, starting async processing...`)
+    console.log(`[Deep-Analysis] Created job ${jobId}, starting async processing...`)
 
     // Start async processing (don't await!)
-    runPremiumAnalysis(jobId, {
+    runDeepAnalysis(jobId, {
       candidate_resume,
       job_description,
       generation_id,
       session_id,
     }).catch((error) => {
-      console.error(`[Premium-Start] Async job ${jobId} failed:`, error)
+      console.error(`[Deep-Analysis] Async job ${jobId} failed:`, error)
       failJob(jobId, error instanceof Error ? error.message : 'Unknown error')
     })
 
@@ -47,11 +47,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       jobId,
       status: 'pending',
-      message: 'Analysis started. Poll /api/premium-status?jobId=' + jobId,
+      message: 'Analysis started. Poll /api/analyze-status?jobId=' + jobId,
     })
 
   } catch (error) {
-    console.error('[Premium-Start] Error:', error)
+    console.error('[Deep-Analysis] Error:', error)
     return NextResponse.json(
       {
         error: 'Failed to start analysis',
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
  * ASYNC PREMIUM ORCHESTRATION
  * This runs in the background without blocking the client
  */
-async function runPremiumAnalysis(
+async function runDeepAnalysis(
   jobId: string,
   params: {
     candidate_resume: string
@@ -87,7 +87,7 @@ async function runPremiumAnalysis(
     updateJob(jobId, { progress: 10, currentStep: 'Analyzing structure...' })
 
     const [structuralRes, baselineResult] = await Promise.allSettled([
-      fetch(`${baseUrl}/api/premium-analyzer-structural`, {
+      fetch(`${baseUrl}/api/analyzer-structural`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -128,7 +128,7 @@ async function runPremiumAnalysis(
     // STEP 2: Strategic (20-40%)
     updateJob(jobId, { progress: 20, currentStep: 'Strategic analysis...' })
 
-    const strategicRes = await fetch(`${baseUrl}/api/premium-analyzer-strategic`, {
+    const strategicRes = await fetch(`${baseUrl}/api/analyzer-strategic`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -159,13 +159,13 @@ async function runPremiumAnalysis(
     // STEP 3: Generator (40-70%)
     updateJob(jobId, { progress: 40, currentStep: 'Generating optimizations...' })
 
-    const generatorRes = await fetch(`${baseUrl}/api/premium-generator`, {
+    const generatorRes = await fetch(`${baseUrl}/api/generator`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         originalResume: candidate_resume,
         jobDescription: job_description,
-        premiumAnalysis: mergedAnalysis,
+        analysis: mergedAnalysis,
       }),
     })
 
@@ -243,7 +243,7 @@ async function runPremiumAnalysis(
 
     const totalTime = Date.now() - startTime
 
-    // Map premium analysis to diagnostic panel format
+    // Map analysis to diagnostic panel format
     const whatWorks: string[] = []
     const whatsMissing: string[] = []
     const jobThemes: string[] = []
@@ -391,11 +391,10 @@ async function runPremiumAnalysis(
 
     const result = {
       success: true,
-      premium_available: true,
       optimizedResume,
       changes: curatorData?.validatedChanges || generatorData.changes,
       analysis: {
-        // Diagnostic panel fields (premium UX)
+        // Diagnostic panel fields (deep mode)
         whatWorks,
         whatsMissing,
         keywordsToTarget: {
@@ -417,7 +416,7 @@ async function runPremiumAnalysis(
           after: finalFit.breakdown,
         },
 
-        // Premium fields (for future use)
+        // Advanced analysis fields (deep mode)
         scope: mergedAnalysis.scope,
         altitude: mergedAnalysis.altitude,
         experience: mergedAnalysis.experience,
@@ -442,7 +441,7 @@ async function runPremiumAnalysis(
         timing: {
           total_ms: totalTime,
         },
-        version: 'premium-v2.0-async',
+        version: 'deep-v2.0-async',
       },
     }
 

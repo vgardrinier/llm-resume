@@ -1,11 +1,11 @@
-# Premium Resume Transformation Engine - Definitive Spec v1.0
+# Resume Analysis & Transformation Engine - Definitive Spec v1.0
 
 ## Core Principle: Identity Transformation Within Honest Constraints
 
 **NOT:** Keyword stuffing or polish
 **YES:** Strategic reframing of candidate identity through scope synthesis, altitude shift, and narrative architecture
 
-**Guardrail:** If experience doesn't support altitude lift, Premium optimizes clarity, structure, and impact without inflating seniority.
+**Guardrail:** If experience doesn't support altitude lift, analysis optimizes clarity, structure, and impact without inflating seniority.
 
 ---
 
@@ -462,7 +462,7 @@ ENTIRE resume must maintain altitude consistency:
 
 ### Layer 8: STRUCTURE TRANSFORMATION (Holistic Optimization)
 
-**Premium touches every section:**
+**Deep Analysis touches every section:**
 
 **1. Summary**
 - Magnetic 2-liner with industry lens
@@ -529,7 +529,7 @@ Recent grad:     Summary → Education → Experience → Projects → Skills
       "Elevated summary from generic → magnetic"
     ],
     "realistic_positioning": "Your profile is now competitive for PM and Program Manager roles at Amazon, but not yet Senior PM due to scope constraints.",
-    "honest_feedback": "Premium maximized your existing experience. To reach Senior PM, you'd need: (1) Clear product ownership, (2) Roadmap definition experience, (3) Customer impact metrics."
+    "honest_feedback": "Deep analysis maximized your existing experience. To reach Senior PM, you'd need: (1) Clear product ownership, (2) Roadmap definition experience, (3) Customer impact metrics."
   },
 
   "remaining_gaps": [
@@ -538,7 +538,7 @@ Recent grad:     Summary → Education → Experience → Projects → Skills
     "Suggest targeting PM role, not Senior PM"
   ],
 
-  "trust_statement": "Premium rewrite makes you competitive at the PM level you can honestly claim. This is the highest altitude your current experience supports."
+  "trust_statement": "Deep analysis rewrite makes you competitive at the PM level you can honestly claim. This is the highest altitude your current experience supports."
 }
 ```
 
@@ -700,6 +700,6 @@ This combination doesn't exist anywhere else.
 
 ## Final Verdict: 9.2/10 - Category-Defining
 
-This is the premium resume engine that actually transforms candidates.
+This is the resume analysis engine that actually transforms candidates.
 
 Ready for implementation.

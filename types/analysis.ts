@@ -1,4 +1,4 @@
-// PREMIUM ANALYZER TYPE DEFINITIONS
+// ANALYSIS TYPE DEFINITIONS
 // Strict, shallow schemas for fast parsing and validation
 
 export type StructuralScope = {

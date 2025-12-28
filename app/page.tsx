@@ -193,7 +193,7 @@ export default function Home() {
       })
 
       // Choose API endpoint based on mode
-      const apiEndpoint = analysisMode === 'fast' ? '/api/premium-fast' : '/api/premium-start'
+      const apiEndpoint = analysisMode === 'fast' ? '/api/analyze-fast' : '/api/analyze-deep'
       const usePolling = analysisMode === 'deep' // Only Deep Mode uses polling
 
       const apiCallStart = performance.now()
@@ -231,7 +231,7 @@ export default function Home() {
           attempts++
           await new Promise(resolve => setTimeout(resolve, 2000)) // 2s poll interval
 
-          const statusResponse = await fetch(`/api/premium-status?jobId=${jobId}`)
+          const statusResponse = await fetch(`/api/analyze-status?jobId=${jobId}`)
 
           if (!statusResponse.ok) {
             throw new Error('Failed to check job status')
