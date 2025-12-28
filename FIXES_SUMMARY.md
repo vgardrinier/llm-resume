@@ -185,3 +185,4 @@ Both issues are now **resolved** with a clean, intuitive UX:
 
 The job seeker experience is now seamless: they see ALL suggestions, can easily fill in missing values, and download clean resumes with their actual metrics.
 
+
