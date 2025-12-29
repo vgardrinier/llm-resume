@@ -383,11 +383,18 @@ async function extractWithVision(url: string, quick: boolean = false) {
     // Try text extraction first (cheaper than vision)
     console.log('Extracting rendered text content...')
     const renderedText = await page.evaluate(() => {
-      // Remove script, style, and hidden elements
-      const elementsToRemove = document.querySelectorAll('script, style, noscript, [hidden], [aria-hidden="true"]')
-      elementsToRemove.forEach(el => el.remove())
+      // We used to remove script, style, and hidden elements via el.remove(), 
+      // but that broke vision fallback because the page lost its styling.
+      // Now we use a non-destructive approach: temporarily hide them, 
+      // extract text, then restore.
+      const styleTag = document.createElement('style')
+      styleTag.textContent = 'script, style, noscript, [hidden], [aria-hidden="true"] { display: none !important; }'
+      document.head.appendChild(styleTag)
 
-      return document.body.innerText || document.body.textContent || ''
+      const text = document.body.innerText || document.body.textContent || ''
+      
+      styleTag.remove()
+      return text
     })
 
     const renderedTextLength = renderedText.trim().length

@@ -12,8 +12,8 @@ export const maxDuration = 120
  * Trade-off: No separate diagnostic panel, curator, or fit scoring
  */
 
-function generateChangeId(section: string, originalText: string): string {
-  const input = `${section}\n${originalText.trim()}`
+function generateChangeId(section: string, originalText: string, suggestedText: string): string {
+  const input = `${section}\n${originalText.trim()}\n${suggestedText.trim()}`
   const hash = crypto.createHash('sha256').update(input).digest('hex')
   return `${section}_${hash.substring(0, 10)}`
 }
@@ -224,7 +224,11 @@ CRITICAL:
 
     // ALWAYS regenerate deterministic change IDs (never trust model output)
     result.changes = result.changes.map((change: any) => {
-      const deterministicId = generateChangeId(change.section, change.original || '')
+      const deterministicId = generateChangeId(
+        change.section,
+        change.original || '',
+        change.suggested || ''
+      )
       return {
         ...change,
         id: deterministicId
