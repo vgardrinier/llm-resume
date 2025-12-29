@@ -4,10 +4,10 @@ import { getJob } from '@/lib/jobQueue'
 export const maxDuration = 5 // Fast polling endpoint
 
 /**
- * CHECK PREMIUM JOB STATUS - Polling Endpoint
+ * CHECK JOB STATUS - Polling Endpoint
  *
  * Returns current job status and result if completed.
- * Client should poll every 1-2 seconds.
+ * Used for tracking long-running deep analysis jobs.
  */
 
 export async function GET(request: NextRequest) {
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(response)
 
   } catch (error) {
-    console.error('[Premium-Status] Error:', error)
+    console.error('[Analyze-Status] Error:', error)
     return NextResponse.json(
       {
         error: 'Failed to check status',

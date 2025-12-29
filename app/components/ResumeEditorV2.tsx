@@ -158,17 +158,14 @@ export function ResumeEditor({
     const changeInputs = metricInputs.get(changeId)
     if (!changeInputs) return text
     
-    let result = text
     let placeholderIndex = 0
     
-    // Replace each [X] with user input (if provided)
-    while (result.includes('[X]')) {
+    // Replace all [X] occurrences safely (avoids infinite loop if value is '[X]')
+    return text.replace(/\[X\]/g, () => {
       const value = changeInputs.get(placeholderIndex) || '[X]'
-      result = result.replace('[X]', value)
       placeholderIndex++
-    }
-    
-    return result
+      return value
+    })
   }
 
   const handlePrint = useReactToPrint({

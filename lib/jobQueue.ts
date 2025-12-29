@@ -1,13 +1,13 @@
 /**
- * IN-MEMORY JOB QUEUE FOR ASYNC PREMIUM ANALYSIS
+ * IN-MEMORY JOB QUEUE FOR DEEP ANALYSIS
  *
- * Simple in-memory storage for long-running premium jobs.
+ * Simple in-memory storage for long-running analysis jobs.
  * For production, replace with Redis/database.
  */
 
 export type JobStatus = 'pending' | 'processing' | 'completed' | 'failed'
 
-export interface PremiumJob {
+export interface AnalysisJob {
   jobId: string
   status: JobStatus
   progress?: number // 0-100
@@ -29,10 +29,10 @@ export interface PremiumJob {
 
 // In-memory job storage (replace with Redis for production)
 // Use globalThis to ensure singleton across Next.js API route hot-reloads
-const globalForJobs = globalThis as unknown as { jobs: Map<string, PremiumJob> }
+const globalForJobs = globalThis as unknown as { jobs: Map<string, AnalysisJob> }
 
 if (!globalForJobs.jobs) {
-  globalForJobs.jobs = new Map<string, PremiumJob>()
+  globalForJobs.jobs = new Map<string, AnalysisJob>()
 }
 
 const jobs = globalForJobs.jobs
@@ -51,8 +51,8 @@ setInterval(() => {
   }
 }, CLEANUP_INTERVAL_MS)
 
-export function createJob(jobId: string): PremiumJob {
-  const job: PremiumJob = {
+export function createJob(jobId: string): AnalysisJob {
+  const job: AnalysisJob = {
     jobId,
     status: 'pending',
     progress: 0,
@@ -63,11 +63,11 @@ export function createJob(jobId: string): PremiumJob {
   return job
 }
 
-export function getJob(jobId: string): PremiumJob | undefined {
+export function getJob(jobId: string): AnalysisJob | undefined {
   return jobs.get(jobId)
 }
 
-export function updateJob(jobId: string, updates: Partial<PremiumJob>): void {
+export function updateJob(jobId: string, updates: Partial<AnalysisJob>): void {
   const job = jobs.get(jobId)
   if (!job) {
     console.error(`[JobQueue] Job not found: ${jobId}`)

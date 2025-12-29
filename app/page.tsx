@@ -194,125 +194,62 @@ export default function Home() {
 
       // Choose API endpoint based on mode
       const apiEndpoint = analysisMode === 'fast' ? '/api/analyze-fast' : '/api/analyze-deep'
-      const usePolling = analysisMode === 'deep' // Only Deep Mode uses polling
 
       const apiCallStart = performance.now()
 
       let data: any
 
-      if (usePolling) {
-        // POLLING FLOW for premium (async)
-        console.log('[Frontend] Starting async premium job...')
-
-        // Step 1: Start the job
-        const startResponse = await fetch(apiEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            job_description: finalJobDescription,
-            candidate_resume: currentResume,
-            creative_mode: creativeMode,
-          }),
-        })
-
-        if (!startResponse.ok) {
-          const errorData = await startResponse.json().catch(() => ({}))
-          throw new Error(errorData.error || 'Failed to start analysis')
-        }
-
-        const { jobId } = await startResponse.json()
-        console.log(`[Frontend] Job started: ${jobId}, polling for results...`)
-
-        // Step 2: Poll for completion
-        let attempts = 0
-        const maxAttempts = 90 // 3 minutes max (2s interval)
-
-        while (attempts < maxAttempts) {
-          attempts++
-          await new Promise(resolve => setTimeout(resolve, 2000)) // 2s poll interval
-
-          const statusResponse = await fetch(`/api/analyze-status?jobId=${jobId}`)
-
-          if (!statusResponse.ok) {
-            throw new Error('Failed to check job status')
-          }
-
-          const status = await statusResponse.json()
-
-          console.log(`[Frontend Poll ${attempts}] ${status.status} | ${status.progress}% | ${status.currentStep || ''}`)
-
-          // Capture baseline fit score when it becomes available (~5s in)
-          if (status.baselineFit && !baselineFit) {
-            setBaselineFit(status.baselineFit)
-            console.log('[Frontend] Baseline fit score received:', status.baselineFit.overallScore)
-          }
-
-          if (status.status === 'completed') {
-            data = status.result
-            console.log(`[Frontend] Job completed after ${attempts} polls`)
-            break
-          }
-
-          if (status.status === 'failed') {
-            throw new Error(status.error || 'Analysis failed')
-          }
-        }
-
-        if (!data) {
-          throw new Error('Analysis timeout after 3 minutes')
-        }
-
-      } else {
-        // SYNCHRONOUS FLOW (Fast Mode or legacy)
-        const response = await fetch(apiEndpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
+      // Deep Mode (formerly Premium) and Fast Mode both run synchronously now
+      // to avoid serverless termination issues in background tasks.
+      const requestBody = analysisMode === 'fast' 
+        ? {
             originalResume: currentResume,
             jobDescription: finalJobDescription,
-            // Job metadata for Fast Mode
             jobTitle: quickMetadata?.jobTitle || null,
             companyName: companyName || quickMetadata?.companyName || null,
-            // Legacy format fallback
+            // Fallback fields for some model versions
             job_description: finalJobDescription,
             candidate_resume: currentResume,
             creative_mode: creativeMode,
-          }),
-        })
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}))
-          console.error('[Frontend] API error response', {
-            step: 'api_error',
-            status: response.status,
-            statusText: response.statusText,
-            error: errorData,
-          })
-
-          // Provide user-friendly error messages based on status code
-          let userMessage = 'Failed to generate resume. Please try again.'
-          if (response.status === 400) {
-            // Check if it's a job description length issue
-            if (errorData.error?.includes('incomplete') || errorData.error?.includes('minimum')) {
-              userMessage = errorData.error + (errorData.details ? ` ${errorData.details}` : '')
-            } else {
-              userMessage = errorData.error || 'Invalid request. Please check your inputs and try again.'
-            }
-          } else if (response.status === 429) {
-            userMessage = 'Too many requests. Please wait a moment and try again.'
-          } else if (response.status === 500) {
-            userMessage = errorData.error || 'Our servers encountered an issue. Please try again in a moment.'
-          } else if (response.status >= 500) {
-            userMessage = 'Service temporarily unavailable. Please try again shortly.'
+          }
+        : {
+            job_description: finalJobDescription,
+            candidate_resume: currentResume,
+            creative_mode: creativeMode,
           }
 
-          throw new Error(userMessage)
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        console.error('[Frontend] API error response', {
+          mode: analysisMode,
+          status: response.status,
+          error: errorData,
+        })
+
+        // Provide user-friendly error messages
+        let userMessage = 'Failed to generate resume. Please try again.'
+        if (response.status === 400) {
+          userMessage = errorData.error || 'Invalid request. Please check your inputs.'
+        } else if (response.status === 429) {
+          userMessage = 'Too many requests. Please wait a moment and try again.'
+        } else if (response.status === 504) {
+          userMessage = 'The analysis took too long. Please try Fast Mode instead.'
+        } else if (response.status >= 500) {
+          userMessage = errorData.error || 'Our servers encountered an issue. Please try again.'
         }
 
-        data = await response.json()
+        throw new Error(userMessage)
       }
+
+      data = await response.json()
+      console.log(`[Frontend] ${analysisMode === 'deep' ? 'Deep' : 'Fast'} analysis completed`)
+
 
       // Parse response based on which flow we're using
       timingBreakdown.apiCall = performance.now() - apiCallStart

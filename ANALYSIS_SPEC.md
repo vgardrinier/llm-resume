@@ -568,7 +568,7 @@ IF target_role_level > candidate_experience_level + 1:
     ┌─────────┴─────────┐
     ↓                   ↓
 ┌─────────────┐   ┌──────────────┐
-│  Baseline   │   │  Premium     │
+│  Baseline   │   │  Deep        │
 │  Fit Score  │   │  Analyzer    │
 │  (5-7s)     │   │  (20-25s)    │
 └─────────────┘   └──────────────┘
@@ -580,7 +580,7 @@ IF target_role_level > candidate_experience_level + 1:
               [Role Scoring]
                         ↓
                   ┌──────────────┐
-                  │  Premium     │
+                  │  Deep        │
                   │  Generator   │
                   │  (25-30s)    │
                   └──────────────┘

@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
     console.log('[Fast-Mode] Starting single-pass optimization...')
     const startTime = Date.now()
 
-    const prompt = `You are a PREMIUM RESUME OPTIMIZER working in FAST MODE.
+    const prompt = `You are an EXPERT RESUME OPTIMIZER working in FAST MODE.
 
 Your job: Parse the resume, apply strategic transformations, output optimized CV + changes.
 

@@ -11,7 +11,7 @@ import { parseClaudeJson } from '@/lib/utils/parseJson'
  * Token budget: 2000 max output
  */
 
-const STRATEGIC_PROMPT = `You are a PREMIUM RESUME STRATEGIST.
+const STRATEGIC_PROMPT = `You are an EXPERT RESUME STRATEGIST.
 
 You receive:
 - The original resume.

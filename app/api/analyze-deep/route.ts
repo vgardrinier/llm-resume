@@ -2,16 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { generateJobId, createJob, updateJob, completeJob, failJob } from '@/lib/jobQueue'
 import { calculateBaselineFitScore } from '@/lib/utils/fitScore'
 
-// No maxDuration needed - this returns immediately
-export const maxDuration = 10
+// Allow up to 5 minutes for deep analysis (synchronous)
+export const maxDuration = 300
 
 /**
- * START PREMIUM ANALYSIS - Non-blocking
- *
- * 1. Validates input
- * 2. Creates job with unique ID
- * 3. Starts async orchestration
- * 4. Returns jobId immediately (<200ms)
+ * DEEP ANALYSIS - Synchronous
+ * 
+ * Formerly "Premium" analysis.
+ * Now runs synchronously to avoid serverless termination issues.
+ * Returns full analysis + optimized resume.
  */
 
 export async function POST(request: NextRequest) {
@@ -26,35 +25,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Create job immediately
+    // Generate ID for logging/tracking purposes
     const jobId = generateJobId()
-    createJob(jobId)
+    
+    console.log(`[Deep-Analysis] Starting sync job ${jobId}...`)
 
-    console.log(`[Deep-Analysis] Created job ${jobId}, starting async processing...`)
-
-    // Start async processing (don't await!)
-    runDeepAnalysis(jobId, {
+    // Run analysis synchronously
+    const result = await runDeepAnalysis(jobId, {
       candidate_resume,
       job_description,
       generation_id,
       session_id,
-    }).catch((error) => {
-      console.error(`[Deep-Analysis] Async job ${jobId} failed:`, error)
-      failJob(jobId, error instanceof Error ? error.message : 'Unknown error')
     })
 
-    // Return immediately
-    return NextResponse.json({
-      jobId,
-      status: 'pending',
-      message: 'Analysis started. Poll /api/analyze-status?jobId=' + jobId,
-    })
+    return NextResponse.json(result)
 
   } catch (error) {
     console.error('[Deep-Analysis] Error:', error)
     return NextResponse.json(
       {
-        error: 'Failed to start analysis',
+        error: 'Failed to complete analysis',
         details: error instanceof Error ? error.message : 'Unknown',
       },
       { status: 500 }
@@ -63,8 +53,7 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * ASYNC PREMIUM ORCHESTRATION
- * This runs in the background without blocking the client
+ * SYNCHRONOUS ORCHESTRATION
  */
 async function runDeepAnalysis(
   jobId: string,
@@ -79,12 +68,13 @@ async function runDeepAnalysis(
   const { candidate_resume, job_description, generation_id, session_id } = params
 
   try {
-    updateJob(jobId, { status: 'processing', progress: 0, currentStep: 'Starting...' })
+    // For sync mode, we still log steps for observability in server logs
+    console.log(`[Job ${jobId}] Starting structural analysis...`)
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
 
     // STEP 1: Parallel - Structural + Baseline (0-20%)
-    updateJob(jobId, { progress: 10, currentStep: 'Analyzing structure...' })
+    console.log(`[Job ${jobId}] Analyzing structure & baseline...`)
 
     const [structuralRes, baselineResult] = await Promise.allSettled([
       fetch(`${baseUrl}/api/analyzer-structural`, {
@@ -103,12 +93,6 @@ async function runDeepAnalysis(
 
     // Store baseline fit score immediately (available ~5s in)
     if (baselineResult.status === 'fulfilled') {
-      updateJob(jobId, {
-        baselineFit: {
-          overallScore: baselineResult.value.score,
-          breakdown: baselineResult.value.breakdown,
-        },
-      })
       console.log(`[Job ${jobId}] Baseline fit score available:`, baselineResult.value.score)
     }
 
@@ -126,7 +110,7 @@ async function runDeepAnalysis(
     const structuralAnalysis = structuralData.analysis
 
     // STEP 2: Strategic (20-40%)
-    updateJob(jobId, { progress: 20, currentStep: 'Strategic analysis...' })
+    console.log(`[Job ${jobId}] Strategic analysis...`)
 
     const strategicRes = await fetch(`${baseUrl}/api/analyzer-strategic`, {
       method: 'POST',
@@ -157,7 +141,7 @@ async function runDeepAnalysis(
     }
 
     // STEP 3: Generator (40-70%)
-    updateJob(jobId, { progress: 40, currentStep: 'Generating optimizations...' })
+    console.log(`[Job ${jobId}] Generating optimizations...`)
 
     const generatorRes = await fetch(`${baseUrl}/api/generator`, {
       method: 'POST',
@@ -176,7 +160,7 @@ async function runDeepAnalysis(
     const generatorData = await generatorRes.json()
 
     // STEP 4: Curator (70-90%)
-    updateJob(jobId, { progress: 70, currentStep: 'Validating changes...' })
+    console.log(`[Job ${jobId}] Validating changes...`)
 
     let curatorData = null
     try {
@@ -201,7 +185,7 @@ async function runDeepAnalysis(
     }
 
     // STEP 5: Final fit score (90-95%)
-    updateJob(jobId, { progress: 90, currentStep: 'Calculating fit score...' })
+    console.log(`[Job ${jobId}] Calculating fit score...`)
 
     const optimizedResumeText = JSON.stringify(
       curatorData?.validatedOptimizedResume || generatorData.optimizedResume
@@ -213,7 +197,8 @@ async function runDeepAnalysis(
     })
 
     // STEP 6: Salary lookup (95-98%)
-    updateJob(jobId, { progress: 95, currentStep: 'Looking up salary data...' })
+    console.log(`[Job ${jobId}] Looking up salary data...`)
+
 
     let salaryData = null
     try {
@@ -445,14 +430,15 @@ async function runDeepAnalysis(
       },
     }
 
-    // Complete job
-    completeJob(jobId, result)
+    // Complete job (internal tracking only)
+    // completeJob(jobId, result)
 
     console.log(`[Job ${jobId}] ✅ Completed in ${(totalTime / 1000).toFixed(1)}s`)
+    return result
 
   } catch (error) {
     const duration = Date.now() - startTime
     console.error(`[Job ${jobId}] ❌ Failed after ${duration}ms:`, error)
-    failJob(jobId, error instanceof Error ? error.message : 'Unknown error')
+    throw error // Re-throw to be caught by POST handler
   }
 }

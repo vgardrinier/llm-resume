@@ -101,7 +101,7 @@ export interface ResumeAnalysis {
   whatWorks: string[] // Bullet points of existing strengths
   whatsMissing: string[] // Bullet points of gaps the job wants
   keywordsToTarget: {
-    // Premium theme arrays
+    // Deep analysis theme arrays
     jobThemes?: string[] // Themes/keywords required by job
     resumeThemes?: string[] // Themes/keywords present in resume
     missingThemes?: string[] // Themes in job but not in resume
