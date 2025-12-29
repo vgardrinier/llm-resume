@@ -397,18 +397,17 @@ async function extractWithVision(url: string, quick: boolean = false) {
     const hasJobKeywords = /job|role|position|responsibilities|qualifications|requirements|experience|skills|apply/i.test(renderedText.slice(0, 2000))
 
     if (renderedTextLength > 500 && hasJobKeywords) {
-      console.log('[FetchJob] ✅ Text extraction successful after JS render, skipping vision')
-      await browser.close()
-      browser = null
+      console.log('[FetchJob] ✅ Text extraction successful after JS render, attempting Claude parse...')
 
-      // Use fast text-based extraction instead of vision
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-      const textMessage = await anthropic.messages.create({
-        model: 'claude-3-7-sonnet-20250219',
-        max_tokens: 8000,
-        messages: [{
-          role: 'user',
-          content: `Extract job details from this career page text:
+      try {
+        // Use fast text-based extraction instead of vision
+        const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+        const textMessage = await anthropic.messages.create({
+          model: 'claude-3-7-sonnet-20250219',
+          max_tokens: 8000,
+          messages: [{
+            role: 'user',
+            content: `Extract job details from this career page text:
 
 ${renderedText}
 
@@ -419,44 +418,56 @@ Return JSON with:
 - fullDescription (complete job description with responsibilities, qualifications, etc.)
 
 JSON only, no markdown.`
-        }]
-      })
+          }]
+        })
 
-      const textContent = textMessage.content[0].type === 'text' ? textMessage.content[0].text : '{}'
-      const textResult = JSON.parse(textContent.replace(/```json\n?/g, '').replace(/```\n?/g, ''))
+        const textContent = textMessage.content[0].type === 'text' ? textMessage.content[0].text : '{}'
+        const textResult = parseClaudeResponse(textContent)
 
-      // Fallback: Extract job title from URL if not found in content
-      let jobTitle = textResult.jobTitle
-      if (!jobTitle || jobTitle === 'N/A' || jobTitle.length < 3) {
-        const urlMatch = url.match(/\/([^/]+)(?:\/?)$/)
-        if (urlMatch) {
-          // Convert URL slug to title case: "founding-product-engineer" -> "Founding Product Engineer"
-          jobTitle = urlMatch[1]
-            .split(/[-_]/)
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ')
-          console.log(`[FetchJob] Extracted job title from URL: "${jobTitle}"`)
+        if (textResult && textResult.fullDescription) {
+          console.log('[FetchJob] ✅ Claude parse successful for text content')
+          await browser.close()
+          browser = null
+
+          // Fallback: Extract job title from URL if not found in content
+          let jobTitle = textResult.jobTitle
+          if (!jobTitle || jobTitle === 'N/A' || jobTitle.length < 3) {
+            const urlMatch = url.match(/\/([^/]+)(?:\/?)$/)
+            if (urlMatch) {
+              // Convert URL slug to title case: "founding-product-engineer" -> "Founding Product Engineer"
+              jobTitle = urlMatch[1]
+                .split(/[-_]/)
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ')
+              console.log(`[FetchJob] Extracted job title from URL: "${jobTitle}"`)
+            }
+          }
+
+          const jobDesc = textResult.fullDescription || renderedText
+          console.log(`[FetchJob] ✅ Text extraction completed: ${jobDesc.length} characters`, {
+            jobTitle: jobTitle || 'N/A',
+            company: textResult.companyName || 'N/A',
+            location: textResult.location || 'N/A',
+            method: 'text-after-render'
+          })
+
+          return NextResponse.json({
+            jobDescription: jobDesc,
+            companyName: textResult.companyName || null,
+            jobTitle: jobTitle || null,
+            location: textResult.location || 'N/A',
+          })
+        } else {
+          console.warn('[FetchJob] Claude returned empty or invalid text result, falling back to vision')
         }
+      } catch (textExtractError) {
+        console.error('[FetchJob] Text extraction/parsing failed:', textExtractError)
+        console.log('[FetchJob] Continuing with vision-based extraction fallback...')
       }
-
-      const jobDesc = textResult.fullDescription || renderedText
-      console.log(`[FetchJob] ✅ Text extraction completed: ${jobDesc.length} characters`, {
-        jobTitle: jobTitle || 'N/A',
-        company: textResult.companyName || 'N/A',
-        location: textResult.location || 'N/A',
-        method: 'text-after-render'
-      })
-
-      return NextResponse.json({
-        jobDescription: jobDesc,
-        companyName: textResult.companyName || null,
-        jobTitle: jobTitle || null,
-        location: textResult.location || 'N/A',
-      })
     }
 
-    // Fallback to vision if text extraction didn't work
-    console.log('[FetchJob] Text extraction insufficient, falling back to vision')
+    // Fallback to vision if text extraction didn't work or failed
+    console.log('[FetchJob] Text extraction insufficient or failed, falling back to vision')
     console.log('Taking screenshot...')
     const screenshot = await page.screenshot({
       fullPage: true,
@@ -464,8 +475,10 @@ JSON only, no markdown.`
       encoding: 'base64',
     }) as string
 
-    await browser.close()
-    browser = null
+    if (browser) {
+      await browser.close()
+      browser = null
+    }
 
     console.log('Screenshot captured, sending to Claude Vision...')
     const screenshotBase64 = screenshot

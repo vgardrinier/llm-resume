@@ -219,10 +219,15 @@ async function runDeepAnalysis(
       breakdown: finalFitResult.breakdown,
     }
 
-    const optimizedResume = curatorData?.validatedOptimizedResume || generatorData.optimizedResume
+    let optimizedResume = curatorData?.validatedOptimizedResume || generatorData.optimizedResume
 
-    // Safety check
-    if (!optimizedResume?.sections) {
+    // Safety check: ensure optimizedResume exists and has sections
+    if (!optimizedResume) {
+      optimizedResume = { 
+        contactInfo: { name: 'Applicant' }, 
+        sections: [] 
+      }
+    } else if (!optimizedResume.sections) {
       optimizedResume.sections = []
     }
 

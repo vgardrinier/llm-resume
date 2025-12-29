@@ -1050,8 +1050,8 @@ export default function Home() {
         >
           <Button
             onClick={generateResume}
-            disabled={!jobDescription || !currentResume || loading}
-            variant={jobDescription && currentResume && !loading ? 'gradient' : 'primary'}
+            disabled={(!jobDescription && !quickMetadata) || !currentResume || loading}
+            variant={(jobDescription || quickMetadata) && currentResume && !loading ? 'gradient' : 'primary'}
             loading={loading}
             loadingText="Optimizing..."
             className="w-full text-lg font-medium shadow-lg"
