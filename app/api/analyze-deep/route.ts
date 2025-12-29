@@ -16,7 +16,7 @@ export const maxDuration = 300
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { candidate_resume, job_description, generation_id, session_id } = body
+    const { candidate_resume, job_description, generation_id, session_id, jobId: providedJobId } = body
 
     if (!candidate_resume || !job_description) {
       return NextResponse.json(
@@ -25,10 +25,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Generate ID for logging/tracking purposes
-    const jobId = generateJobId()
+    // Use provided jobId or generate a new one
+    const jobId = providedJobId || generateJobId()
     
     console.log(`[Deep-Analysis] Starting sync job ${jobId}...`)
+
+    // Initialize job in queue so it can be polled
+    createJob(jobId)
+    updateJob(jobId, { 
+      status: 'processing',
+      progress: 5,
+      currentStep: 'Initializing analysis...'
+    })
 
     // Run analysis synchronously
     const result = await runDeepAnalysis(jobId, {
@@ -37,6 +45,9 @@ export async function POST(request: NextRequest) {
       generation_id,
       session_id,
     })
+
+    // Finalize job status
+    completeJob(jobId, result)
 
     return NextResponse.json(result)
 
@@ -75,6 +86,7 @@ async function runDeepAnalysis(
 
     // STEP 1: Parallel - Structural + Baseline (0-20%)
     console.log(`[Job ${jobId}] Analyzing structure & baseline...`)
+    updateJob(jobId, { progress: 10, currentStep: 'Analyzing résumé structure...' })
 
     const [structuralRes, baselineResult] = await Promise.allSettled([
       fetch(`${baseUrl}/api/analyzer-structural`, {
@@ -94,6 +106,12 @@ async function runDeepAnalysis(
     // Store baseline fit score immediately (available ~5s in)
     if (baselineResult.status === 'fulfilled') {
       console.log(`[Job ${jobId}] Baseline fit score available:`, baselineResult.value.score)
+      updateJob(jobId, { 
+        baselineFit: {
+          overallScore: baselineResult.value.score,
+          breakdown: baselineResult.value.breakdown
+        }
+      })
     }
 
     if (structuralRes.status !== 'fulfilled') {
@@ -108,6 +126,7 @@ async function runDeepAnalysis(
     }
 
     const structuralAnalysis = structuralData.analysis
+    updateJob(jobId, { progress: 30, currentStep: 'Strategic analysis...' })
 
     // STEP 2: Strategic (20-40%)
     console.log(`[Job ${jobId}] Strategic analysis...`)
@@ -142,6 +161,7 @@ async function runDeepAnalysis(
 
     // STEP 3: Generator (40-70%)
     console.log(`[Job ${jobId}] Generating optimizations...`)
+    updateJob(jobId, { progress: 50, currentStep: 'Generating improvements...' })
 
     const generatorRes = await fetch(`${baseUrl}/api/generator`, {
       method: 'POST',
@@ -161,6 +181,7 @@ async function runDeepAnalysis(
 
     // STEP 4: Curator (70-90%)
     console.log(`[Job ${jobId}] Validating changes...`)
+    updateJob(jobId, { progress: 75, currentStep: 'Finalizing optimizations...' })
 
     let curatorData = null
     try {
@@ -184,12 +205,23 @@ async function runDeepAnalysis(
       console.warn(`[Job ${jobId}] Curator failed, continuing without validation`)
     }
 
+    let optimizedResume = curatorData?.validatedOptimizedResume || generatorData.optimizedResume
+
+    // Safety check: ensure optimizedResume exists and has sections
+    if (!optimizedResume) {
+      optimizedResume = { 
+        contactInfo: { name: 'Applicant' }, 
+        sections: [] 
+      }
+    } else if (!optimizedResume.sections) {
+      optimizedResume.sections = []
+    }
+
     // STEP 5: Final fit score (90-95%)
     console.log(`[Job ${jobId}] Calculating fit score...`)
+    updateJob(jobId, { progress: 90, currentStep: 'Calculating final fit score...' })
 
-    const optimizedResumeText = JSON.stringify(
-      curatorData?.validatedOptimizedResume || generatorData.optimizedResume
-    )
+    const optimizedResumeText = JSON.stringify(optimizedResume)
 
     const finalFitResult = await calculateBaselineFitScore({
       jobDescription: job_description,
@@ -198,6 +230,7 @@ async function runDeepAnalysis(
 
     // STEP 6: Salary lookup (95-98%)
     console.log(`[Job ${jobId}] Looking up salary data...`)
+    updateJob(jobId, { progress: 95, currentStep: 'Researching market salary...' })
 
 
     let salaryData = null
@@ -217,18 +250,6 @@ async function runDeepAnalysis(
     const finalFit = {
       fitScore: finalFitResult.score,
       breakdown: finalFitResult.breakdown,
-    }
-
-    let optimizedResume = curatorData?.validatedOptimizedResume || generatorData.optimizedResume
-
-    // Safety check: ensure optimizedResume exists and has sections
-    if (!optimizedResume) {
-      optimizedResume = { 
-        contactInfo: { name: 'Applicant' }, 
-        sections: [] 
-      }
-    } else if (!optimizedResume.sections) {
-      optimizedResume.sections = []
     }
 
     const totalTime = Date.now() - startTime

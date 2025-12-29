@@ -145,7 +145,7 @@ export default function Home() {
     setFullJdPromise(null)
   }, [jobUrl])
 
-  const generateResume = async () => {
+  const generateResume = async (overrideMode?: 'fast' | 'deep') => {
     // Start timing from button click
     const userClickStart = performance.now()
     const timingBreakdown: Record<string, number> = {
@@ -157,8 +157,15 @@ export default function Home() {
       total: 0
     }
     
+    // Use override mode if provided, otherwise use state
+    const currentMode = overrideMode || analysisMode
+    if (overrideMode) {
+      setAnalysisMode(overrideMode)
+    }
+
     setPhase('output')
     setLoading(true)
+    setStructuredResult(null) // Clear previous results to show loading narrative
     setShowResume(false) // Reset resume visibility
     setBaselineFit(null) // Reset baseline fit score for new analysis
     
@@ -184,6 +191,7 @@ export default function Home() {
       // Debug: Log inputs before API call
       console.log('[Frontend] Starting resume generation', {
         step: 'start',
+        mode: currentMode,
         hasJob: !!finalJobDescription,
         hasResume: !!currentResume,
         jobLength: finalJobDescription?.length || 0,
@@ -193,15 +201,18 @@ export default function Home() {
       })
 
       // Choose API endpoint based on mode
-      const apiEndpoint = analysisMode === 'fast' ? '/api/analyze-fast' : '/api/analyze-deep'
+      const apiEndpoint = currentMode === 'fast' ? '/api/analyze-fast' : '/api/analyze-deep'
 
       const apiCallStart = performance.now()
 
       let data: any
 
+      // Generate a jobId for tracking (especially for Deep Mode baseline fit)
+      const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(7)}`
+
       // Deep Mode (formerly Premium) and Fast Mode both run synchronously now
       // to avoid serverless termination issues in background tasks.
-      const requestBody = analysisMode === 'fast' 
+      const requestBody = currentMode === 'fast' 
         ? {
             originalResume: currentResume,
             jobDescription: finalJobDescription,
@@ -216,7 +227,29 @@ export default function Home() {
             job_description: finalJobDescription,
             candidate_resume: currentResume,
             creative_mode: creativeMode,
+            jobId, // Pass jobId to track progress/baseline fit
           }
+
+      // If in Deep Mode, start polling for status (baseline fit)
+      let pollInterval: NodeJS.Timeout | null = null
+      if (currentMode === 'deep') {
+        pollInterval = setInterval(async () => {
+          try {
+            const statusRes = await fetch(`/api/analyze-status?jobId=${jobId}`)
+            if (statusRes.ok) {
+              const statusData = await statusRes.json()
+              if (statusData.baselineFit) {
+                setBaselineFit({
+                  overallScore: statusData.baselineFit.overallScore,
+                  breakdown: statusData.baselineFit.breakdown
+                })
+              }
+            }
+          } catch (e) {
+            console.warn('[Frontend] Status polling failed', e)
+          }
+        }, 2000)
+      }
 
       const response = await fetch(apiEndpoint, {
         method: 'POST',
@@ -224,10 +257,13 @@ export default function Home() {
         body: JSON.stringify(requestBody),
       })
 
+      // Clear polling when request finishes
+      if (pollInterval) clearInterval(pollInterval)
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
         console.error('[Frontend] API error response', {
-          mode: analysisMode,
+          mode: currentMode,
           status: response.status,
           error: errorData,
         })
@@ -248,7 +284,7 @@ export default function Home() {
       }
 
       data = await response.json()
-      console.log(`[Frontend] ${analysisMode === 'deep' ? 'Deep' : 'Fast'} analysis completed`)
+      console.log(`[Frontend] ${currentMode === 'deep' ? 'Deep' : 'Fast'} analysis completed`)
 
 
       // Parse response based on which flow we're using
@@ -698,7 +734,7 @@ export default function Home() {
                       <ErrorAlert
                         message={generationError}
                         onDismiss={() => setGenerationError(null)}
-                        onRetry={generateResume}
+                        onRetry={() => generateResume()}
                         variant="error"
                       />
                     </div>
@@ -948,7 +984,7 @@ export default function Home() {
                     {/* CTA Button - Hidden on mobile (shown as sticky bottom button) */}
                     <div className="hidden md:flex justify-center pt-6">
                       <Button
-                        onClick={generateResume}
+                        onClick={() => generateResume()}
                         disabled={(!jobDescription && !quickMetadata) || !currentResume || loading}
                         variant={(jobDescription || quickMetadata) && currentResume && !loading ? 'gradient' : 'primary'}
                         loading={loading}
@@ -977,10 +1013,7 @@ export default function Home() {
                       loading={loading}
                       onStartOver={startOver}
                       onRunFullAnalysis={analysisMode === 'fast' ? () => {
-                        // Go back to form with Full Analysis mode selected
-                        setAnalysisMode('deep')
-                        setStructuredResult(null)
-                        setPhase('input')
+                        generateResume('deep')
                       } : undefined}
                     />
                   )}
@@ -994,7 +1027,7 @@ export default function Home() {
                           <ErrorAlert
                             message={generationError}
                             onDismiss={() => setGenerationError(null)}
-                            onRetry={generateResume}
+                            onRetry={() => generateResume()}
                             variant="error"
                           />
                         </div>
@@ -1049,7 +1082,7 @@ export default function Home() {
           className="fixed bottom-4 left-4 right-4 z-50 md:hidden"
         >
           <Button
-            onClick={generateResume}
+            onClick={() => generateResume()}
             disabled={(!jobDescription && !quickMetadata) || !currentResume || loading}
             variant={(jobDescription || quickMetadata) && currentResume && !loading ? 'gradient' : 'primary'}
             loading={loading}

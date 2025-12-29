@@ -212,14 +212,7 @@ export function ResumeWorkspace({ data, mode = 'deep', loading = false, onStartO
                           : 'bg-white text-gray-900 hover:bg-gray-100'
                       }`}
                     >
-                      {loading ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-2 border-gray-600 border-t-transparent"></div>
-                          <span>Running...</span>
-                        </>
-                      ) : (
-                        'Run Full Analysis'
-                      )}
+                      {loading ? 'Running...' : 'Run Full Analysis'}
                     </button>
                     <span className="text-xs text-gray-300 font-sans">(re-runs with diagnostics)</span>
                   </div>

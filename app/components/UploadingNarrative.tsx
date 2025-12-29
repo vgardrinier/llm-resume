@@ -355,12 +355,12 @@ export function UploadingNarrative({
         </div>
       </div>
       
-      {/* Show baseline fit score at 95% when available */}
-      {isLoading && progress >= 95 && baselineFit && (
+      {/* Show baseline fit score as soon as it's available */}
+      {isLoading && baselineFit && (
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.5 }}
+          transition={{ duration: 0.5 }}
           className="w-full max-w-lg"
         >
           <BaselineFitDisplay 
