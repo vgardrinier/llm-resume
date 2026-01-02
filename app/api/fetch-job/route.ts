@@ -398,144 +398,48 @@ function extractFromJsonLd(html: string): { jobDescription?: string; companyName
   return null
 }
 
-// Quick extraction: Only extract title, company, location (fast)
-async function extractQuickMetadata(url: string) {
-  let browser
-  try {
-    console.log('[FetchJob] Quick extraction: Launching browser...')
-    browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-      ],
-    })
-
-    const page = await browser.newPage()
-    await page.setViewport({ width: 1280, height: 1024 })
-    await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
-
-    console.log(`[FetchJob] Quick extraction: Navigating to ${url}...`)
-    await page.goto(url, {
-      waitUntil: 'networkidle2',
-      timeout: 30000,
-    })
-
-    // Wait for dynamic content
-    await new Promise(resolve => setTimeout(resolve, 2000))
-
-    console.log('[FetchJob] Quick extraction: Taking screenshot...')
-    const screenshot = await page.screenshot({
-      fullPage: false, // Only visible viewport for speed
-      type: 'png',
-      encoding: 'base64',
-    }) as string
-
-    await browser.close()
-    browser = null
-
-    console.log('[FetchJob] Quick extraction: Sending to Claude Vision...')
-    const screenshotBase64 = screenshot
-
-    const anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    })
-
-    const message = await anthropic.messages.create({
-      model: 'claude-3-5-haiku-20241022', // Use Haiku for speed
-      max_tokens: 1000, // Much smaller since we only need 3 fields
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'image',
-              source: {
-                type: 'base64',
-                media_type: 'image/png',
-                data: screenshotBase64,
-              },
-            },
-            {
-              type: 'text',
-              text: `<background_information>
-You are analyzing a screenshot of a job posting webpage. Your goal is to extract basic metadata fields from the job posting.
-</background_information>
-
-<instructions>
-Extract ONLY these 3 fields:
-
-1. The company name
-2. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
-3. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA" or "Warsaw, Poland")
-
-Instructions:
-- For job title: Extract the COMPLETE title as shown
-- For location: Look for city and state/country information, often shown near the job title or company name. Extract EXACTLY as written
-- If you cannot find certain fields, use null
-- DO NOT extract the job description - we only need these 3 fields
-- CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. Extract only plain text.
-</instructions>
-
-## Output description
-
-Please respond in JSON format:
-
-{
-  "companyName": "company name",
-  "jobTitle": "complete job title including all qualifiers",
-  "location": "city, state or city, country"
-}`,
-            },
-          ],
-        },
-      ],
-    })
-
-    const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
-    const extractedData = parseClaudeResponse(responseText)
-
-    // Remove emojis from extracted data
-    const cleanedData = {
-      companyName: removeEmojis(extractedData.companyName) || null,
-      jobTitle: removeEmojis(extractedData.jobTitle) || null,
-      location: removeEmojis(extractedData.location) || null,
-    }
-
-    console.log(`[FetchJob] Quick extraction result - Job: "${cleanedData.jobTitle}", Company: "${cleanedData.companyName}", Location: "${cleanedData.location}"`)
-
-    return NextResponse.json({
-      companyName: cleanedData.companyName,
-      jobTitle: cleanedData.jobTitle,
-      location: cleanedData.location,
-      quick: true, // Flag to indicate this is a quick extraction
-    })
-
-  } catch (error) {
-    if (browser) {
-      try {
-        await browser.close()
-      } catch (e) {
-        console.error('Error closing browser:', e)
-      }
-    }
-
-    console.error('[FetchJob] Quick extraction error:', error)
-    // Fall back to full extraction if quick fails - return null to signal failure
-    // The caller (extractWithVision) will handle null and continue with full extraction
-    return null
-  }
-}
-
 // Vision-based extraction for job platforms (slow but reliable)
 async function extractWithVision(url: string, quick: boolean = false) {
-  // If quick mode, use quick extraction
+  // OPTIMIZATION: For quick mode, try simple HTTP GET first (much faster)
+  // Only launch browser if HTTP GET fails or returns incomplete data
   if (quick) {
-    const quickResult = await extractQuickMetadata(url)
-    if (quickResult) return quickResult
-    // If quick fails, fall through to full extraction
+    try {
+      console.log('[FetchJob] Quick mode: trying fast HTTP GET first...')
+      const httpResponse = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        },
+      })
+
+      if (httpResponse.ok) {
+        const htmlContent = await httpResponse.text()
+
+        // Try deterministic extraction from simple HTML
+        const jsonLdResult = extractFromJsonLd(htmlContent)
+        const nextDataResult = extractFromNextData(htmlContent)
+        const metaResult = extractFromMetaTags(htmlContent)
+
+        const quickData = {
+          jobTitle: jsonLdResult?.jobTitle || nextDataResult?.jobTitle || metaResult?.jobTitle,
+          companyName: jsonLdResult?.companyName || nextDataResult?.companyName || metaResult?.companyName,
+          location: jsonLdResult?.location || nextDataResult?.location || metaResult?.location,
+        }
+
+        // If we got metadata, return immediately (~1-2s total)
+        if (quickData.jobTitle || quickData.companyName) {
+          console.log('[FetchJob] ✅ Quick HTTP extraction succeeded (no browser needed)')
+          return NextResponse.json({
+            companyName: quickData.companyName || null,
+            jobTitle: quickData.jobTitle || null,
+            location: quickData.location || null,
+            quick: true,
+          })
+        }
+      }
+    } catch (error) {
+      console.log('[FetchJob] Quick HTTP extraction failed, falling back to browser:', error)
+      // Fall through to browser-based extraction
+    }
   }
 
   let browser
@@ -685,15 +589,26 @@ async function extractWithVision(url: string, quick: boolean = false) {
           tool_choice: { type: 'tool', name: 'extract_job_posting' },
           messages: [{
             role: 'user',
-            content: `Extract the complete job posting from this career page text. DO NOT summarize or truncate - return EVERY word exactly as written.
+            content: `CRITICAL: You are a DATA EXTRACTION tool, NOT a summarizer. Your job is to COPY text verbatim, not to summarize or rephrase.
 
+CAREER PAGE TEXT (${cleanedText.length} chars):
 ${cleanedText}
 
-Extract these fields:
-- jobTitle: exact title as shown
+EXTRACTION RULES:
+- jobTitle: exact title as shown in the text
 - companyName: company name
 - location: city, state/country format
-- fullDescription: THE COMPLETE, UNABRIDGED JOB DESCRIPTION. Include EVERY section: About, Responsibilities, Qualifications, Requirements, Benefits, etc. Copy ALL text verbatim - do not summarize, shorten, or paraphrase. If the description is 5000+ words, include all 5000+ words.`
+- fullDescription: VERBATIM COPY of the entire job posting text
+  * Copy EVERY WORD from the text above
+  * Include ALL sections: About, Role, Responsibilities, Qualifications, Requirements, Benefits, Application, etc.
+  * DO NOT summarize, rephrase, condense, or shorten
+  * DO NOT organize or restructure the content
+  * If input is 7000 chars, output should be ~7000 chars
+  * If input is 15000 chars, output should be ~15000 chars
+  * Your goal: preserve 100% of the content
+
+EXAMPLE (wrong): "The role involves managing projects and leading teams..."
+EXAMPLE (correct): [copies every single word from the original text]`
           }]
         })
 
