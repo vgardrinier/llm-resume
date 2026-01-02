@@ -460,13 +460,23 @@ async function extractWithVision(url: string, quick: boolean = false) {
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
 
     console.log(`[FetchJob] Navigating to ${url}...`)
+
+    // OpenAI and similar heavy JS sites may never reach networkidle2
+    // Use domcontentloaded + longer wait for these sites
+    const isHeavyJsSite = url.includes('openai.com') || url.includes('anthropic.com')
+
     await page.goto(url, {
-      waitUntil: 'networkidle2',
-      timeout: 45000, // Increased from 30s to handle slow sites/Cloudflare
+      waitUntil: isHeavyJsSite ? 'domcontentloaded' : 'networkidle2',
+      timeout: 60000, // Increased to 60s for complex sites
     })
 
-    // Wait for dynamic content
-    await new Promise(resolve => setTimeout(resolve, 2000))
+    // Wait for dynamic content (longer for heavy JS sites)
+    const waitTime = isHeavyJsSite ? 5000 : 2000
+    await new Promise(resolve => setTimeout(resolve, waitTime))
+
+    if (isHeavyJsSite) {
+      console.log('[FetchJob] Heavy JS site detected, waited extra time for rendering')
+    }
 
     // Scroll to bottom to trigger lazy-loaded content
     await page.evaluate(() => {

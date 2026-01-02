@@ -797,7 +797,7 @@ export function ResumeEditor({
                 </div>
 
                 <ul className="space-y-1.5 mt-2">
-                  {entry.bullets && entry.bullets.map((bullet: string, bulletIdx: number) => {
+                  {entry.bullets && Array.isArray(entry.bullets) && entry.bullets.map((bullet: string, bulletIdx: number) => {
                     // O(1) lookup using pre-indexed map (uses core section name for consistent matching)
                     const bulletKey = `${coreSectionName}-${entryIdx}-${bulletIdx}`
                     // CRITICAL: Pass ALL changes (including rejected) to renderTextWithChanges
@@ -1109,7 +1109,7 @@ export function ResumeEditor({
                 {entry.date && (
                   <div className="text-sm text-gray-600 font-sans">{entry.date}</div>
                 )}
-                {entry.details && entry.details.length > 0 && (
+                {entry.details && Array.isArray(entry.details) && entry.details.length > 0 && (
                   <ul className="mt-1 space-y-1">
                     {entry.details.map((detail: string, detailIdx: number) => (
                       <li key={detailIdx} className="text-sm text-gray-600 font-sans">• {detail}</li>

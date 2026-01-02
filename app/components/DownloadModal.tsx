@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Download, FileText, Share2 } from 'lucide-react'
 import { Button } from './Button'
@@ -21,6 +22,12 @@ export function DownloadModal({ isOpen, onClose, onDownload }: DownloadModalProp
   const [usefulnessRating, setUsefulnessRating] = useState<number>(3)
   const [pricingPreference, setPricingPreference] = useState<'one-off' | 'subscription' | null>(null)
   const [isDragging, setIsDragging] = useState(false)
+  const [mounted, setMounted] = useState(false)
+
+  // Client-side mount check for portal
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   // Handle body scroll lock when modal opens/closes
   useEffect(() => {
@@ -82,7 +89,11 @@ export function DownloadModal({ isOpen, onClose, onDownload }: DownloadModalProp
 
   const ratingLabels = ['Not useful', 'Slightly useful', 'Somewhat useful', 'Useful', 'Very useful', 'Extremely useful']
 
-  return (
+  // Don't render until mounted (for SSR compatibility)
+  if (!mounted) return null
+
+  // Use portal to render modal at document.body level (fixes position:fixed in transformed containers)
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <>
@@ -334,7 +345,8 @@ export function DownloadModal({ isOpen, onClose, onDownload }: DownloadModalProp
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   )
 }
 

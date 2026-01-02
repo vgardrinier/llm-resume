@@ -34,8 +34,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    console.log('[Fast-Mode] Starting single-pass optimization...')
+    console.log('[Fast-Mode] ⚡ Starting single-pass optimization...')
     const startTime = Date.now()
+    const timings = {
+      start: startTime,
+      llmStart: 0,
+      llmEnd: 0,
+      parseEnd: 0,
+      total: 0
+    }
 
     const prompt = `You are an EXPERT RESUME OPTIMIZER working in FAST MODE.
 
@@ -67,12 +74,36 @@ Extract:
 3. APPLY TRANSFORMATIONS
 Based on inline analysis:
 
-EXPERIENCE:
-- HIGH match roles: EXPAND to 6-7 bullets with metrics and impact
-- MEDIUM match roles: COMPRESS to 2-3 focused bullets
-- LOW match roles: MINIMIZE to 2-3 bullets (keep company/role/dates, condense bullets)
-- CRITICAL: NEVER mix content between different companies/roles
-- CRITICAL: Each bullet must stay with its original company
+EXPERIENCE - CRITICAL WORKFLOW:
+
+For EACH company in the original resume, follow this exact process:
+
+1. Read ONLY that company's section from the original
+2. Note what work was done AT THAT SPECIFIC COMPANY
+3. Write improved bullets using ONLY information from THAT company's section
+4. Move to next company and repeat
+
+Example workflow (generic):
+
+Step 1 - Process Company A:
+  Read original bullets under "Company A"
+  Output: {
+    "company": "Company A",
+    "bullets": [improved versions of ONLY Company A's work]
+  }
+
+Step 2 - Process Company B:
+  Read original bullets under "Company B"
+  Output: {
+    "company": "Company B",
+    "bullets": [improved versions of ONLY Company B's work]
+  }
+
+ABSOLUTE RULES:
+- Each company in output JSON MUST contain ONLY bullets derived from that same company in the original resume
+- NEVER take a bullet from Company A in the original and put it under Company B in the output
+- If you see "Company X: built product Y" in original → "built product Y" MUST appear under Company X in output, nowhere else
+- Content isolation is MORE important than making the resume sound impressive
 
 ALTITUDE:
 - Lift language where possible (respect ceiling)
@@ -101,7 +132,21 @@ For each modification, create change object with:
 Cap at 12-15 changes. Quality over quantity.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PHASE 2: HONESTY PASS (critical)
+PHASE 2: CONTENT ISOLATION CHECK (critical - prevents mixing)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Step 1: For each company in original resume, identify 2-3 unique domain keywords
+Example: If Company A worked on "solar energy systems" → keywords: ["solar", "energy"]
+         If Company B worked on "venture investments" → keywords: ["venture", "investment"]
+
+Step 2: Cross-reference validation
+For EACH company in your output:
+- Verify every bullet uses keywords that appeared under THAT SAME company in the original
+- If a bullet mentions keywords from a different company → DELETE that bullet immediately
+- Better to have fewer bullets than to mix company content
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PHASE 3: HONESTY PASS (critical)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Before final output, scan EVERY change:
@@ -112,8 +157,13 @@ REMOVE if change invents:
 - Companies/projects not in original
 - Facts not supported (e.g. "led team of 5" when no team size mentioned)
 - Impact claims not in original (e.g. "increased revenue" when original says "supported sales")
-- Content from other companies/roles (e.g. putting Solarmente work under Front Row Ventures)
-- NEVER move bullets between different companies - each bullet must stay with its original employer
+
+REMOVE if change mixes content between companies:
+- CRITICAL: For EACH bullet in optimizedResume.sections[Experience].content[i].bullets, verify it came from the SAME company in the original resume
+- Example of VIOLATION: If Solarmente's bullets mention "solar energy" or "smart contracts", but Front Row Ventures' bullets now contain those phrases → DELETE those Front Row bullets
+- Example of VIOLATION: If original resume shows Front Row Ventures doing "venture capital" work, but optimized resume shows them doing "solar energy" → DELETE those bullets
+- YOU MUST cross-reference EVERY bullet with the original resume's company sections before including it
+- When in doubt, DELETE the bullet rather than risk mixing content
 
 REMOVE if:
 - Change is no-op (original === suggested)
@@ -121,11 +171,16 @@ REMOVE if:
 
 ALLOWED:
 - Qualitative improvements IF impact was in original (e.g. "improved" → "improved significantly")
-- Reordering/restructuring
+- Reordering bullets WITHIN the same company (but bullets cannot move between companies)
 - Language lifting (tactical → strategic) if ceiling allows
 
+NEVER ALLOWED:
+- Moving bullets from one company to another company
+- Combining work from multiple companies under one company header
+- Any form of cross-company content transfer
+
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PHASE 3: OUTPUT
+PHASE 4: OUTPUT
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Return valid JSON (no markdown, no wrapper):
@@ -149,10 +204,10 @@ Return valid JSON (no markdown, no wrapper):
         "type": "experience",
         "content": [
           {
-            "company": "string",
+            "company": "string (MUST match EXACTLY the company name from original resume)",
             "role": "string",
             "dates": "string",
-            "bullets": ["string"]
+            "bullets": ["string (MUST come from the SAME company in original resume - NO cross-company content)"]
           }
         ]
       },
@@ -201,22 +256,31 @@ CRITICAL:
 
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
+    timings.llmStart = Date.now()
+    console.log(`[Fast-Mode] 🤖 Calling Sonnet 4.5...`)
+
     const message = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-5-20250929', // Sonnet 4.5 - best available model
       max_tokens: 8000,
-      temperature: 0.4, // Original working value
+      temperature: 0.3, // Lowered from 0.4 for more deterministic output
       messages: [{ role: 'user', content: prompt }]
     })
 
-    const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
-    const genTime = Date.now() - startTime
+    timings.llmEnd = Date.now()
+    const llmTime = timings.llmEnd - timings.llmStart
+    console.log(`[Fast-Mode] ✅ LLM response received (${llmTime}ms)`)
 
-    console.log(`[Fast-Mode] Generated (${genTime}ms), length: ${responseText.length}`)
+    const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
+    console.log(`[Fast-Mode] 📄 Response length: ${responseText.length} chars`)
 
     const result = parseClaudeJson(responseText, {
       attemptEscapeFix: true,
       errorPrefix: '[Fast-Mode]'
     })
+
+    timings.parseEnd = Date.now()
+    const parseTime = timings.parseEnd - timings.llmEnd
+    console.log(`[Fast-Mode] 📝 Parsed JSON (${parseTime}ms)`)
 
     if (!result.optimizedResume || !result.changes) {
       throw new Error('Invalid fast mode response structure')
@@ -241,12 +305,20 @@ CRITICAL:
       }
     })
 
-    console.log('[Fast-Mode] Complete:', {
-      totalTime: genTime,
-      changesCount: result.changes.length,
-      sectionsCount: result.optimizedResume.sections.length,
-      validationStats: result.honesty_validation
-    })
+    timings.total = Date.now() - startTime
+
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('[Fast-Mode] ⚡ COMPLETE - Performance Breakdown:')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log(`  🤖 LLM Generation:  ${llmTime}ms (${Math.round(llmTime/timings.total*100)}%)`)
+    console.log(`  📝 JSON Parsing:    ${parseTime}ms (${Math.round(parseTime/timings.total*100)}%)`)
+    console.log(`  ⚙️  Processing:      ${(timings.total - llmTime - parseTime)}ms`)
+    console.log(`  ⏱️  TOTAL TIME:      ${timings.total}ms`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log(`  📊 Changes: ${result.changes.length}`)
+    console.log(`  📄 Sections: ${result.optimizedResume.sections.length}`)
+    console.log(`  ✅ Validation: ${result.honesty_validation?.changes_after_validation || 'N/A'} changes after honesty pass`)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
 
     // Create minimal analysis object for UI compatibility
     const analysis = {
@@ -265,12 +337,17 @@ CRITICAL:
       changes: result.changes,
       analysis,
       metadata: {
-        generation_time_ms: genTime,
-        model: 'claude-sonnet-4-20250514',
+        generation_time_ms: timings.total,
+        model: 'claude-sonnet-4-5-20250929',
         mode: 'fast',
         job_metadata: {
           title: jobTitle,
           company: companyName
+        },
+        timings: {
+          llm_ms: llmTime,
+          parse_ms: parseTime,
+          total_ms: timings.total
         }
       }
     })

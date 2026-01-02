@@ -218,7 +218,7 @@ export default function Home() {
       })
 
       // Choose API endpoint based on mode
-      const apiEndpoint = currentMode === 'fast' ? '/api/analyze-fast' : '/api/analyze-deep'
+      const apiEndpoint = currentMode === 'fast' ? '/api/analyze-fast-v2' : '/api/analyze-deep'
 
       const apiCallStart = performance.now()
 
@@ -563,6 +563,7 @@ export default function Home() {
         if (quickData.companyName) setCompanyName(quickData.companyName)
 
         // Start full JD extraction in background
+        console.log('[Frontend] 🚀 Triggering background full JD extraction now...')
         const fullExtractionPromise = fetch('/api/fetch-job', {
           method: 'POST',
           headers: {
