@@ -55,6 +55,8 @@ PHASE 1: PARSE + TRANSFORM
 Extract:
 - contactInfo (name, email, phone, location)
 - sections array (Summary, Experience, Education, Skills, etc.)
+- CRITICAL: PRESERVE ALL SECTIONS from original resume (Summary, Experience, Education, Skills, etc.)
+- NEVER delete entire sections - only modify content within them
 
 2. ANALYZE STRATEGICALLY (lightweight, inline)
 - Role relevance: Which roles are HIGH/MEDIUM/LOW match to job?
@@ -68,7 +70,9 @@ Based on inline analysis:
 EXPERIENCE:
 - HIGH match roles: EXPAND to 6-7 bullets with metrics and impact
 - MEDIUM match roles: COMPRESS to 2-3 focused bullets
-- LOW match roles: MINIMIZE to 1 bullet or title-only
+- LOW match roles: MINIMIZE to 2-3 bullets (keep company/role/dates, condense bullets)
+- CRITICAL: NEVER mix content between different companies/roles
+- CRITICAL: Each bullet must stay with its original company
 
 ALTITUDE:
 - Lift language where possible (respect ceiling)
@@ -108,6 +112,8 @@ REMOVE if change invents:
 - Companies/projects not in original
 - Facts not supported (e.g. "led team of 5" when no team size mentioned)
 - Impact claims not in original (e.g. "increased revenue" when original says "supported sales")
+- Content from other companies/roles (e.g. putting Solarmente work under Front Row Ventures)
+- NEVER move bullets between different companies - each bullet must stay with its original employer
 
 REMOVE if:
 - Change is no-op (original === suggested)
