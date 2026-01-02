@@ -303,6 +303,42 @@ export function ResumeEditor({
   
   // DEBUG: Log changes breakdown on mount/update
   useEffect(() => {
+    // CRITICAL DEBUG: Check for duplicate positions (multiple changes at same location)
+    const positionMap = new Map<string, any[]>()
+    changes.forEach(c => {
+      if (c.position?.sectionIndex !== undefined && c.position?.bulletIndex !== undefined) {
+        const key = `${c.section}-${c.position.sectionIndex}-${c.position.bulletIndex}`
+        if (!positionMap.has(key)) positionMap.set(key, [])
+        positionMap.get(key)!.push(c)
+      }
+    })
+    
+    // Log any positions with multiple changes (this causes the "2" badge)
+    const duplicatePositions = Array.from(positionMap.entries()).filter(([_, changes]) => changes.length > 1)
+    if (duplicatePositions.length > 0) {
+      console.warn('[ResumeEditor] ⚠️ DUPLICATE POSITIONS DETECTED - Multiple changes at same location:', 
+        duplicatePositions.map(([key, changes]) => ({
+          position: key,
+          count: changes.length,
+          changes: changes.map(c => ({
+            id: c.id,
+            type: c.type,
+            originalPreview: c.original?.substring(0, 50),
+            suggestedPreview: c.suggested?.substring(0, 50)
+          }))
+        }))
+      )
+    }
+    
+    // Log all change positions for debugging
+    console.log('[ResumeEditor] All change positions:', changes.map(c => ({
+      id: c.id,
+      type: c.type,
+      section: c.section,
+      position: c.position,
+      suggestedPreview: c.suggested?.substring(0, 40)
+    })))
+    
     const changesByType = changes.reduce((acc: any, c: any) => {
       acc[c.type] = (acc[c.type] || 0) + 1
       return acc
@@ -766,11 +802,17 @@ export function ResumeEditor({
                     const bulletKey = `${coreSectionName}-${entryIdx}-${bulletIdx}`
                     // CRITICAL: Pass ALL changes (including rejected) to renderTextWithChanges
                     // The render function needs rejected changes to access their .original text for reverting
-                    let bulletChanges = (changeIndex.bySectionAndBullet.get(bulletKey) || [])
+                    let bulletChanges: ResumeChange[] = (changeIndex.bySectionAndBullet.get(bulletKey) || [])
 
                     // Fallback: If no changes found via indexed lookup, try multiple matching strategies
                     // CRITICAL: This handles cases where section name matching failed during indexing OR positions don't match
                     if (bulletChanges.length === 0 && changes.length > 0) {
+                      // Get all section changes for fallback matching
+                      const sectionChanges = changes.filter(c => {
+                        const changeCoreSection = getCoreSectionName(c.section || '')
+                        return changeCoreSection === coreSectionName
+                      })
+                      
                       // Strategy 1: Try exact position match with core section name
                       bulletChanges = changes.filter(c => {
                         const changeCoreSection = getCoreSectionName(c.section || '')
@@ -782,14 +824,21 @@ export function ResumeEditor({
                         return matchesCore && matchesPosition
                       })
                       
-                      // Strategy 2: If still no matches, try content-based matching for modifications
-                      // This handles cases where generator didn't provide correct positions
+                      // Strategy 2: If still no matches, try content-based matching
+                      // CRITICAL FIX: Also try content matching for changes with INVALID positions
+                      // A position is invalid if it points to a sectionIndex that doesn't exist
                       if (bulletChanges.length === 0) {
-                        // Include ALL changes (even rejected) so renderTextWithChanges can access original text
-                        const sectionChanges = changes.filter(c => {
-                          const changeCoreSection = getCoreSectionName(c.section || '')
-                          return changeCoreSection === coreSectionName
-                        })
+                        // Helper: Check if a position is valid (exists in the resume)
+                        const isValidPosition = (pos: any): boolean => {
+                          if (!pos || pos.sectionIndex === undefined || pos.bulletIndex === undefined) {
+                            return false // No position data
+                          }
+                          // Check if the position exists in this section
+                          if (!Array.isArray(section.content)) return false
+                          const entry = section.content[pos.sectionIndex]
+                          if (!entry || !entry.bullets) return false
+                          return pos.bulletIndex < entry.bullets.length
+                        }
                         
                         // Helper: Fuzzy string similarity (0-1 score)
                         const similarity = (a: string, b: string): number => {
@@ -816,6 +865,22 @@ export function ResumeEditor({
                         // We check BOTH original (old) and suggested (new) text against the bullet (new)
                         // because we are rendering the optimized resume (new text)
                         bulletChanges = sectionChanges.filter(c => {
+                          // Check if this change has a VALID position that points elsewhere
+                          // If position is valid but doesn't match this bullet, skip content matching
+                          // If position is INVALID (doesn't exist in resume), allow content matching
+                          if (c.position?.sectionIndex !== undefined && c.position?.bulletIndex !== undefined) {
+                            const hasValidPosition = isValidPosition(c.position)
+                            if (hasValidPosition) {
+                              // Position is valid but for a different bullet - don't match by content
+                              return false
+                            }
+                            // Position is INVALID (e.g., sectionIndex 2 when only 0,1 exist)
+                            // Fall through to content matching
+                            if (process.env.NODE_ENV === 'development') {
+                              console.log(`[ResumeEditor] Change ${c.id} has INVALID position ${c.position.sectionIndex}-${c.position.bulletIndex}, trying content match`)
+                            }
+                          }
+                          
                           if (c.type === 'modification') {
                             const bulletLower = bullet.toLowerCase().trim()
                             
@@ -934,6 +999,19 @@ export function ResumeEditor({
                           })
                         }
                       }
+                    }
+
+                    // CRITICAL: Check if this bullet is a rejected addition with no original content
+                    // If so, skip rendering the entire <li> element (not just empty text)
+                    const isRejectedAdditionBullet = bulletChanges.length > 0 && bulletChanges.every(c => 
+                      c.type === 'addition' && 
+                      getChangeStatus(c.id) === 'rejected' &&
+                      (!c.original || c.original.trim().length === 0)
+                    )
+
+                    // Skip rendering if it's a rejected addition (removes the bullet point entirely)
+                    if (isRejectedAdditionBullet) {
+                      return null
                     }
 
                     return (

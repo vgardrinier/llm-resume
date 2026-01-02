@@ -179,9 +179,27 @@ function extractFromMetaTags(html: string): { jobTitle?: string; companyName?: s
   return null
 }
 
-// Clean content for LLM: remove nav/footer/scripts, cap to maxChars
+// Clean content for LLM: extract main content, remove nav/footer/scripts, cap to maxChars
 function cleanContentForLLM(html: string, maxChars: number = 20000): string {
   let cleaned = html
+
+  // Try to extract main content area first (before removing anything)
+  const mainPatterns = [
+    /<main[^>]*>([\s\S]*?)<\/main>/i,
+    /<article[^>]*>([\s\S]*?)<\/article>/i,
+    /<div[^>]*role=["']main["'][^>]*>([\s\S]*?)<\/div>/i,
+    /<div[^>]*id=["']content["'][^>]*>([\s\S]*?)<\/div>/i,
+  ]
+
+  for (const pattern of mainPatterns) {
+    const match = html.match(pattern)
+    if (match && match[1] && match[1].length > 1000) {
+      // Found substantial main content, use that instead
+      cleaned = match[1]
+      console.log(`[cleanContentForLLM] Extracted main content: ${cleaned.length} chars`)
+      break
+    }
+  }
 
   // Remove scripts, styles, noscript
   cleaned = cleaned.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
@@ -196,9 +214,36 @@ function cleanContentForLLM(html: string, maxChars: number = 20000): string {
   // Remove comments
   cleaned = cleaned.replace(/<!--[\s\S]*?-->/g, '')
 
-  // Trim to max chars
+  // Smart truncation: if still too long, try to find a good breaking point
   if (cleaned.length > maxChars) {
-    cleaned = cleaned.substring(0, maxChars)
+    // Try to break at a closing div/section/article tag near maxChars
+    const searchStart = Math.max(0, maxChars - 1000)
+    const searchEnd = Math.min(cleaned.length, maxChars + 1000)
+    const searchArea = cleaned.substring(searchStart, searchEnd)
+
+    const breakPoints = [
+      searchArea.lastIndexOf('</article>'),
+      searchArea.lastIndexOf('</section>'),
+      searchArea.lastIndexOf('</div>'),
+      searchArea.lastIndexOf('</p>'),
+    ]
+
+    let bestBreak = -1
+    for (const bp of breakPoints) {
+      if (bp > 0 && bp < maxChars) {
+        bestBreak = searchStart + bp + 10 // +10 to include closing tag
+        break
+      }
+    }
+
+    if (bestBreak > 0) {
+      cleaned = cleaned.substring(0, bestBreak)
+      console.log(`[cleanContentForLLM] Smart truncation at ${bestBreak} chars`)
+    } else {
+      // Fallback: dumb truncation
+      cleaned = cleaned.substring(0, maxChars)
+      console.log(`[cleanContentForLLM] Dumb truncation at ${maxChars} chars`)
+    }
   }
 
   return cleaned.trim()
