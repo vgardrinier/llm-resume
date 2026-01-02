@@ -152,9 +152,13 @@ export default function Home() {
       return
     }
 
+    // Check if we have job description OR if full JD is loading
     if (!jobDescription || jobDescription.trim().length === 0) {
-      setGenerationError('Please provide a job description or URL.')
-      return
+      if (!fullJdPromise) {
+        setGenerationError('Please provide a job description or URL.')
+        return
+      }
+      // If fullJdPromise exists, generateResume will wait for it (line 189-203)
     }
 
     // Start timing from button click
