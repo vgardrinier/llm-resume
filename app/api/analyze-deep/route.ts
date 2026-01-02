@@ -14,6 +14,7 @@ export const maxDuration = 300
  */
 
 export async function POST(request: NextRequest) {
+  let jobId = 'pending'
   try {
     const body = await request.json()
     const { candidate_resume, job_description, generation_id, session_id, jobId: providedJobId } = body
@@ -26,7 +27,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Use provided jobId or generate a new one
-    const jobId = providedJobId || generateJobId()
+    jobId = providedJobId || generateJobId()
     
     console.log(`[Deep-Analysis] Starting sync job ${jobId}...`)
 
@@ -53,10 +54,17 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('[Deep-Analysis] Error:', error)
+    
+    // Mark job as failed in queue so polling clients know
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    if (jobId !== 'pending') {
+      failJob(jobId, errorMessage)
+    }
+
     return NextResponse.json(
       {
         error: 'Failed to complete analysis',
-        details: error instanceof Error ? error.message : 'Unknown',
+        details: errorMessage,
       },
       { status: 500 }
     )

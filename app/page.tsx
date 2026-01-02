@@ -171,6 +171,8 @@ export default function Home() {
     
     timingBreakdown.buttonClick = performance.now() - userClickStart
     
+    let pollInterval: NodeJS.Timeout | null = null
+
     try {
       // If we have a background full JD extraction promise, wait for it
       let finalJobDescription = jobDescription
@@ -231,7 +233,6 @@ export default function Home() {
           }
 
       // If in Deep Mode, start polling for status (baseline fit)
-      let pollInterval: NodeJS.Timeout | null = null
       if (currentMode === 'deep') {
         pollInterval = setInterval(async () => {
           try {
@@ -256,9 +257,6 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
       })
-
-      // Clear polling when request finishes
-      if (pollInterval) clearInterval(pollInterval)
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
@@ -369,6 +367,7 @@ export default function Home() {
       // Reset phase to input so user can try again
       setPhase('input')
     } finally {
+      if (pollInterval) clearInterval(pollInterval)
       setLoading(false)
     }
   }
