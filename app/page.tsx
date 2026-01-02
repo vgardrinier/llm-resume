@@ -146,6 +146,17 @@ export default function Home() {
   }, [jobUrl])
 
   const generateResume = async (overrideMode?: 'fast' | 'deep') => {
+    // Validate inputs before starting
+    if (!currentResume || currentResume.trim().length === 0) {
+      setGenerationError('Please upload your resume first.')
+      return
+    }
+
+    if (!jobDescription || jobDescription.trim().length === 0) {
+      setGenerationError('Please provide a job description or URL.')
+      return
+    }
+
     // Start timing from button click
     const userClickStart = performance.now()
     const timingBreakdown: Record<string, number> = {
@@ -156,7 +167,7 @@ export default function Home() {
       stateUpdate: 0,
       total: 0
     }
-    
+
     // Use override mode if provided, otherwise use state
     const currentMode = overrideMode || analysisMode
     if (overrideMode) {
@@ -168,9 +179,9 @@ export default function Home() {
     setStructuredResult(null) // Clear previous results to show loading narrative
     setShowResume(false) // Reset resume visibility
     setBaselineFit(null) // Reset baseline fit score for new analysis
-    
+
     timingBreakdown.buttonClick = performance.now() - userClickStart
-    
+
     let pollInterval: NodeJS.Timeout | null = null
 
     try {
@@ -352,17 +363,25 @@ export default function Home() {
 
       setGenerationError(null) // Clear any previous errors on success
     } catch (error) {
-      console.error('Error generating resume:', error)
-      
+      console.error('[Frontend] Error generating resume:', error)
+      console.error('[Frontend] Error details:', {
+        errorType: error?.constructor?.name,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        mode: analysisMode,
+        hasJob: !!jobDescription,
+        hasResume: !!currentResume,
+      })
+
       // Handle different error types with user-friendly messages
-      let errorMessage = 'Failed to generate resume. Please try again.'
-      
+      let errorMessage = 'Failed to complete analysis. Please try again.'
+
       if (error instanceof TypeError && error.message.includes('fetch')) {
         errorMessage = 'Network error. Please check your connection and try again.'
       } else if (error instanceof Error) {
         errorMessage = error.message
       }
-      
+
       setGenerationError(errorMessage)
       // Reset phase to input so user can try again
       setPhase('input')
