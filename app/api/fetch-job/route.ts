@@ -667,15 +667,15 @@ async function extractWithVision(url: string, quick: boolean = false) {
           tool_choice: { type: 'tool', name: 'extract_job_posting' },
           messages: [{
             role: 'user',
-            content: `Extract job details from this career page text:
+            content: `Extract the complete job posting from this career page text. DO NOT summarize or truncate - return EVERY word exactly as written.
 
 ${cleanedText}
 
-Extract:
-- jobTitle (exact title as shown)
-- companyName
-- location (city, state/country format)
-- fullDescription (complete job description - responsibilities, qualifications, requirements, benefits, etc.)`
+Extract these fields:
+- jobTitle: exact title as shown
+- companyName: company name
+- location: city, state/country format
+- fullDescription: THE COMPLETE, UNABRIDGED JOB DESCRIPTION. Include EVERY section: About, Responsibilities, Qualifications, Requirements, Benefits, etc. Copy ALL text verbatim - do not summarize, shorten, or paraphrase. If the description is 5000+ words, include all 5000+ words.`
           }]
         })
 
