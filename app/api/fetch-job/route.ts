@@ -184,21 +184,73 @@ function cleanContentForLLM(html: string, maxChars: number = 40000): string {
   let cleaned = html
 
   // Try to extract main content area first (before removing anything)
-  const mainPatterns = [
-    /<main[^>]*>([\s\S]*?)<\/main>/i,
-    /<article[^>]*>([\s\S]*?)<\/article>/i,
-    /<div[^>]*role=["']main["'][^>]*>([\s\S]*?)<\/div>/i,
-    /<div[^>]*id=["']content["'][^>]*>([\s\S]*?)<\/div>/i,
-  ]
+  // Look for main, article, or role="main" div
+  let mainContentMatch = null
 
-  for (const pattern of mainPatterns) {
-    const match = html.match(pattern)
-    if (match && match[1] && match[1].length > 1000) {
-      // Found substantial main content, use that instead
-      cleaned = match[1]
-      console.log(`[cleanContentForLLM] Extracted main content: ${cleaned.length} chars`)
-      break
+  // Try <main> tag
+  const mainTagMatch = html.match(/<main[^>]*>([\s\S]*)<\/main>/i)
+  if (mainTagMatch && mainTagMatch[1]) {
+    mainContentMatch = mainTagMatch[1]
+  }
+
+  // Try <article> tag
+  if (!mainContentMatch) {
+    const articleMatch = html.match(/<article[^>]*>([\s\S]*)<\/article>/i)
+    if (articleMatch && articleMatch[1]) {
+      mainContentMatch = articleMatch[1]
     }
+  }
+
+  // Try role="main" div (need to count nested divs properly)
+  if (!mainContentMatch) {
+    const roleMainStart = html.search(/<div[^>]*role=["']main["']/i)
+    if (roleMainStart !== -1) {
+      // Find the matching closing </div> by counting nested divs
+      let depth = 0
+      let inTag = false
+      let tagName = ''
+      let i = roleMainStart
+
+      // Skip to the end of opening tag
+      while (i < html.length && html[i] !== '>') i++
+      i++ // Move past '>'
+      depth = 1
+
+      const contentStart = i
+
+      while (i < html.length && depth > 0) {
+        if (html[i] === '<') {
+          // Check if opening or closing tag
+          if (html[i + 1] === '/') {
+            // Closing tag
+            if (html.substr(i, 6).toLowerCase() === '</div>') {
+              depth--
+            }
+            // Skip to end of tag
+            while (i < html.length && html[i] !== '>') i++
+          } else {
+            // Opening tag - check if it's a div
+            if (html.substr(i, 4).toLowerCase() === '<div') {
+              depth++
+            }
+            // Skip to end of tag
+            while (i < html.length && html[i] !== '>') i++
+          }
+        }
+        i++
+      }
+
+      if (depth === 0 && i > contentStart) {
+        mainContentMatch = html.substring(contentStart, i - 6) // -6 to exclude </div>
+      }
+    }
+  }
+
+  if (mainContentMatch && mainContentMatch.length > 1000) {
+    cleaned = mainContentMatch
+    console.log(`[cleanContentForLLM] Extracted main content: ${cleaned.length} chars`)
+  } else if (mainContentMatch) {
+    console.log(`[cleanContentForLLM] Main content too short (${mainContentMatch?.length || 0} chars), using full page`)
   }
 
   // Remove scripts, styles, noscript

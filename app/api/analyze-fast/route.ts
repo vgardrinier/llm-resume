@@ -48,24 +48,6 @@ TARGET JOB:
 ${jobDescription}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ CRITICAL STRUCTURAL RULES - READ FIRST
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-NEVER do the following:
-1. NEVER move content between roles/companies - each bullet stays with its original employer
-2. NEVER move technologies between roles - skills/tools stay with the role where they were used
-3. NEVER reorder sections - keep Summary, Experience, Education, Skills in original order
-4. NEVER duplicate content - each bullet appears exactly once
-5. NEVER remove job titles - always preserve the original role title
-6. NEVER merge separate roles into one
-
-Each experience entry MUST keep:
-- Its original company name
-- Its original job title (can improve wording, not remove)
-- Its original bullets (can modify wording, not move to other roles)
-- Its original technologies (don't move Python from Role A to Role B)
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PHASE 1: PARSE + TRANSFORM
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -73,7 +55,6 @@ PHASE 1: PARSE + TRANSFORM
 Extract:
 - contactInfo (name, email, phone, location)
 - sections array (Summary, Experience, Education, Skills, etc.)
-- PRESERVE the original section order exactly
 
 2. ANALYZE STRATEGICALLY (lightweight, inline)
 - Role relevance: Which roles are HIGH/MEDIUM/LOW match to job?
@@ -116,19 +97,11 @@ For each modification, create change object with:
 Cap at 12-15 changes. Quality over quantity.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-PHASE 2: HONESTY + STRUCTURE VALIDATION (critical)
+PHASE 2: HONESTY PASS (critical)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-Before final output, validate EVERY aspect:
+Before final output, scan EVERY change:
 
-A. STRUCTURAL INTEGRITY (check first):
-- Section order matches original exactly (don't move Skills above Experience)
-- Each role keeps its original company and title
-- No content moved between roles (bullet from Company A can't appear under Company B)
-- No duplicated bullets (each bullet appears exactly once)
-- No technologies moved between roles (Python at Role A stays at Role A)
-
-B. CONTENT HONESTY (check second):
 REMOVE if change invents:
 - Numbers not in original (e.g. adding "35%" when no % exists)
 - Technologies not in original (e.g. adding "React" when only "JavaScript" mentioned)
@@ -142,9 +115,8 @@ REMOVE if:
 
 ALLOWED:
 - Qualitative improvements IF impact was in original (e.g. "improved" → "improved significantly")
-- Bullet reordering WITHIN same role (not across roles)
+- Reordering/restructuring
 - Language lifting (tactical → strategic) if ceiling allows
-- Adding emphasis to existing content
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PHASE 3: OUTPUT
@@ -226,7 +198,7 @@ CRITICAL:
     const message = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 8000,
-      temperature: 0.2, // Lower temperature for more deterministic/faithful output
+      temperature: 0.4, // Original working value
       messages: [{ role: 'user', content: prompt }]
     })
 
