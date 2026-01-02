@@ -649,7 +649,7 @@ async function extractWithVision(url: string, quick: boolean = false) {
         // Use tool use for ENFORCED JSON schema (no more parsing failures)
         const textMessage = await anthropic.messages.create({
           model: 'claude-3-7-sonnet-20250219',
-          max_tokens: 8000,
+          max_tokens: 16000, // Increased from 8k to ensure complete job descriptions
           tools: [{
             name: 'extract_job_posting',
             description: 'Extract structured job posting data',
