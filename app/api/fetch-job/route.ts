@@ -180,7 +180,7 @@ function extractFromMetaTags(html: string): { jobTitle?: string; companyName?: s
 }
 
 // Clean content for LLM: extract main content, remove nav/footer/scripts, cap to maxChars
-function cleanContentForLLM(html: string, maxChars: number = 20000): string {
+function cleanContentForLLM(html: string, maxChars: number = 40000): string {
   let cleaned = html
 
   // Try to extract main content area first (before removing anything)
@@ -585,11 +585,11 @@ async function extractWithVision(url: string, quick: boolean = false) {
     const hasJobKeywords = /job|role|position|responsibilities|qualifications|requirements|experience|skills|apply/i.test(renderedText.slice(0, 2000))
 
     if (renderedTextLength > 500 && hasJobKeywords) {
-      console.log('[FetchJob] Using LLM with cleaned text (max 20k chars)...')
+      console.log('[FetchJob] Using LLM with cleaned text (max 40k chars)...')
 
       try {
-        // CLEAN TEXT: cap to 20k (not 100k+!)
-        const cleanedText = renderedText.slice(0, 20000)
+        // CLEAN TEXT: cap to 40k (not 100k+!)
+        const cleanedText = renderedText.slice(0, 40000)
 
         const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
 
@@ -930,8 +930,8 @@ CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. 
       }
     }
 
-    // Use Claude with CLEANED content (max 20k)
-    const cleanedContent = htmlContent.slice(0, 20000)
+    // Use Claude with CLEANED content (max 40k)
+    const cleanedContent = htmlContent.slice(0, 40000)
 
     const anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
@@ -1105,7 +1105,7 @@ async function extractWithScraping(url: string, quick: boolean = false) {
     })
   }
 
-  // LLM fallback: use CLEANED HTML (max 20k, not 200k!)
+  // LLM fallback: use CLEANED HTML (max 40k, not 200k!)
   if (quick) {
       try {
         const htmlSlice = htmlContent.slice(0, 5000)
@@ -1164,10 +1164,10 @@ CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. 
 
   // Fallback to Claude HTML parsing with CLEANED content
   try {
-    console.log('[FetchJob] Using LLM with cleaned HTML (max 20k chars)...')
+    console.log('[FetchJob] Using LLM with cleaned HTML (max 40k chars)...')
 
-    // CLEAN HTML: remove nav/footer/scripts, cap to 20k (NOT 200k!)
-    const cleanedHtml = cleanContentForLLM(htmlContent, 20000)
+    // CLEAN HTML: remove nav/footer/scripts, cap to 40k (NOT 200k!)
+    const cleanedHtml = cleanContentForLLM(htmlContent, 40000)
     console.log(`[FetchJob] Cleaned HTML: ${cleanedHtml.length} chars (original: ${htmlContent.length} chars)`)
     
     const anthropic = new Anthropic({
