@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import Anthropic from '@anthropic-ai/sdk'
 import puppeteer from 'puppeteer'
 
-// Allow up to 60 seconds for job fetching (vision extraction can take 10-20s)
-export const maxDuration = 60
+// Allow up to 90 seconds for job fetching (Puppeteer + Cloudflare + Claude can take 45-60s)
+export const maxDuration = 90
 
 // Known job platforms that typically block scraping or require JS rendering
 const JOB_PLATFORMS = [
@@ -558,11 +558,19 @@ async function extractWithVision(url: string, quick: boolean = false) {
     console.log(`[FetchJob] Navigating to ${url}...`)
     await page.goto(url, {
       waitUntil: 'networkidle2',
-      timeout: 30000,
+      timeout: 45000, // Increased from 30s to handle slow sites/Cloudflare
     })
 
     // Wait for dynamic content
     await new Promise(resolve => setTimeout(resolve, 2000))
+
+    // Scroll to bottom to trigger lazy-loaded content
+    await page.evaluate(() => {
+      window.scrollTo(0, document.body.scrollHeight)
+    })
+
+    // Wait for any lazy-loaded content to appear
+    await new Promise(resolve => setTimeout(resolve, 1000))
 
     // Get HTML content for deterministic extraction
     const htmlContent = await page.content()
@@ -633,6 +641,16 @@ async function extractWithVision(url: string, quick: boolean = false) {
 
     const renderedTextLength = renderedText.trim().length
     console.log(`[FetchJob] Rendered text length: ${renderedTextLength} chars`)
+
+    // Check for CAPTCHA/bot detection
+    const captchaKeywords = ['captcha', 'verify you are human', 'security check', 'cloudflare', 'access denied', 'blocked']
+    const textLower = renderedText.toLowerCase()
+    const hasCaptcha = captchaKeywords.some(keyword => textLower.includes(keyword))
+
+    if (hasCaptcha && renderedTextLength < 2000) {
+      console.warn('[FetchJob] Possible CAPTCHA/bot detection detected')
+      throw new Error('Site appears to be blocking automated access (CAPTCHA/bot detection). Please try again or use a different job posting.')
+    }
 
     // If we got substantial text, use LLM with CLEANED content (max 20k)
     const hasJobKeywords = /job|role|position|responsibilities|qualifications|requirements|experience|skills|apply/i.test(renderedText.slice(0, 2000))
