@@ -5,7 +5,7 @@ import puppeteer from 'puppeteer'
 // Allow up to 60 seconds for job fetching (vision extraction can take 10-20s)
 export const maxDuration = 60
 
-// Known job platforms that typically block scraping
+// Known job platforms that typically block scraping or require JS rendering
 const JOB_PLATFORMS = [
   'linkedin.com',
   'indeed.com',
@@ -15,6 +15,7 @@ const JOB_PLATFORMS = [
   'ziprecruiter.com',
   'simplyhired.com',
   'amazon.jobs',
+  'openai.com', // Uses Cloudflare JS challenge
 ]
 
 function isJobPlatform(url: string): boolean {

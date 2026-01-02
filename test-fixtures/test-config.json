@@ -1,0 +1,20 @@
+{
+  "testCases": [
+    {
+      "name": "OpenAI Residency 2026",
+      "jobUrl": "https://openai.com/careers/residency-2026-san-francisco/",
+      "resumePdf": "./victor-resume.pdf",
+      "description": "Tests deterministic extraction, main content parsing, and deep analysis flow"
+    }
+  ],
+  "expectedResults": {
+    "jobDescriptionMinLength": 10000,
+    "mainContentMinLength": 50000,
+    "cvOutputShouldHave": [
+      "Skills section present",
+      "No hallucinated content",
+      "Microsoft section accurate",
+      "10+ changes in fast mode"
+    ]
+  }
+}
