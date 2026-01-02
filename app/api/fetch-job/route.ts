@@ -53,7 +53,7 @@ function removeEmojis(text: string | null | undefined): string {
   }
 }
 
-// Helper to parse Claude's JSON response
+// Helper to parse Claude's JSON response (ROBUST - never throws)
 function parseClaudeResponse(responseText: string): any {
   try {
     return JSON.parse(responseText)
@@ -61,61 +61,147 @@ function parseClaudeResponse(responseText: string): any {
     // Try extracting from ```json code blocks
     const codeBlockMatch = responseText.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/)
     if (codeBlockMatch) {
-      return JSON.parse(codeBlockMatch[1])
+      try {
+        return JSON.parse(codeBlockMatch[1])
+      } catch {
+        // Continue to next strategy
+      }
     }
 
-    // Find the first complete JSON object by counting braces
-    // Important: ignore braces inside string values
+    // TOLERANT: Find first { and last }, parse whatever is between
     const firstBrace = responseText.indexOf('{')
-    if (firstBrace === -1) {
-      throw new Error('No JSON object found in AI response')
+    const lastBrace = responseText.lastIndexOf('}')
+
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      try {
+        return JSON.parse(responseText.substring(firstBrace, lastBrace + 1))
+      } catch {
+        // Still failed, return minimal object
+        console.warn('[parseClaudeResponse] Could not parse JSON, returning empty object')
+        return {}
+      }
     }
 
-    let braceCount = 0
-    let endIndex = -1
-    let inString = false
-    let escapeNext = false
+    // Absolute fallback
+    console.warn('[parseClaudeResponse] No JSON found, returning empty object')
+    return {}
+  }
+}
 
-    for (let i = firstBrace; i < responseText.length; i++) {
-      const char = responseText[i]
+// DETERMINISTIC EXTRACTION HELPERS
 
-      // Handle escape sequences
-      if (escapeNext) {
-        escapeNext = false
-        continue
+// Extract from __NEXT_DATA__ (Next.js sites)
+function extractFromNextData(html: string): { jobTitle?: string; companyName?: string; location?: string; jobDescription?: string } | null {
+  const nextDataMatch = html.match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/)
+  if (!nextDataMatch) return null
+
+  try {
+    const data = JSON.parse(nextDataMatch[1])
+    const result: any = {}
+
+    // Recursively search for job-related fields
+    const searchObj = (obj: any, depth = 0): void => {
+      if (depth > 8 || !obj || typeof obj !== 'object') return
+
+      // Look for common field names
+      if (!result.jobTitle && (obj.jobTitle || obj.title || obj.position)) {
+        const val = obj.jobTitle || obj.title || obj.position
+        if (typeof val === 'string' && val.length > 3) {
+          result.jobTitle = removeEmojis(val.trim())
+        }
       }
 
-      if (char === '\\') {
-        escapeNext = true
-        continue
+      if (!result.companyName && (obj.company || obj.companyName || obj.organization)) {
+        const val = obj.company || obj.companyName || obj.organization
+        if (typeof val === 'string' && val.length > 2) {
+          result.companyName = removeEmojis(val.trim())
+        }
       }
 
-      // Track string boundaries (only count unescaped quotes)
-      if (char === '"') {
-        inString = !inString
-        continue
+      if (!result.location && (obj.location || obj.jobLocation || obj.city)) {
+        const val = obj.location || obj.jobLocation || obj.city
+        result.location = removeEmojis(typeof val === 'string' ? val : JSON.stringify(val))
       }
 
-      // Only count braces when not inside a string
-      if (!inString) {
-        if (char === '{') {
-          braceCount++
-        } else if (char === '}') {
-          braceCount--
-          if (braceCount === 0) {
-            endIndex = i
-            break
-          }
+      if (!result.jobDescription && (obj.description || obj.jobDescription)) {
+        const val = obj.description || obj.jobDescription
+        if (typeof val === 'string' && val.length > 100) {
+          result.jobDescription = removeEmojis(val.trim())
+        }
+      }
+
+      // Recurse
+      for (const key in obj) {
+        if (typeof obj[key] === 'object') {
+          searchObj(obj[key], depth + 1)
         }
       }
     }
 
-    if (endIndex === -1) {
-      throw new Error('Incomplete JSON object in AI response')
-    }
+    searchObj(data)
 
-    return JSON.parse(responseText.substring(firstBrace, endIndex + 1))
+    if (result.jobTitle || result.companyName || result.jobDescription) {
+      return result
+    }
+  } catch (e) {
+    // Ignore parse errors
   }
+
+  return null
+}
+
+// Extract from meta tags
+function extractFromMetaTags(html: string): { jobTitle?: string; companyName?: string; location?: string } | null {
+  const result: any = {}
+
+  const getMeta = (name: string): string | null => {
+    const patterns = [
+      new RegExp(`<meta[^>]*name=["']${name}["'][^>]*content=["']([^"']+)["']`, 'i'),
+      new RegExp(`<meta[^>]*content=["']([^"']+)["'][^>]*name=["']${name}["']`, 'i'),
+      new RegExp(`<meta[^>]*property=["']${name}["'][^>]*content=["']([^"']+)["']`, 'i'),
+      new RegExp(`<meta[^>]*content=["']([^"']+)["'][^>]*property=["']${name}["']`, 'i'),
+    ]
+
+    for (const pattern of patterns) {
+      const match = html.match(pattern)
+      if (match) return match[1]
+    }
+    return null
+  }
+
+  result.jobTitle = getMeta('og:title') || getMeta('twitter:title')
+  result.companyName = getMeta('og:site_name') || getMeta('twitter:site')
+
+  if (result.jobTitle || result.companyName) {
+    return result
+  }
+
+  return null
+}
+
+// Clean content for LLM: remove nav/footer/scripts, cap to maxChars
+function cleanContentForLLM(html: string, maxChars: number = 20000): string {
+  let cleaned = html
+
+  // Remove scripts, styles, noscript
+  cleaned = cleaned.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+  cleaned = cleaned.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '')
+  cleaned = cleaned.replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, '')
+
+  // Remove nav, footer, header
+  cleaned = cleaned.replace(/<nav\b[^<]*(?:(?!<\/nav>)<[^<]*)*<\/nav>/gi, '')
+  cleaned = cleaned.replace(/<footer\b[^<]*(?:(?!<\/footer>)<[^<]*)*<\/footer>/gi, '')
+  cleaned = cleaned.replace(/<header\b[^<]*(?:(?!<\/header>)<[^<]*)*<\/header>/gi, '')
+
+  // Remove comments
+  cleaned = cleaned.replace(/<!--[\s\S]*?-->/g, '')
+
+  // Trim to max chars
+  if (cleaned.length > maxChars) {
+    cleaned = cleaned.substring(0, maxChars)
+  }
+
+  return cleaned.trim()
 }
 
 // Extract from JSON-LD structured data
@@ -356,7 +442,7 @@ async function extractWithVision(url: string, quick: boolean = false) {
 
   let browser
   try {
-    console.log('Launching browser for vision extraction...')
+    console.log('[FetchJob] Launching browser...')
     browser = await puppeteer.launch({
       headless: true,
       args: [
@@ -371,7 +457,7 @@ async function extractWithVision(url: string, quick: boolean = false) {
     await page.setViewport({ width: 1280, height: 1024 })
     await page.setUserAgent('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36')
 
-    console.log(`Navigating to ${url}...`)
+    console.log(`[FetchJob] Navigating to ${url}...`)
     await page.goto(url, {
       waitUntil: 'networkidle2',
       timeout: 30000,
@@ -380,19 +466,69 @@ async function extractWithVision(url: string, quick: boolean = false) {
     // Wait for dynamic content
     await new Promise(resolve => setTimeout(resolve, 2000))
 
-    // Try text extraction first (cheaper than vision)
-    console.log('Extracting rendered text content...')
+    // Get HTML content for deterministic extraction
+    const htmlContent = await page.content()
+
+    // DETERMINISTIC EXTRACTION FIRST (NO LLM)
+    console.log('[FetchJob] Trying deterministic extraction...')
+
+    const jsonLdResult = extractFromJsonLd(htmlContent)
+    const nextDataResult = extractFromNextData(htmlContent)
+    const metaResult = extractFromMetaTags(htmlContent)
+
+    // Merge results (priority: JSON-LD > NEXT_DATA > meta)
+    const deterministicData = {
+      jobTitle: jsonLdResult?.jobTitle || nextDataResult?.jobTitle || metaResult?.jobTitle,
+      companyName: jsonLdResult?.companyName || nextDataResult?.companyName || metaResult?.companyName,
+      location: jsonLdResult?.location || nextDataResult?.location || metaResult?.location,
+      jobDescription: jsonLdResult?.jobDescription || nextDataResult?.jobDescription,
+    }
+
+    console.log('[FetchJob] Deterministic extraction results:', {
+      hasTitle: !!deterministicData.jobTitle,
+      hasCompany: !!deterministicData.companyName,
+      hasLocation: !!deterministicData.location,
+      hasDescription: !!deterministicData.jobDescription,
+      descLength: deterministicData.jobDescription?.length || 0,
+    })
+
+    // If we have full job description from deterministic extraction, return immediately
+    if (deterministicData.jobDescription && deterministicData.jobDescription.length > 200) {
+      await browser.close()
+      browser = null
+
+      console.log('[FetchJob] ✅ Deterministic extraction succeeded (no LLM needed)')
+      return NextResponse.json({
+        jobDescription: deterministicData.jobDescription,
+        companyName: deterministicData.companyName || null,
+        jobTitle: deterministicData.jobTitle || null,
+        location: deterministicData.location || null,
+      })
+    }
+
+    // If quick mode and we have metadata, return early
+    if (quick && (deterministicData.jobTitle || deterministicData.companyName)) {
+      await browser.close()
+      browser = null
+
+      console.log('[FetchJob] ✅ Quick deterministic extraction succeeded')
+      return NextResponse.json({
+        companyName: deterministicData.companyName || null,
+        jobTitle: deterministicData.jobTitle || null,
+        location: deterministicData.location || null,
+        quick: true,
+      })
+    }
+
+    // Extract rendered text
+    console.log('[FetchJob] Extracting rendered text...')
     const renderedText = await page.evaluate(() => {
-      // We used to remove script, style, and hidden elements via el.remove(), 
-      // but that broke vision fallback because the page lost its styling.
-      // Now we use a non-destructive approach: temporarily hide them, 
-      // extract text, then restore.
       const styleTag = document.createElement('style')
       styleTag.textContent = 'script, style, noscript, [hidden], [aria-hidden="true"] { display: none !important; }'
       document.head.appendChild(styleTag)
 
       const text = document.body.innerText || document.body.textContent || ''
-      
+
       styleTag.remove()
       return text
     })
@@ -400,36 +536,54 @@ async function extractWithVision(url: string, quick: boolean = false) {
     const renderedTextLength = renderedText.trim().length
     console.log(`[FetchJob] Rendered text length: ${renderedTextLength} chars`)
 
-    // If we got substantial text (>500 chars) and it looks like a job posting, use it
+    // If we got substantial text, use LLM with CLEANED content (max 20k)
     const hasJobKeywords = /job|role|position|responsibilities|qualifications|requirements|experience|skills|apply/i.test(renderedText.slice(0, 2000))
 
     if (renderedTextLength > 500 && hasJobKeywords) {
-      console.log('[FetchJob] ✅ Text extraction successful after JS render, attempting Claude parse...')
+      console.log('[FetchJob] Using LLM with cleaned text (max 20k chars)...')
 
       try {
-        // Use fast text-based extraction instead of vision
+        // CLEAN TEXT: cap to 20k (not 100k+!)
+        const cleanedText = renderedText.slice(0, 20000)
+
         const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+
+        // Use tool use for ENFORCED JSON schema (no more parsing failures)
         const textMessage = await anthropic.messages.create({
           model: 'claude-3-7-sonnet-20250219',
           max_tokens: 8000,
+          tools: [{
+            name: 'extract_job_posting',
+            description: 'Extract structured job posting data',
+            input_schema: {
+              type: 'object',
+              properties: {
+                jobTitle: { type: 'string', description: 'Complete job title' },
+                companyName: { type: 'string', description: 'Company name' },
+                location: { type: 'string', description: 'Job location (city, state/country)' },
+                fullDescription: { type: 'string', description: 'Complete job description with all details' }
+              },
+              required: ['fullDescription']
+            }
+          }],
+          tool_choice: { type: 'tool', name: 'extract_job_posting' },
           messages: [{
             role: 'user',
             content: `Extract job details from this career page text:
 
-${renderedText}
+${cleanedText}
 
-Return JSON with:
-- jobTitle (exact title)
+Extract:
+- jobTitle (exact title as shown)
 - companyName
-- location (or "N/A")
-- fullDescription (complete job description with responsibilities, qualifications, etc.)
-
-JSON only, no markdown.`
+- location (city, state/country format)
+- fullDescription (complete job description - responsibilities, qualifications, requirements, benefits, etc.)`
           }]
         })
 
-        const textContent = textMessage.content[0].type === 'text' ? textMessage.content[0].text : '{}'
-        const textResult = parseClaudeResponse(textContent)
+        // Tool use guarantees valid JSON
+        const toolUse = textMessage.content.find(c => c.type === 'tool_use')
+        const textResult: any = toolUse && toolUse.type === 'tool_use' ? toolUse.input : {}
 
         if (textResult && textResult.fullDescription) {
           console.log('[FetchJob] ✅ Claude parse successful for text content')
@@ -731,62 +885,51 @@ CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. 
       }
     }
 
-    // Use Claude to parse the scraped content
-    const extractionPrompt = `<background_information>
-You are a job posting parser. Your goal is to extract complete job posting information from scraped webpage content.
-</background_information>
-
-<instructions>
-Extract the following information:
-
-1. The complete job description (all relevant text including responsibilities, qualifications, benefits, etc.)
-2. The company name
-3. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
-4. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA" or "Warsaw, Poland")
-
-Instructions:
-- Extract ALL relevant job posting content, not just a summary
-- Remove navigation menus, headers, footers, and other page elements
-- Keep the job description text clean and readable
-- For job title: Extract the COMPLETE title as shown
-- For location: Look for city and state/country information. Extract EXACTLY as written (e.g., if it says "Warsaw, Poland", return that exactly - do NOT substitute with "Berlin" or any other city)
-- CRITICAL: The jobDescription field must contain the FULL job description, not a summary. If the description is long, include all of it.
-- DO NOT truncate, summarize, or abbreviate the job description. Extract every word, sentence, and paragraph.
-- If the job description is 2000+ characters, you MUST include all 2000+ characters in your response.
-- Use the full token allowance if needed - completeness is more important than brevity.
-</instructions>
-
-## Output description
-
-Please respond in JSON format:
-
-{
-  "jobDescription": "the full job description text here",
-  "companyName": "company name",
-  "jobTitle": "complete job title including all qualifiers",
-  "location": "city, state or city, country"
-}
-
-Webpage Content:
-${htmlContent.slice(0, 80000)}`
+    // Use Claude with CLEANED content (max 20k)
+    const cleanedContent = htmlContent.slice(0, 20000)
 
     const anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
     })
 
+    // Use tool use for ENFORCED JSON schema
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
-      max_tokens: 32000, // Increased to ensure full job description extraction (no truncation)
+      max_tokens: 16000,
+      tools: [{
+        name: 'extract_job_posting',
+        description: 'Extract structured job posting data',
+        input_schema: {
+          type: 'object',
+          properties: {
+            jobTitle: { type: 'string', description: 'Complete job title' },
+            companyName: { type: 'string', description: 'Company name' },
+            location: { type: 'string', description: 'Job location (city, state/country)' },
+            jobDescription: { type: 'string', description: 'Complete job description with all details' }
+          },
+          required: ['jobDescription']
+        }
+      }],
+      tool_choice: { type: 'tool', name: 'extract_job_posting' },
       messages: [
         {
           role: 'user',
-          content: extractionPrompt,
+          content: `Extract job posting from this content:
+
+${cleanedContent}
+
+Extract:
+- jobTitle (complete title)
+- companyName
+- location (city, state/country)
+- jobDescription (full description with responsibilities, qualifications, requirements, benefits)`,
         },
       ],
     })
 
-    const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
-    const extractedData = parseClaudeResponse(responseText)
+    // Tool use guarantees valid JSON
+    const toolUse = message.content.find(c => c.type === 'tool_use')
+    const extractedData: any = toolUse && toolUse.type === 'tool_use' ? toolUse.input : {}
 
     // Remove emojis from extracted data
     const cleanedData = {
@@ -872,40 +1015,53 @@ async function extractWithScraping(url: string, quick: boolean = false) {
     return await extractWithFirecrawl(url, quick)
   }
 
-  // Try JSON-LD extraction first (fastest)
+  // DETERMINISTIC EXTRACTION FIRST (NO LLM)
+  console.log('[FetchJob] Trying deterministic extraction on HTML...')
+
   const jsonLdResult = extractFromJsonLd(htmlContent)
-  
-  // If quick mode and we have metadata, return early
-  if (quick && jsonLdResult && (jsonLdResult.companyName || jsonLdResult.jobTitle || jsonLdResult.location)) {
-    console.log('[FetchJob] Quick extraction: Returning metadata from JSON-LD')
-    return NextResponse.json({
-      companyName: jsonLdResult.companyName || null,
-      jobTitle: jsonLdResult.jobTitle || null,
-      location: jsonLdResult.location || null,
-      quick: true,
-    })
+  const nextDataResult = extractFromNextData(htmlContent)
+  const metaResult = extractFromMetaTags(htmlContent)
+
+  // Merge results
+  const deterministicData = {
+    jobTitle: jsonLdResult?.jobTitle || nextDataResult?.jobTitle || metaResult?.jobTitle,
+    companyName: jsonLdResult?.companyName || nextDataResult?.companyName || metaResult?.companyName,
+    location: jsonLdResult?.location || nextDataResult?.location || metaResult?.location,
+    jobDescription: jsonLdResult?.jobDescription || nextDataResult?.jobDescription,
   }
-  
-  if (jsonLdResult?.jobDescription) {
-    const jdLength = jsonLdResult.jobDescription.length
-    console.log(`[FetchJob] ✅ Full JD extraction completed: ${jdLength} characters`, {
-      jobTitle: jsonLdResult.jobTitle || 'N/A',
-      company: jsonLdResult.companyName || 'N/A',
-      location: jsonLdResult.location || 'N/A',
-      method: 'json-ld',
-    })
-    // Try to extract location from JSON-LD if available
-    const locationFromJsonLd = jsonLdResult.location || null
+
+  console.log('[FetchJob] Deterministic extraction results:', {
+    hasTitle: !!deterministicData.jobTitle,
+    hasCompany: !!deterministicData.companyName,
+    hasLocation: !!deterministicData.location,
+    hasDescription: !!deterministicData.jobDescription,
+    descLength: deterministicData.jobDescription?.length || 0,
+  })
+
+  // If we have full description, return immediately (no LLM needed)
+  if (deterministicData.jobDescription && deterministicData.jobDescription.length > 200) {
+    console.log('[FetchJob] ✅ Deterministic extraction succeeded (no LLM needed)')
     return NextResponse.json({
-      jobDescription: jsonLdResult.jobDescription,
-      companyName: jsonLdResult.companyName || null,
-      jobTitle: jsonLdResult.jobTitle || null,
-      location: locationFromJsonLd,
+      jobDescription: deterministicData.jobDescription,
+      companyName: deterministicData.companyName || null,
+      jobTitle: deterministicData.jobTitle || null,
+      location: deterministicData.location || null,
     })
   }
 
-    // If quick mode, try a fast extraction with smaller prompt
-    if (quick) {
+  // If quick mode and we have metadata, return early
+  if (quick && (deterministicData.jobTitle || deterministicData.companyName)) {
+    console.log('[FetchJob] ✅ Quick deterministic extraction succeeded')
+    return NextResponse.json({
+      companyName: deterministicData.companyName || null,
+      jobTitle: deterministicData.jobTitle || null,
+      location: deterministicData.location || null,
+      quick: true,
+    })
+  }
+
+  // LLM fallback: use CLEANED HTML (max 20k, not 200k!)
+  if (quick) {
       try {
         const htmlSlice = htmlContent.slice(0, 5000)
         const quickPrompt = `Extract ONLY these 3 fields from this HTML:
@@ -961,95 +1117,58 @@ CRITICAL: Do NOT include any emojis, flags, or decorative symbols in any field. 
       }
     }
 
-  // Fallback to Claude HTML parsing
+  // Fallback to Claude HTML parsing with CLEANED content
   try {
-    console.log('JSON-LD not found, using Claude to parse HTML...')
-    // Increase HTML slice limit to ensure we capture full content
-    const htmlSlice = htmlContent.slice(0, 200000) // Increased from 50000 to capture more content
-    console.log(`[FetchJob] Sending ${htmlSlice.length} chars of HTML to Claude (original: ${htmlContent.length} chars)`)
+    console.log('[FetchJob] Using LLM with cleaned HTML (max 20k chars)...')
+
+    // CLEAN HTML: remove nav/footer/scripts, cap to 20k (NOT 200k!)
+    const cleanedHtml = cleanContentForLLM(htmlContent, 20000)
+    console.log(`[FetchJob] Cleaned HTML: ${cleanedHtml.length} chars (original: ${htmlContent.length} chars)`)
     
-    const extractionPrompt = `<background_information>
-You are a job posting parser. Your goal is to extract complete job posting information from HTML content.
-</background_information>
-
-<instructions>
-Extract the following information:
-
-1. The complete job description (all relevant text including responsibilities, qualifications, benefits, etc.)
-2. The company name
-3. The FULL job title (include all parts like "Associate Product Manager, Recent Grad" not just "Product Manager")
-4. The job location (city, state/country - e.g., "Pittsburgh, PA" or "San Francisco, CA" or "Warsaw, Poland")
-
-Instructions:
-- Extract ALL relevant job posting content, not just a summary
-- Remove HTML tags, navigation menus, headers, footers, and other page elements
-- Keep the job description text clean and readable
-- For job title: Extract the COMPLETE title as shown (e.g., "Associate Product Manager, Recent Grad" not just "Product Manager")
-- For location: Look for city and state/country information, often shown near the job title or company name. Extract EXACTLY as written (e.g., if it says "Warsaw, Poland", return that exactly - do NOT substitute with "Berlin" or any other city)
-- CRITICAL: The jobDescription field must contain the FULL job description, not a summary. If the description is long, include all of it.
-- DO NOT truncate, summarize, or abbreviate the job description. Extract every word, sentence, and paragraph.
-- If the job description is 2000+ characters, you MUST include all 2000+ characters in your response.
-- Use the full token allowance if needed - completeness is more important than brevity.
-</instructions>
-
-## Output description
-
-Please respond in JSON format:
-
-{
-  "jobDescription": "the full job description text here",
-  "companyName": "company name",
-  "jobTitle": "complete job title including all qualifiers",
-  "location": "city, state or city, country"
-}
-
-HTML Content:
-${htmlSlice}`
-
     const anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
     })
 
+    // Use tool use for ENFORCED JSON schema
     const message = await anthropic.messages.create({
       model: 'claude-3-7-sonnet-20250219',
-      max_tokens: 32000, // Increased to ensure full job description extraction (no truncation)
+      max_tokens: 16000,
+      tools: [{
+        name: 'extract_job_posting',
+        description: 'Extract structured job posting data from HTML',
+        input_schema: {
+          type: 'object',
+          properties: {
+            jobTitle: { type: 'string', description: 'Complete job title' },
+            companyName: { type: 'string', description: 'Company name' },
+            location: { type: 'string', description: 'Job location (city, state/country)' },
+            jobDescription: { type: 'string', description: 'Complete job description with all details' }
+          },
+          required: ['jobDescription']
+        }
+      }],
+      tool_choice: { type: 'tool', name: 'extract_job_posting' },
       messages: [
         {
           role: 'user',
-          content: extractionPrompt,
+          content: `Extract job posting information from this HTML:
+
+${cleanedHtml}
+
+Extract:
+- jobTitle (complete title as shown)
+- companyName
+- location (city, state/country format)
+- jobDescription (full description with responsibilities, qualifications, requirements, benefits)
+
+Remove HTML tags and navigation elements. Keep only job-related content.`,
         },
       ],
     })
 
-    const responseText = message.content[0].type === 'text' ? message.content[0].text : ''
-    console.log(`[FetchJob] Claude response length: ${responseText.length} chars`)
-    
-    let extractedData
-    try {
-      extractedData = parseClaudeResponse(responseText)
-    } catch (parseError) {
-      console.error('[FetchJob] JSON parse failed, raw response:', responseText.substring(0, 2000))
-      console.error('[FetchJob] Parse error details:', parseError)
-      
-      // Try a more lenient parsing approach
-      try {
-        // Remove any text before first { and after last }
-        const firstBrace = responseText.indexOf('{')
-        const lastBrace = responseText.lastIndexOf('}')
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-          const jsonStr = responseText.substring(firstBrace, lastBrace + 1)
-          extractedData = JSON.parse(jsonStr)
-        } else {
-          throw new Error('No JSON object found in response')
-        }
-      } catch (fallbackError) {
-        console.error('[FetchJob] Fallback parsing also failed')
-        return NextResponse.json(
-          { error: 'Failed to parse job description from AI response. The page may not contain valid job posting information.' },
-          { status: 500 }
-        )
-      }
-    }
+    // Tool use guarantees valid JSON
+    const toolUse = message.content.find(c => c.type === 'tool_use')
+    const extractedData: any = toolUse && toolUse.type === 'tool_use' ? toolUse.input : {}
 
     // Remove emojis from extracted data
     const cleanedData = {
