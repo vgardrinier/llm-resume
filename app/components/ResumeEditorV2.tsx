@@ -29,7 +29,8 @@ type ChangeIndex = {
 }
 
 // Normalize section name for consistent matching (case-insensitive, trimmed)
-function normalizeSectionName(name: string): string {
+function normalizeSectionName(name: string | undefined): string {
+  if (!name || typeof name !== 'string') return ''
   return name.toLowerCase().trim().replace(/\s+/g, ' ')
 }
 

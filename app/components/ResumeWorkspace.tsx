@@ -36,14 +36,18 @@ export function ResumeWorkspace({ data, mode = 'deep', loading = false, onStartO
   }
 
   // Helper: Normalize section names for matching (handles "Summary" vs "Professional Summary", etc.)
-  const normalizeSectionName = (name: string): string => {
+  const normalizeSectionName = (name: string | undefined): string => {
+    if (!name || typeof name !== 'string') return ''
     return name.toLowerCase().trim().replace(/\s+/g, ' ')
   }
 
   // Helper: Match change section to resume section title
-  const matchesSection = (changeSection: string, sectionTitle: string): boolean => {
+  const matchesSection = (changeSection: string | undefined, sectionTitle: string | undefined): boolean => {
     const normalizedChange = normalizeSectionName(changeSection)
     const normalizedTitle = normalizeSectionName(sectionTitle)
+
+    // If either is empty, no match
+    if (!normalizedChange || !normalizedTitle) return false
     
     // Direct match
     if (normalizedChange === normalizedTitle) return true
