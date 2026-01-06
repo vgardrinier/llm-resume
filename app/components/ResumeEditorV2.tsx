@@ -1303,23 +1303,29 @@ export function ResumeEditor({
           const linkedin = optimizedResume.contactInfo.linkedin || ''
           const website = optimizedResume.contactInfo.website || ''
           
-          // Clean the name field:
-          // 1. Remove any email addresses from name (common parsing error)
+          // Clean the name field with comprehensive blocklist
+          // Words that should NEVER appear in a person's name
+          const blockedWords = /\b(skills|experience|education|summary|projects|certifications|languages|interests|achievements|objective|profile|contact|phone|email|address|linkedin|github|portfolio|references|professional|technical|work|history|employment|career|personal|information|details|about|me|resume|cv|curriculum|vitae|present|current|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december|spain|usa|uk|france|germany|canada|australia|india|nyc|sf|la|london|paris|berlin|remote|hybrid|california|texas|florida|new york|barcelona|madrid|munich|amsterdam|dublin|singapore|san francisco|los angeles|seattle|boston|chicago|austin)\b/gi
+          
+          // 1. Remove email addresses
           name = name.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '')
-          // 2. Remove location words (Spain, USA, etc.)
-          const locationWords = /\b(spain|usa|uk|france|germany|canada|australia|india|nyc|sf|la|london|paris|berlin|remote|hybrid|california|texas|florida|new york|barcelona|madrid|munich|amsterdam|dublin|singapore|san francisco|los angeles|seattle|boston|chicago|austin)\b/gi
-          name = name.replace(locationWords, '')
-          // 3. Remove dates
+          // 2. Remove phone numbers
+          name = name.replace(/[\+]?[\d\s\-().]{7,}/g, '')
+          // 3. Remove URLs
+          name = name.replace(/https?:\/\/[^\s]+/gi, '')
+          name = name.replace(/www\.[^\s]+/gi, '')
+          name = name.replace(/linkedin\.com[^\s]*/gi, '')
+          // 4. Remove blocked words
+          name = name.replace(blockedWords, '')
+          // 5. Remove dates
           name = name.replace(/\b\d{4}\s*[-–]\s*\d{4}\b/g, '')
           name = name.replace(/\b(19|20)\d{2}\b/g, '')
-          // 4. Remove garbage characters (including / which appears in the screenshot)
-          name = name.replace(/[()•|/\\@]/g, '')
-          // 5. Normalize whitespace
+          // 6. Remove garbage characters
+          name = name.replace(/[()•|/\\@#:;,.\-_]/g, ' ')
+          // 7. Normalize whitespace and take only first 3 words (a name is typically 2-3 words)
           name = name.replace(/\s+/g, ' ').trim()
-          // 6. If still too long, take first 3 words
-          if (name.length > 60) {
-            name = name.split(/[\n|•,]/)[0].trim().split(/\s+/).slice(0, 3).join(' ')
-          }
+          const nameWords = name.split(' ').filter(w => w.length > 1)
+          name = nameWords.slice(0, 3).join(' ')
           name = name || 'Candidate'
           
           // Validate email (must look like an email)

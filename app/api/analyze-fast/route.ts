@@ -95,39 +95,54 @@ Return ONLY valid JSON (no markdown):
   }
 }
 
-// Common location words that should NOT be in the name field
-const LOCATION_WORDS = new Set([
+// Words that should NEVER appear in a person's name
+const BLOCKED_NAME_WORDS = new Set([
+  // Section headers
+  'skills', 'experience', 'education', 'summary', 'projects', 'certifications',
+  'languages', 'interests', 'achievements', 'objective', 'profile', 'contact',
+  'phone', 'email', 'address', 'linkedin', 'github', 'portfolio', 'references',
+  'professional', 'technical', 'work', 'history', 'employment', 'career',
+  'personal', 'information', 'details', 'about', 'me', 'resume', 'cv',
+  'curriculum', 'vitae', 'present', 'current',
+  // Months
+  'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
+  'january', 'february', 'march', 'april', 'june', 'july', 'august',
+  'september', 'october', 'november', 'december',
+  // Locations
   'spain', 'usa', 'uk', 'france', 'germany', 'canada', 'australia', 'india',
   'nyc', 'sf', 'la', 'london', 'paris', 'berlin', 'remote', 'hybrid',
-  'california', 'texas', 'florida', 'new york', 'massachusetts', 'washington',
+  'california', 'texas', 'florida', 'massachusetts', 'washington',
   'barcelona', 'madrid', 'munich', 'amsterdam', 'dublin', 'singapore',
-  'san francisco', 'los angeles', 'seattle', 'boston', 'chicago', 'austin',
-  'europe', 'asia', 'americas', 'emea', 'apac'
+  'seattle', 'boston', 'chicago', 'austin', 'europe', 'asia', 'americas', 'emea', 'apac'
 ])
 
 function sanitizeContactInfo(raw: ContactInfo, originalResume: string): ContactInfo {
   const sanitized: ContactInfo = {}
   
-  // STEP 1: Clean the name field
+  // STEP 1: Clean the name field with comprehensive filtering
   let name = raw.name || ''
   
-  // CRITICAL: Remove any email addresses from name (common LLM parsing error)
-  name = name.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '').trim()
+  // Remove email addresses
+  name = name.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '')
+  // Remove phone numbers
+  name = name.replace(/[\+]?[\d\s\-().]{7,}/g, '')
+  // Remove URLs
+  name = name.replace(/https?:\/\/[^\s]+/gi, '')
+  name = name.replace(/www\.[^\s]+/gi, '')
+  name = name.replace(/linkedin\.com[^\s]*/gi, '')
+  // Remove dates
+  name = name.replace(/\b\d{4}\s*[-–]\s*\d{4}\b/g, '')
+  name = name.replace(/\b(19|20)\d{2}\b/g, '')
+  // Remove garbage characters
+  name = name.replace(/[()•|/\\@#:;,.\-_]/g, ' ')
   
-  // Remove location words from name
-  const nameWords = name.split(/\s+/)
-  const cleanedNameWords = nameWords.filter(word => {
+  // Filter out blocked words
+  const nameWords = name.split(/\s+/).filter(word => {
     const lower = word.toLowerCase().replace(/[,.]$/g, '')
-    return !LOCATION_WORDS.has(lower)
+    return lower.length > 1 && !BLOCKED_NAME_WORDS.has(lower)
   })
-  name = cleanedNameWords.join(' ').trim()
-  
-  // Remove dates from name (patterns like "2013", "2013-2017")
-  name = name.replace(/\b\d{4}\s*[-–]\s*\d{4}\b/g, '').trim()
-  name = name.replace(/\b(19|20)\d{2}\b/g, '').trim()
-  
-  // Remove common garbage characters (including / \ and @)
-  name = name.replace(/[()•|/\\@]/g, '').trim()
+  // Take only first 3 words (a real name is typically 2-3 words)
+  name = nameWords.slice(0, 3).join(' ').trim()
   
   // If name is still too long or suspicious, extract from original resume
   if (name.length > 50 || name.length < 2 || !/^[A-Za-zÀ-ÿ\s\-'.]+$/.test(name)) {
