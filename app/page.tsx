@@ -618,6 +618,13 @@ export default function Home() {
       console.log('[Frontend] Quick extraction returned full data or failed, using directly')
       if (quickData.companyName) setCompanyName(quickData.companyName)
       
+      // Store metadata for display
+      setQuickMetadata({
+        companyName: quickData.companyName || null,
+        jobTitle: quickData.jobTitle || null,
+        location: quickData.location || null,
+      })
+      
       let finalJobDescription = quickData.jobDescription || ''
       if (quickData.jobTitle || quickData.location) {
         const prefixParts: string[] = []
@@ -630,6 +637,7 @@ export default function Home() {
       setJobDescription(finalJobDescription)
       
       setUrlFetchSuccess(true)
+      setUrlLoading(false) // CRITICAL: Stop loading spinner
       setManualJobTitle('') // Clear manual entry on successful URL fetch
 
       // Store company info if needed (for display later)
@@ -955,12 +963,12 @@ export default function Home() {
                       {/* Success message */}
                       {urlFetchSuccess && !urlLoading && (
                         <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-xl border border-gray-200 font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
-                          {quickMetadata && !jobDescription ? (
+                          {quickMetadata?.jobTitle || quickMetadata?.companyName ? (
                             <>
-                              ✓ {quickMetadata.jobTitle || 'Job'} {quickMetadata.companyName ? `- ${quickMetadata.companyName}` : ''}{getCountryFlag(quickMetadata.location)}
+                              ✓ {quickMetadata.jobTitle || 'Job'}{quickMetadata.companyName ? ` at ${quickMetadata.companyName}` : ''}{getCountryFlag(quickMetadata.location)}
                             </>
                           ) : (
-                            <>✓ Job description extracted successfully ({jobDescription.length} characters)</>
+                            <>✓ Job description extracted successfully</>
                           )}
                         </div>
                       )}

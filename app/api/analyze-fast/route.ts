@@ -129,7 +129,33 @@ For each modification, create change object with:
 - evidence (SHORT QUOTE from original text this change is based on, or null if pure rewrite)
 - metric_opportunity (only if applicable, with question + placeholder_format + neutral_fallback)
 
-Cap at 12-15 changes. Quality over quantity.
+CHANGE LIMITS:
+- Cap at 12-15 changes total. Quality over quantity.
+- EXACTLY ONE suggestion per bullet - NO alternatives (users prefer simple choices)
+- Each line gets AT MOST one modification suggestion
+
+5. NEW BULLET ADDITIONS (important for job fit)
+For the 1-2 MOST relevant experience entries, consider adding 1-2 NEW bullets that:
+- Highlight skills/responsibilities that exist in the original but aren't prominent
+- Restructure existing content to better match job requirements
+- Use type: "addition" with empty original field
+- Position them strategically (e.g., first bullet for high-impact additions)
+
+Example addition:
+{
+  "type": "addition",
+  "section": "Experience",
+  "original": "",
+  "suggested": "Led cross-functional initiatives to improve system reliability",
+  "reason": "Adds visibility to leadership theme required by job",
+  "impactScore": 7,
+  "position": { "sectionIndex": 0, "bulletIndex": 0 }
+}
+
+ADDITION RULES:
+- Only add bullets that can be INFERRED from existing content (don't invent)
+- Max 2-3 additions total across all experiences
+- Additions must align with job's top priorities
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 PHASE 2: CONTENT ISOLATION CHECK (critical - prevents mixing)
@@ -223,7 +249,7 @@ Return valid JSON (no markdown, no wrapper):
       "id": "temp-N",
       "type": "addition|modification",
       "section": "Summary|Experience|Skills|Education",
-      "original": "exact text from original (or empty string for additions)",
+      "original": "REQUIRED for modifications: exact original bullet text being replaced. Empty string ONLY for additions.",
       "suggested": "improved text (always valid, uses fallback if needed)",
       "suggested_with_metric": "version with placeholder (only if metric_opportunity exists)",
       "evidence": "short quote from original this is based on, or null",
@@ -251,6 +277,7 @@ CRITICAL:
 - optimizedResume MUST have contactInfo AND sections array
 - sections array MUST be complete
 - Each change MUST have evidence field
+- For modifications: "original" field MUST contain the EXACT original bullet text (needed for undo/reject)
 - No invented facts
 - 6000-8000 token output max (tight diffs, not prose)`
 
@@ -290,6 +317,36 @@ CRITICAL:
     if (!result.optimizedResume.sections || !Array.isArray(result.optimizedResume.sections)) {
       console.error('[Fast-Mode] Missing sections array')
       result.optimizedResume.sections = []
+    }
+
+    // CRITICAL FIX: Validate contactInfo.name is not the full resume (LLM parsing failure)
+    // If name is > 100 chars, it's likely the full resume text was placed there by mistake
+    if (result.optimizedResume.contactInfo?.name && result.optimizedResume.contactInfo.name.length > 100) {
+      console.warn('[Fast-Mode] ⚠️ contactInfo.name is suspiciously long, attempting extraction fix')
+      const rawName = result.optimizedResume.contactInfo.name
+      
+      // Try to extract actual name from the start of the string
+      // Common patterns: "JOHN DOE" or "John Doe" at the start
+      const lines = rawName.split(/[\n|•]/)[0].trim() // Get first line before newline or bullet
+      const firstWords = lines.split(/\s+/).slice(0, 3).join(' ') // Take first 3 words max
+      
+      // If we have a reasonable name candidate (2-50 chars, mostly letters)
+      if (firstWords.length >= 2 && firstWords.length <= 50 && /^[A-Za-zÀ-ÿ\s\-'.]+$/.test(firstWords)) {
+        result.optimizedResume.contactInfo.name = firstWords
+        console.log(`[Fast-Mode] ✅ Extracted name: "${firstWords}"`)
+      } else {
+        // Fallback: Try to find name from original resume's first line
+        const resumeLines = originalResume.split('\n').filter((l: string) => l.trim().length > 0)
+        const potentialName = resumeLines[0]?.trim().split(/[|•,]/) [0]?.trim()
+        if (potentialName && potentialName.length <= 50 && /^[A-Za-zÀ-ÿ\s\-'.]+$/.test(potentialName)) {
+          result.optimizedResume.contactInfo.name = potentialName
+          console.log(`[Fast-Mode] ✅ Extracted name from resume: "${potentialName}"`)
+        } else {
+          // Last resort: just take first 30 chars and hope for the best
+          result.optimizedResume.contactInfo.name = rawName.substring(0, 30).split(/[\s|•,]/)[0] || 'Candidate'
+          console.log(`[Fast-Mode] ⚠️ Using fallback name: "${result.optimizedResume.contactInfo.name}"`)
+        }
+      }
     }
 
     // ALWAYS regenerate deterministic change IDs (never trust model output)

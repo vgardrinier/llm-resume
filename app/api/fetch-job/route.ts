@@ -1082,11 +1082,14 @@ async function extractWithScraping(url: string, quick: boolean = false) {
   // If we have full description, return immediately (no LLM needed)
   if (deterministicData.jobDescription && deterministicData.jobDescription.length > 200) {
     console.log('[FetchJob] ✅ Deterministic extraction succeeded (no LLM needed)')
+    // Note: When quick mode is requested but we have full data, still include quick: false
+    // so frontend knows this is the full response (not metadata-only)
     return NextResponse.json({
       jobDescription: deterministicData.jobDescription,
       companyName: deterministicData.companyName || null,
       jobTitle: deterministicData.jobTitle || null,
       location: deterministicData.location || null,
+      quick: false, // Explicitly mark as full extraction
     })
   }
 

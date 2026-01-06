@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useReactToPrint } from 'react-to-print'
 import type { StructuredResume, ResumeChange } from '@/types/api'
-import { Check, X, Info, Download } from 'lucide-react'
+import { Check, X, Info, Download, ChevronRight, ChevronLeft, Sparkles } from 'lucide-react'
 import { Button } from './Button'
 import { DownloadModal, FeedbackData } from './DownloadModal'
 import { generateWordDocument } from '@/lib/utils/generateWordDocument'
@@ -19,6 +19,38 @@ interface ResumeEditorProps {
   onAcceptAll: () => void
   jobTitle?: string
   companyName?: string
+}
+
+// Grammarly-style underline colors (subtle, professional)
+const UNDERLINE_COLORS = {
+  modification: {
+    line: 'border-amber-400',
+    lineHover: 'border-amber-500',
+    dot: 'bg-amber-400',
+    text: 'text-amber-700',
+    bg: 'bg-amber-50',
+  },
+  addition: {
+    line: 'border-emerald-400',
+    lineHover: 'border-emerald-500', 
+    dot: 'bg-emerald-400',
+    text: 'text-emerald-700',
+    bg: 'bg-emerald-50',
+  },
+  deletion: {
+    line: 'border-rose-400',
+    lineHover: 'border-rose-500',
+    dot: 'bg-rose-400',
+    text: 'text-rose-700',
+    bg: 'bg-rose-50',
+  },
+  metric: {
+    line: 'border-violet-400',
+    lineHover: 'border-violet-500',
+    dot: 'bg-violet-400',
+    text: 'text-violet-700',
+    bg: 'bg-violet-50',
+  },
 }
 
 // Pre-index changes for O(1) lookup instead of O(n²) filtering
@@ -133,12 +165,47 @@ export function ResumeEditor({
   jobTitle,
   companyName
 }: ResumeEditorProps) {
-  const [hoveredChange, setHoveredChange] = useState<string | null>(null)
+  // GRAMMARLY-STYLE: Click to expand (not hover)
+  const [activeChangeId, setActiveChangeId] = useState<string | null>(null)
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false)
   const resumeRef = useRef<HTMLDivElement>(null)
   
   // Track user input for [X] placeholders: Map<changeId, Map<placeholderIndex, value>>
   const [metricInputs, setMetricInputs] = useState<Map<string, Map<number, string>>>(new Map())
+  
+  // Keyboard navigation: close on Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && activeChangeId) {
+        setActiveChangeId(null)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [activeChangeId])
+  
+  // GRAMMARLY-STYLE: Click outside to close
+  useEffect(() => {
+    if (!activeChangeId) return
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      // Check if click is outside any suggestion card
+      const target = e.target as HTMLElement
+      if (!target.closest('[data-suggestion-card]') && !target.closest('[data-suggestion-text]')) {
+        setActiveChangeId(null)
+      }
+    }
+    
+    // Delay to prevent immediate close on the same click that opened it
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside)
+    }, 100)
+    
+    return () => {
+      clearTimeout(timeoutId)
+      document.removeEventListener('click', handleClickOutside)
+    }
+  }, [activeChangeId])
   
   // Helper: Set metric value for a change
   const setMetricValue = (changeId: string, placeholderIndex: number, value: string) => {
@@ -540,65 +607,59 @@ export function ResumeEditor({
       return false
     })
     
-    // Use different colors for different change types
-    // Yellow for modifications (edits), Green/Blue for additions (new content), Orange for unfilled metrics
-    const highlightClasses = hasUnfilledPlaceholders
-      ? `bg-orange-200/90 border-b-2 border-orange-600 px-1 rounded-sm cursor-pointer transition-all duration-200 hover:bg-orange-300/90 hover:border-orange-700`
+    // GRAMMARLY-STYLE: Subtle underlines instead of heavy background highlights
+    // Determines color based on change type
+    const colorScheme = hasUnfilledPlaceholders
+      ? UNDERLINE_COLORS.metric
       : isAddition
-      ? `bg-green-200/90 border-b-2 border-green-600 px-1 rounded-sm cursor-pointer transition-all duration-200 hover:bg-green-300/90 hover:border-green-700`
+      ? UNDERLINE_COLORS.addition
       : isDeletion
-      ? `bg-red-200/90 border-b-2 border-red-600 px-1 rounded-sm cursor-pointer transition-all duration-200 hover:bg-red-300/90 hover:border-red-700`
-      : `bg-yellow-200/90 border-b-2 border-yellow-600 px-1 rounded-sm cursor-pointer transition-all duration-200 hover:bg-yellow-300/90 hover:border-yellow-700`
-    
-    const badgeColor = hasUnfilledPlaceholders
-      ? 'bg-orange-600'
-      : isAddition
-      ? 'bg-green-600'
-      : isDeletion
-      ? 'bg-red-600'
-      : 'bg-yellow-600'
-    
-    const shadowColor = hasUnfilledPlaceholders
-      ? 'rgba(249, 115, 22, 0.2)' // orange
-      : isAddition
-      ? 'rgba(34, 197, 94, 0.2)' // green
-      : isDeletion
-      ? 'rgba(239, 68, 68, 0.2)' // red
-      : 'rgba(234, 179, 8, 0.2)' // yellow
+      ? UNDERLINE_COLORS.deletion
+      : UNDERLINE_COLORS.modification
 
-    // Show original text with highlight, and handle multiple changes
-    const hasMultipleChanges = pendingChanges.length > 1
+    const isActive = activeChangeId === pendingChanges[0]?.id
+    
+    // GRAMMARLY-STYLE: Underline only, no background (cleaner, more professional)
+    const underlineClasses = `
+      border-b-2 border-dotted ${colorScheme.line}
+      cursor-pointer transition-all duration-150
+      hover:${colorScheme.lineHover} hover:border-solid
+      ${isActive ? `${colorScheme.lineHover} border-solid` : ''}
+    `.trim().replace(/\s+/g, ' ')
     
     return (
-      <span className="relative inline-block group">
-        {/* Show text with highlight when there are pending changes */}
+      <span className="relative inline">
+        {/* GRAMMARLY-STYLE: Click to expand, not hover */}
         <span
-          className={`text-gray-700 font-sans ${highlightClasses}`}
-          style={{
-            textDecoration: 'none',
-            boxShadow: `0 1px 2px ${shadowColor}`
+          data-suggestion-text
+          onClick={() => {
+            // Toggle: click again to close
+            if (isActive) {
+              setActiveChangeId(null)
+            } else {
+              setActiveChangeId(pendingChanges[0].id)
+            }
           }}
+          className={`text-gray-700 font-sans ${underlineClasses}`}
         >
           {displayText}
         </span>
-        {/* Show count badge when multiple changes are on the same line */}
-        {hasMultipleChanges && (
-          <span className={`ml-2 inline-flex items-center justify-center w-5 h-5 rounded-full ${badgeColor} text-white text-xs font-semibold font-sans shadow-sm`}>
-            {pendingChanges.length}
-          </span>
-        )}
-        {/* Render tooltip for the first pending change (or all if multiple) */}
-        {pendingChanges.length > 0 && (
+        {/* CLICK-TO-EXPAND: Show card only when this change is active */}
+        {isActive && pendingChanges.length > 0 && (
           <ChangeOverlay
             change={pendingChanges[0]}
-            allChanges={pendingChanges}
             status={getChangeStatus(pendingChanges[0].id)}
-            isHovered={hoveredChange === pendingChanges[0].id || pendingChanges.some(c => hoveredChange === c.id)}
-            onHover={() => setHoveredChange(pendingChanges[0].id)}
-            onLeave={() => setHoveredChange(null)}
-            onAccept={(changeId) => onAcceptChange(changeId)}
-            onReject={(changeId) => onRejectChange(changeId)}
-            multipleChanges={hasMultipleChanges}
+            isHovered={true}
+            onHover={() => {}}
+            onLeave={() => setActiveChangeId(null)}
+            onAccept={(changeId) => {
+              onAcceptChange(changeId)
+              setActiveChangeId(null)
+            }}
+            onReject={(changeId) => {
+              onRejectChange(changeId)
+              setActiveChangeId(null)
+            }}
             metricInputs={metricInputs}
             onSetMetricValue={setMetricValue}
           />
@@ -775,7 +836,7 @@ export function ResumeEditor({
       }
 
       return (
-        <div className="space-y-2">
+        <div className="text-sm text-gray-700 font-sans leading-relaxed">
           {renderTextWithChanges(section.content, nonPositionedChanges, section.title)}
         </div>
       )
@@ -1058,21 +1119,34 @@ export function ResumeEditor({
                 }
               }
               
+              const isSkillActive = activeChangeId === change?.id
+              
               return (
                 <span
                   key={idx}
-                  className={`px-3 py-1 rounded-lg text-xs font-sans ${classes} ${idx >= 10 ? 'print:hidden' : ''}`}
+                  onClick={() => {
+                    if (change && getChangeStatus(change.id) === 'pending') {
+                      setActiveChangeId(isSkillActive ? null : change.id)
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-sans ${classes} ${idx >= 10 ? 'print:hidden' : ''}`}
                 >
                   {skill}
-                  {change && getChangeStatus(change.id) === 'pending' && (
+                  {change && getChangeStatus(change.id) === 'pending' && isSkillActive && (
                     <ChangeOverlay
                       change={change}
                       status="pending"
-                      isHovered={hoveredChange === change.id}
-                      onHover={() => setHoveredChange(change.id)}
-                      onLeave={() => setHoveredChange(null)}
-                      onAccept={onAcceptChange}
-                      onReject={onRejectChange}
+                      isHovered={true}
+                      onHover={() => {}}
+                      onLeave={() => setActiveChangeId(null)}
+                      onAccept={(changeId) => {
+                        onAcceptChange(changeId)
+                        setActiveChangeId(null)
+                      }}
+                      onReject={(changeId) => {
+                        onRejectChange(changeId)
+                        setActiveChangeId(null)
+                      }}
                       metricInputs={metricInputs}
                       onSetMetricValue={setMetricValue}
                     />
@@ -1111,9 +1185,12 @@ export function ResumeEditor({
                   <div className="text-sm text-gray-600 font-sans">{entry.date}</div>
                 )}
                 {entry.details && Array.isArray(entry.details) && entry.details.length > 0 && (
-                  <ul className="mt-1 space-y-1">
+                  <ul className="mt-2 space-y-1.5">
                     {entry.details.map((detail: string, detailIdx: number) => (
-                      <li key={detailIdx} className="text-sm text-gray-600 font-sans">• {detail}</li>
+                      <li key={detailIdx} className="flex gap-2 text-sm text-gray-700 font-sans leading-relaxed">
+                        <span className="text-gray-400 flex-shrink-0 mt-0.5">•</span>
+                        <span>{detail}</span>
+                      </li>
                     ))}
                   </ul>
                 )}
@@ -1154,18 +1231,42 @@ export function ResumeEditor({
       />
       
       <div className="space-y-6 h-full flex flex-col">
-        {/* Action Bar - Inside glass container */}
+        {/* GRAMMARLY-STYLE: Action Bar with progress */}
         <div className="bg-white/80 backdrop-blur-sm border border-gray-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.05)] rounded-lg px-6 py-4 flex items-center justify-between">
-        <div>
-          <p className="text-sm text-gray-600 font-sans">
-            {getVisibleChanges.length} suggestions • {acceptedChanges.size} accepted
-            {rejectedChanges.size > 0 && ` • ${rejectedChanges.size} rejected`}
-            {unfilledMetricsCount > 0 && (
-              <span className="text-orange-600 font-medium">
-                {' '}• {unfilledMetricsCount} need value{unfilledMetricsCount !== 1 ? 's' : ''}
+        <div className="flex flex-col gap-2">
+          {/* Progress indicator - Grammarly-style */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-amber-500" />
+              <span className="text-sm font-medium text-gray-800 font-sans">
+                {acceptedChanges.size + rejectedChanges.size} of {getVisibleChanges.length} reviewed
               </span>
-            )}
-          </p>
+            </div>
+            {/* Mini progress bar */}
+            <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-amber-400 to-emerald-400 transition-all duration-300"
+                style={{ 
+                  width: `${getVisibleChanges.length > 0 
+                    ? ((acceptedChanges.size + rejectedChanges.size) / getVisibleChanges.length) * 100 
+                    : 0}%` 
+                }}
+              />
+            </div>
+          </div>
+          {/* Color legend - compact */}
+          <div className="flex items-center gap-4 text-xs text-gray-500 font-sans">
+            <span className="flex items-center gap-1.5">
+              <span className="w-4 h-0.5 border-b-2 border-dotted border-amber-400"></span>
+              Rewrite
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-4 h-0.5 border-b-2 border-dotted border-emerald-400"></span>
+              Addition
+            </span>
+            <span className="text-gray-400">•</span>
+            <span className="text-gray-400 italic">Click underlined text to review</span>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <Button
@@ -1196,7 +1297,10 @@ export function ResumeEditor({
         {optimizedResume.contactInfo && (
           <div className="mb-10 text-center max-w-full">
             <h1 className="text-3xl font-bold text-gray-900 mb-3 font-serif tracking-tight">
-              {optimizedResume.contactInfo.name}
+              {/* SAFETY: Truncate name if it's suspiciously long (LLM parsing failure) */}
+              {optimizedResume.contactInfo.name && optimizedResume.contactInfo.name.length > 60
+                ? optimizedResume.contactInfo.name.split(/[\n|•,]/)[0].trim().split(/\s+/).slice(0, 3).join(' ') || 'Candidate'
+                : optimizedResume.contactInfo.name}
             </h1>
             <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm text-gray-700 font-sans">
               {optimizedResume.contactInfo.email && <span className="whitespace-nowrap">{optimizedResume.contactInfo.email}</span>}
@@ -1286,29 +1390,24 @@ export function ResumeEditor({
 // Change Overlay Component (shows original with suggestion overlay - NOT replacement)
 interface ChangeOverlayProps {
   change: ResumeChange
-  allChanges?: ResumeChange[] // When multiple changes exist on the same line
   status: 'accepted' | 'rejected' | 'pending'
   isHovered: boolean
   onHover: () => void
   onLeave: () => void
   onAccept: (changeId: string) => void
   onReject: (changeId: string) => void
-  multipleChanges?: boolean
-  changeIndex?: number
   metricInputs: Map<string, Map<number, string>>
   onSetMetricValue: (changeId: string, placeholderIndex: number, value: string) => void
 }
 
 function ChangeOverlay({
   change,
-  allChanges = [change],
   status,
   isHovered,
   onHover,
   onLeave,
   onAccept,
   onReject,
-  multipleChanges = false,
   metricInputs,
   onSetMetricValue
 }: ChangeOverlayProps) {
@@ -1351,121 +1450,55 @@ function ChangeOverlay({
   }
   return (
     <>
-      {/* Invisible hover area that covers the highlighted text */}
-      <span
-        onMouseEnter={onHover}
-        onMouseLeave={onLeave}
-        className="absolute inset-0 cursor-pointer"
-        style={{ zIndex: 1 }}
-      />
-
-      {/* Tooltip with all changes when multiple exist on the same line */}
+      {/* GRAMMARLY-STYLE: Click-based card, no hover area needed */}
       <AnimatePresence>
         {isHovered && (
           <motion.div
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 5 }}
-            transition={{ duration: 0.15, delay: 0.2 }}
-            onMouseEnter={onHover} // Keep tooltip open when hovering over it
-            onMouseLeave={onLeave}
-            className="absolute z-50 top-full left-0 mt-2 w-80 backdrop-blur-md bg-white/95 border border-gray-200 shadow-lg rounded-lg p-3"
+            data-suggestion-card
+            initial={{ opacity: 0, y: 8, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.96 }}
+            transition={{ duration: 0.15 }}
+            onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
+            className="absolute z-50 top-full left-0 mt-3 w-80 bg-white border border-gray-200 shadow-xl rounded-xl overflow-hidden"
+            style={{ boxShadow: '0 10px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.08)' }}
           >
-            {multipleChanges && allChanges.length > 1 ? (
-              // Show all changes when multiple exist
-              <div className="space-y-3">
-                <div className="text-xs font-semibold text-gray-900 font-sans mb-2">
-                  {allChanges.length} suggestions on this line:
-                </div>
-                {allChanges.map((c, idx) => (
-                  <div key={c.id} className="border-b border-gray-200 pb-3 last:border-0 last:pb-0">
-                    <div className="flex items-start gap-2 mb-2">
-                      <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                      <p className="text-xs text-gray-700 font-sans flex-1">{c.reason}</p>
-                    </div>
-                    {c.original && c.type !== 'addition' && (
-                      <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-gray-600 font-sans">
-                        <span className="font-medium">Original:</span> {c.original}
-                      </div>
-                    )}
-                    
-                    {/* Metric Input Fields for [X] placeholders */}
-                    {hasPlaceholders(c.suggested) && (
-                      <div className="mb-2 p-2 bg-amber-50 border border-amber-200 rounded">
-                        <div className="text-xs font-medium text-amber-900 mb-2 font-sans">
-                          📝 Enter values:
-                        </div>
-                        {Array.from({ length: countPlaceholders(c.suggested) }).map((_, pidx) => {
-                          const currentValue = metricInputs.get(c.id)?.get(pidx) || ''
-                          const label = getPlaceholderLabel(c.reason, pidx)
-                          
-                          return (
-                            <div key={pidx} className="mb-1 last:mb-0">
-                              <label className="block text-xs text-gray-600 mb-0.5 font-sans capitalize">
-                                {label}:
-                              </label>
-                              <input
-                                type="text"
-                                value={currentValue}
-                                onChange={(e) => {
-                                  e.stopPropagation()
-                                  onSetMetricValue(c.id, pidx, e.target.value)
-                                }}
-                                onClick={(e) => e.stopPropagation()}
-                                placeholder={`Enter ${label}...`}
-                                className="w-full px-2 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white font-sans"
-                              />
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
-                    
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onAccept(c.id)
-                        }}
-                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors"
-                        title="Accept"
-                      >
-                        <Check className="h-4 w-4 text-green-600" />
-                        <span className="text-xs font-medium text-green-700 font-sans">Accept</span>
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onReject(c.id)
-                        }}
-                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors"
-                        title="Reject"
-                      >
-                        <X className="h-4 w-4 text-red-600" />
-                        <span className="text-xs font-medium text-red-700 font-sans">Reject</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              // Show single change
-              <>
-                <div className="flex items-start gap-2 mb-3">
-                  <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-gray-700 font-sans flex-1">{change.reason}</p>
+            {/* Close button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onLeave()
+              }}
+              className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors z-10"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            
+            {/* Single suggestion card - clean and simple */}
+            <div className="p-4">
+                <div className="flex items-start gap-2 mb-3 pr-6">
+                  <Info className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-gray-700 font-sans flex-1 leading-relaxed">{change.reason}</p>
                 </div>
                 {change.original && change.type !== 'addition' && (
-                  <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-gray-600 font-sans">
-                    <span className="font-medium">Original:</span> {change.original}
+                  <div className="mb-3 p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-sans">
+                    <span className="font-medium text-gray-500">Original:</span>
+                    <span className="ml-1.5 line-through text-gray-400">{change.original}</span>
                   </div>
                 )}
                 
+                {/* Suggested text preview */}
+                <div className="mb-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-sans">
+                  <span className="font-medium text-emerald-600">Suggested:</span>
+                  <span className="ml-1.5 text-gray-700">{change.suggested}</span>
+                </div>
+                
                 {/* Metric Input Fields for [X] placeholders */}
                 {hasPlaceholders(change.suggested) && (
-                  <div className="mb-3 p-3 bg-amber-50 border border-amber-200 rounded">
-                    <div className="text-xs font-medium text-amber-900 mb-2 font-sans">
-                      📝 Enter values for [X]:
+                  <div className="mb-3 p-3 bg-violet-50 border border-violet-200 rounded-lg">
+                    <div className="text-xs font-medium text-violet-800 mb-2 font-sans">
+                      📝 Add your specific numbers:
                     </div>
                     {Array.from({ length: countPlaceholders(change.suggested) }).map((_, idx) => {
                       const currentValue = metricInputs.get(change.id)?.get(idx) || ''
@@ -1485,7 +1518,7 @@ function ChangeOverlay({
                             }}
                             onClick={(e) => e.stopPropagation()}
                             placeholder={`Enter ${label}...`}
-                            className="w-full px-2 py-1 text-xs border border-amber-300 rounded focus:outline-none focus:ring-1 focus:ring-amber-500 bg-white font-sans"
+                            className="w-full px-2.5 py-1.5 text-sm border border-violet-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white font-sans"
                           />
                         </div>
                       )
@@ -1493,32 +1526,32 @@ function ChangeOverlay({
                   </div>
                 )}
                 
-                <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
+                {/* Action buttons - GRAMMARLY-STYLE */}
+                <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
+                  {/* GRAMMARLY-STYLE: Accept is prominent, Dismiss is subtle */}
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
                       onAccept(change.id)
                     }}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors"
-                    title="Accept"
+                    className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors shadow-sm"
+                    title="Accept suggestion"
                   >
-                    <Check className="h-4 w-4 text-green-600" />
-                    <span className="text-xs font-medium text-green-700 font-sans">Accept</span>
+                    <Check className="h-4 w-4" />
+                    <span className="text-sm font-medium font-sans">Accept</span>
                   </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
                       onReject(change.id)
                     }}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors"
-                    title="Reject"
+                    className="px-4 py-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Dismiss"
                   >
-                    <X className="h-4 w-4 text-red-600" />
-                    <span className="text-xs font-medium text-red-700 font-sans">Reject</span>
+                    <span className="text-sm font-medium font-sans">Dismiss</span>
                   </button>
                 </div>
-              </>
-            )}
+              </div>
           </motion.div>
         )}
       </AnimatePresence>

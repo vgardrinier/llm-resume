@@ -102,19 +102,65 @@ export function ResumeWorkspace({ data, mode = 'deep', loading = false, onStartO
   }), [data.changes, data.optimizedResume.sections])
 
   const handleAcceptChange = (changeId: string) => {
+    // Find the change being accepted
+    const acceptedChange = data.changes.find(c => c.id === changeId)
+    
+    // Auto-reject sibling alternatives on the same line
+    // (If multiple suggestions exist on same line, accepting one should resolve the line)
+    let siblingsToReject: string[] = []
+    if (acceptedChange?.position?.sectionIndex !== undefined && acceptedChange?.position?.bulletIndex !== undefined) {
+      // Find other changes at the same position
+      siblingsToReject = data.changes
+        .filter(c => 
+          c.id !== changeId &&
+          c.section === acceptedChange.section &&
+          c.position?.sectionIndex === acceptedChange.position?.sectionIndex &&
+          c.position?.bulletIndex === acceptedChange.position?.bulletIndex
+        )
+        .map(c => c.id)
+    }
+    
     setAcceptedChanges(prev => new Set(prev).add(changeId))
     setRejectedChanges(prev => {
       const next = new Set(prev)
       next.delete(changeId)
+      // Auto-reject siblings (alternatives on same line)
+      siblingsToReject.forEach(id => next.add(id))
       return next
     })
   }
 
   const handleRejectChange = (changeId: string) => {
-    setRejectedChanges(prev => new Set(prev).add(changeId))
+    // Find the change being rejected
+    const rejectedChange = data.changes.find(c => c.id === changeId)
+    
+    // Auto-reject sibling alternatives on the same line
+    // (If multiple suggestions exist on same line, rejecting one should revert to original)
+    let siblingsToReject: string[] = []
+    if (rejectedChange?.position?.sectionIndex !== undefined && rejectedChange?.position?.bulletIndex !== undefined) {
+      // Find other changes at the same position
+      siblingsToReject = data.changes
+        .filter(c => 
+          c.id !== changeId &&
+          c.section === rejectedChange.section &&
+          c.position?.sectionIndex === rejectedChange.position?.sectionIndex &&
+          c.position?.bulletIndex === rejectedChange.position?.bulletIndex
+        )
+        .map(c => c.id)
+    }
+    
+    setRejectedChanges(prev => {
+      const next = new Set(prev)
+      next.add(changeId)
+      // Auto-reject siblings (alternatives on same line) - this reverts to original
+      siblingsToReject.forEach(id => next.add(id))
+      return next
+    })
     setAcceptedChanges(prev => {
       const next = new Set(prev)
       next.delete(changeId)
+      // Also remove siblings from accepted (in case they were accepted)
+      siblingsToReject.forEach(id => next.delete(id))
       return next
     })
   }

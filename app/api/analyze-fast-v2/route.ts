@@ -413,6 +413,19 @@ function validateEntry(
         }
       }
     }
+
+    // Check for duplicate bullets within the entry
+    const normalizedBullets = optimized.rewritten_bullets.map((bullet: string) =>
+      bullet.toLowerCase().trim().replace(/\s+/g, ' ')
+    )
+    const uniqueBullets = new Set(normalizedBullets)
+
+    if (uniqueBullets.size !== normalizedBullets.length) {
+      return {
+        valid: false,
+        reason: `duplicate_bullets: found ${normalizedBullets.length - uniqueBullets.size} duplicate(s)`
+      }
+    }
   }
 
   return { valid: true }
