@@ -96,63 +96,42 @@ Return ONLY valid JSON (no markdown):
 }
 
 /**
- * EXTRACT NAME FROM ORIGINAL RESUME
- * 
- * Don't trust LLM for name - extract directly from resume.
- * Resumes almost always start with the person's name on the first line.
+ * SIMPLE CONTACT INFO SANITIZATION
+ * Just basic cleanup - let AI validation do the heavy lifting
  */
-function extractNameFromResume(resumeText: string): string {
-  const lines = resumeText.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+function sanitizeContactInfo(raw: ContactInfo): ContactInfo {
+  const sanitized: ContactInfo = {}
   
-  // Strategy: Look at first 5 lines, find first 2-3 capitalized words
-  // that look like a person's name (not a section header, not garbage)
+  // Basic email validation
+  if (raw.email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(raw.email.trim())) {
+    sanitized.email = raw.email.trim()
+  }
   
-  const sectionHeaders = new Set([
-    'summary', 'experience', 'education', 'skills', 'projects', 
-    'certifications', 'languages', 'objective', 'profile', 'contact',
-    'work', 'employment', 'professional', 'technical', 'career'
-  ])
-  
-  for (let i = 0; i < Math.min(5, lines.length); i++) {
-    const line = lines[i]
-    
-    // Extract just the letter-words (ignore emails, phones, etc on same line)
-    const letterWords = line
-      .split(/\s+/)
-      .map(w => w.replace(/[^\p{L}\-']/gu, '')) // Strip non-letters
-      .filter(w => w.length >= 2) // At least 2 chars
-      .filter(w => !sectionHeaders.has(w.toLowerCase())) // Not a section header
-    
-    // Take first 2-3 words that start with uppercase
-    const nameWords = letterWords
-      .filter(w => /^[\p{Lu}]/u.test(w) || w === w.toUpperCase())
-      .slice(0, 3)
-    
-    if (nameWords.length >= 2) {
-      const name = nameWords.join(' ')
-      // Validate: should be mostly letters, reasonable length
-      if (name.length >= 4 && name.length <= 40) {
-        console.log(`[Fast-Mode] Extracted name from line ${i}: "${name}"`)
-        return name
-      }
+  // Basic phone validation (7-15 digits)
+  if (raw.phone) {
+    const digits = raw.phone.replace(/\D/g, '')
+    if (digits.length >= 7 && digits.length <= 15) {
+      sanitized.phone = raw.phone.trim()
     }
   }
   
-  console.warn('[Fast-Mode] Could not extract name from resume, using fallback')
-  return 'Candidate'
+  // Pass through other fields
+  sanitized.name = raw.name?.trim()
+  sanitized.location = raw.location?.trim()
+  sanitized.linkedin = raw.linkedin?.trim()
+  sanitized.website = raw.website?.trim()
+  
+  return sanitized
 }
 
-function sanitizeContactInfo(raw: ContactInfo, originalResume: string): ContactInfo {
-  const sanitized: ContactInfo = {}
-  
-  // STEP 1: Extract name directly from original resume (don't trust LLM)
-  // This is the most reliable approach - resumes always start with the name
-  const name = extractNameFromResume(originalResume)
-  
-  // If name is still too long or suspicious, extract from original resume
-  if (name.length > 50 || name.length < 2 || !/^[A-Za-zÀ-ÿ\s\-'.]+$/.test(name)) {
-    const resumeLines = originalResume.split('\n').filter(l => l.trim().length > 0)
-    const firstLine = resumeLines[0]?.trim() || ''
+/**
+ * PLACEHOLDER - removed complex extraction logic
+ * Now we just use AI validation below
+ */
+function legacyPlaceholder(raw: ContactInfo, originalResume: string): ContactInfo {
+  // This function is no longer used - keeping signature for compatibility
+  const resumeLines = originalResume.split('\n').filter(l => l.trim().length > 0)
+  const firstLine = resumeLines[0]?.trim() || ''
     
     // Try to extract name from first line (usually "JOHN DOE" or "John Doe")
     const potentialName = firstLine.split(/[|•,@\d]/)[0].trim()
@@ -549,40 +528,27 @@ CRITICAL:
       result.optimizedResume.sections = []
     }
 
-    // CRITICAL FIX: Two-layer contact info validation
-    // Layer 1: Rule-based sanitization (fast)
-    // Layer 2: AI validation (handles edge cases)
+    // CONTACT INFO: Always use AI validation - it's more reliable than rule-based extraction
     if (result.optimizedResume.contactInfo) {
       const rawContactInfo = result.optimizedResume.contactInfo
       console.log('[Fast-Mode] 🔍 Raw contactInfo from LLM:', JSON.stringify(rawContactInfo, null, 2))
       
-      // Layer 1: Rule-based sanitization
-      const ruleSanitized = sanitizeContactInfo(rawContactInfo, originalResume)
-      console.log('[Fast-Mode] 📋 Rule-sanitized contactInfo:', JSON.stringify(ruleSanitized, null, 2))
+      // Always validate with AI - it handles edge cases much better
+      console.log('[Fast-Mode] 🤖 Running AI contact validation...')
+      const aiValidated = await validateContactInfoWithAI(rawContactInfo, originalResume, anthropic)
+      console.log('[Fast-Mode] 🤖 AI-validated contactInfo:', JSON.stringify(aiValidated, null, 2))
       
-      // Layer 2: AI validation (only if rule-based output looks suspicious)
-      const needsAIValidation = 
-        !ruleSanitized.name || 
-        ruleSanitized.name === 'Candidate' ||
-        ruleSanitized.name.length < 3 ||
-        (rawContactInfo.name && rawContactInfo.name.length > 30 && rawContactInfo.name !== ruleSanitized.name)
+      // Basic sanitization for email/phone format
+      const basicSanitized = sanitizeContactInfo(rawContactInfo)
       
-      if (needsAIValidation) {
-        console.log('[Fast-Mode] 🤖 Running AI contact validation (suspicious data detected)...')
-        const aiValidated = await validateContactInfoWithAI(rawContactInfo, originalResume, anthropic)
-        console.log('[Fast-Mode] 🤖 AI-validated contactInfo:', JSON.stringify(aiValidated, null, 2))
-        
-        // Merge AI results with rule-based results (AI takes precedence for name)
-        result.optimizedResume.contactInfo = {
-          name: aiValidated.name || ruleSanitized.name || 'Candidate',
-          email: ruleSanitized.email || aiValidated.email,
-          phone: ruleSanitized.phone || aiValidated.phone,
-          location: aiValidated.location || ruleSanitized.location,
-          linkedin: ruleSanitized.linkedin,
-          website: ruleSanitized.website
-        }
-      } else {
-        result.optimizedResume.contactInfo = ruleSanitized
+      // Use AI for name/location, basic sanitization for email/phone/linkedin/website
+      result.optimizedResume.contactInfo = {
+        name: aiValidated.name || 'Candidate',
+        email: basicSanitized.email || aiValidated.email,
+        phone: basicSanitized.phone || aiValidated.phone,
+        location: aiValidated.location,
+        linkedin: basicSanitized.linkedin,
+        website: basicSanitized.website
       }
       
       console.log('[Fast-Mode] ✅ Final contactInfo:', JSON.stringify(result.optimizedResume.contactInfo, null, 2))
