@@ -19,6 +19,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { candidate_resume, job_description, generation_id, session_id, jobId: providedJobId } = body
 
+    // Extract job metadata from request body (matches fast mode pattern)
+    const jobTitle = body.job_title || body.jobTitle || 'Position'
+    const companyName = body.company || body.companyName || null
+    const location = body.location || null
+
     if (!candidate_resume || !job_description) {
       return NextResponse.json(
         { error: 'Missing required fields' },
@@ -45,6 +50,9 @@ export async function POST(request: NextRequest) {
       job_description,
       generation_id,
       session_id,
+      job_title: jobTitle,
+      company: companyName,
+      location,
     })
 
     // Finalize job status
@@ -81,10 +89,13 @@ async function runDeepAnalysis(
     job_description: string
     generation_id?: string
     session_id?: string
+    job_title?: string
+    company?: string | null
+    location?: string | null
   }
 ) {
   const startTime = Date.now()
-  const { candidate_resume, job_description, generation_id, session_id } = params
+  const { candidate_resume, job_description, generation_id, session_id, job_title, company, location } = params
 
   try {
     // For sync mode, we still log steps for observability in server logs
@@ -453,9 +464,9 @@ async function runDeepAnalysis(
         generation_id,
         session_id,
         job_metadata: {
-          title: 'Position',
-          company: 'Company',
-          location: 'Location',
+          title: job_title || 'Position',
+          company: company || null,
+          location: location || null,
         },
         timing: {
           total_ms: totalTime,

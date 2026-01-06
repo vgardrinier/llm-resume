@@ -320,16 +320,33 @@ CRITICAL:
     console.log(`  ✅ Validation: ${result.honesty_validation?.changes_after_validation || 'N/A'} changes after honesty pass`)
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
 
-    // Create minimal analysis object for UI compatibility
+    // Create minimal analysis object that satisfies ResumeAnalysis type
+    // Fast mode doesn't compute fit scores - these are placeholder values
     const analysis = {
-      rationaleForChanges: 'Fast Mode focuses on quick, high-impact optimizations without deep diagnostic analysis.',
       fitScoreBefore: 0,
       fitScoreAfter: 0,
-      // Optional fields that UI may check for
-      culture: undefined,
-      altitude: undefined,
-      metrics: undefined,
-      summary: undefined
+      subscores: {
+        before: {
+          keywordMatch: 0,
+          themeAlignment: 0,
+          experienceRelevance: 0,
+          skillOverlap: 0
+        },
+        after: {
+          keywordMatch: 0,
+          themeAlignment: 0,
+          experienceRelevance: 0,
+          skillOverlap: 0
+        }
+      },
+      whatWorks: [],
+      whatsMissing: [],
+      keywordsToTarget: {
+        verbs: [],
+        concepts: [],
+        techStack: []
+      },
+      rationaleForChanges: 'Fast Mode focuses on quick, high-impact optimizations without deep diagnostic analysis. Use Deep Mode for detailed fit scoring and analysis.'
     }
 
     return NextResponse.json({

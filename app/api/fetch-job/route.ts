@@ -283,7 +283,7 @@ function cleanContentForLLM(html: string, maxChars: number = 40000): string {
 
     let bestBreak = -1
     for (const bp of breakPoints) {
-      if (bp > 0 && bp < maxChars) {
+      if (bp !== -1) {
         bestBreak = searchStart + bp + 10 // +10 to include closing tag
         break
       }

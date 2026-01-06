@@ -109,7 +109,7 @@ Rules:
         content: `Write a compelling 2-3 sentence professional summary for this candidate applying to: ${jobTitle || 'this role'}
 
 RESUME HIGHLIGHTS:
-${experienceEntries.slice(0, 3).map(e => `• ${e.role} at ${e.company}: ${e.bullets?.[0] || ''}`).join('\n')}
+${experienceEntries.slice(0, 3).map((e: any) => `• ${e.role} at ${e.company}: ${e.bullets?.[0] || ''}`).join('\n')}
 
 TARGET JOB:
 ${jobDescription.substring(0, 2000)}
@@ -176,6 +176,28 @@ Output ONLY the summary text (no labels, no JSON, just the 2-3 sentence summary)
           // Transform changes into frontend format
           const transformedChanges = (optimized.changes || []).map((change: any, idx: number) => {
             const changeId = `${originalEntry.company}_${originalEntry.entry_id}_${idx}`
+            
+            // Find the actual bullet index by matching original text
+            // This is critical because the LLM may skip bullets (e.g., return changes for bullets 0, 2, 4)
+            let actualBulletIndex = idx // fallback to loop index
+            if (change.original && originalEntry.bullets) {
+              const foundIndex = originalEntry.bullets.findIndex((bullet: string) => 
+                bullet.trim() === change.original.trim()
+              )
+              if (foundIndex !== -1) {
+                actualBulletIndex = foundIndex
+              } else {
+                // Try fuzzy match if exact match fails (handles minor whitespace/formatting differences)
+                const normalizedOriginal = change.original.toLowerCase().replace(/\s+/g, ' ').trim()
+                const fuzzyIndex = originalEntry.bullets.findIndex((bullet: string) =>
+                  bullet.toLowerCase().replace(/\s+/g, ' ').trim() === normalizedOriginal
+                )
+                if (fuzzyIndex !== -1) {
+                  actualBulletIndex = fuzzyIndex
+                }
+              }
+            }
+            
             return {
               id: changeId,
               type: 'modification' as const,
@@ -186,7 +208,7 @@ Output ONLY the summary text (no labels, no JSON, just the 2-3 sentence summary)
               impactScore: 7,
               position: {
                 sectionIndex: i,
-                bulletIndex: idx
+                bulletIndex: actualBulletIndex
               }
             }
           })
@@ -281,12 +303,39 @@ Output ONLY the summary text (no labels, no JSON, just the 2-3 sentence summary)
       ...allChanges
     ]
 
+    // Create minimal analysis object that satisfies ResumeAnalysis type
+    // Fast mode doesn't compute fit scores - these are placeholder values
+    const analysis = {
+      fitScoreBefore: 0,
+      fitScoreAfter: 0,
+      subscores: {
+        before: {
+          keywordMatch: 0,
+          themeAlignment: 0,
+          experienceRelevance: 0,
+          skillOverlap: 0
+        },
+        after: {
+          keywordMatch: 0,
+          themeAlignment: 0,
+          experienceRelevance: 0,
+          skillOverlap: 0
+        }
+      },
+      whatWorks: [],
+      whatsMissing: [],
+      keywordsToTarget: {
+        verbs: [],
+        concepts: [],
+        techStack: []
+      },
+      rationaleForChanges: 'Fast Mode V2: Parallel processing with deterministic validation. Use Deep Mode for detailed fit scoring and analysis.'
+    }
+
     return NextResponse.json({
       optimizedResume,
       changes: finalChanges,
-      analysis: {
-        rationaleForChanges: 'Fast Mode V2: Parallel processing with deterministic validation'
-      },
+      analysis,
       metadata: {
         generation_time_ms: totalTime,
         optimization_time_ms: optimizationTime,
