@@ -104,36 +104,41 @@ Return ONLY valid JSON (no markdown):
 function extractNameFromResume(resumeText: string): string {
   const lines = resumeText.split('\n').map(l => l.trim()).filter(l => l.length > 0)
   
-  // Look at first 5 lines to find a name-like string
+  // Strategy: Look at first 5 lines, find first 2-3 capitalized words
+  // that look like a person's name (not a section header, not garbage)
+  
+  const sectionHeaders = new Set([
+    'summary', 'experience', 'education', 'skills', 'projects', 
+    'certifications', 'languages', 'objective', 'profile', 'contact',
+    'work', 'employment', 'professional', 'technical', 'career'
+  ])
+  
   for (let i = 0; i < Math.min(5, lines.length); i++) {
     const line = lines[i]
     
-    // Skip if line contains email, phone, URL, or numbers
-    if (/@/.test(line)) continue
-    if (/\d{3,}/.test(line)) continue // Phone numbers or dates
-    if (/https?:|www\.|\.com|\.org|\.net/i.test(line)) continue
-    if (/linkedin|github/i.test(line)) continue
+    // Extract just the letter-words (ignore emails, phones, etc on same line)
+    const letterWords = line
+      .split(/\s+/)
+      .map(w => w.replace(/[^\p{L}\-']/gu, '')) // Strip non-letters
+      .filter(w => w.length >= 2) // At least 2 chars
+      .filter(w => !sectionHeaders.has(w.toLowerCase())) // Not a section header
     
-    // A name should be: 2-4 words, mostly letters, 5-40 chars
-    const cleaned = line.replace(/[^\p{L}\s\-']/gu, '').trim()
-    const words = cleaned.split(/\s+/).filter(w => w.length >= 2)
+    // Take first 2-3 words that start with uppercase
+    const nameWords = letterWords
+      .filter(w => /^[\p{Lu}]/u.test(w) || w === w.toUpperCase())
+      .slice(0, 3)
     
-    if (words.length >= 2 && words.length <= 4 && cleaned.length >= 5 && cleaned.length <= 40) {
-      // Check all words start with uppercase (proper name format)
-      const looksLikeName = words.every(w => /^[\p{Lu}]/u.test(w) || w === w.toUpperCase())
-      if (looksLikeName) {
-        return words.join(' ')
+    if (nameWords.length >= 2) {
+      const name = nameWords.join(' ')
+      // Validate: should be mostly letters, reasonable length
+      if (name.length >= 4 && name.length <= 40) {
+        console.log(`[Fast-Mode] Extracted name from line ${i}: "${name}"`)
+        return name
       }
     }
   }
   
-  // Fallback: just take the first line's first 2-3 words that are letters
-  const firstLine = lines[0] || ''
-  const words = firstLine.split(/\s+/).filter(w => /^[\p{L}\-']+$/u.test(w) && w.length >= 2)
-  if (words.length >= 2) {
-    return words.slice(0, 3).join(' ')
-  }
-  
+  console.warn('[Fast-Mode] Could not extract name from resume, using fallback')
   return 'Candidate'
 }
 
@@ -671,3 +676,4 @@ CRITICAL:
     )
   }
 }
+
