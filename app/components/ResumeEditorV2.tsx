@@ -1294,37 +1294,97 @@ export function ResumeEditor({
         fontSize: 'inherit'
       }}>
         {/* Contact Info */}
-        {optimizedResume.contactInfo && (
+        {optimizedResume.contactInfo && (() => {
+          // FRONTEND SAFETY: Comprehensive validation for contact info fields
+          let name = optimizedResume.contactInfo.name || ''
+          let email = optimizedResume.contactInfo.email || ''
+          let phone = optimizedResume.contactInfo.phone || ''
+          let location = optimizedResume.contactInfo.location || ''
+          const linkedin = optimizedResume.contactInfo.linkedin || ''
+          const website = optimizedResume.contactInfo.website || ''
+          
+          // Clean the name field:
+          // 1. Remove location words (Spain, USA, etc.)
+          const locationWords = /\b(spain|usa|uk|france|germany|canada|australia|india|nyc|sf|la|london|paris|berlin|remote|hybrid|california|texas|florida|new york|barcelona|madrid|munich|amsterdam|dublin|singapore|san francisco|los angeles|seattle|boston|chicago|austin)\b/gi
+          name = name.replace(locationWords, '')
+          // 2. Remove dates
+          name = name.replace(/\b\d{4}\s*[-–]\s*\d{4}\b/g, '')
+          name = name.replace(/\b(19|20)\d{2}\b/g, '')
+          // 3. Remove garbage characters (including / which appears in the screenshot)
+          name = name.replace(/[()•|/\\]/g, '')
+          // 4. Normalize whitespace
+          name = name.replace(/\s+/g, ' ').trim()
+          // 5. If still too long, take first 3 words
+          if (name.length > 60) {
+            name = name.split(/[\n|•,]/)[0].trim().split(/\s+/).slice(0, 3).join(' ')
+          }
+          name = name || 'Candidate'
+          
+          // Validate email (must look like an email)
+          if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+            email = ''
+          }
+          email = email.trim()
+          
+          // Reject phone if it looks like a date range
+          if (phone) {
+            const isDatePattern = /\b(19|20)\d{2}\s*[-–]\s*(19|20)?\d{2,4}\b/.test(phone) ||
+                                 /\bpresent\b/i.test(phone) ||
+                                 /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(phone)
+            if (isDatePattern) {
+              phone = ''
+            }
+          }
+          phone = phone.replace(/[()•|/\\]/g, '').trim()
+          
+          // Clean location of dates and garbage
+          location = location.replace(/\b\d{4}\s*[-–]\s*\d{4}\b/g, '')
+          location = location.replace(/\b(19|20)\d{2}\b/g, '')
+          location = location.replace(/[()•|/\\]/g, '').trim()
+          
+          // Build contact items array (only non-empty values)
+          const contactItems: string[] = []
+          if (email) contactItems.push(email)
+          if (phone) contactItems.push(phone)
+          if (location) contactItems.push(location)
+          
+          return (
           <div className="mb-10 text-center max-w-full">
+            {/* Name - always on its own line */}
             <h1 className="text-3xl font-bold text-gray-900 mb-3 font-serif tracking-tight">
-              {/* SAFETY: Truncate name if it's suspiciously long (LLM parsing failure) */}
-              {optimizedResume.contactInfo.name && optimizedResume.contactInfo.name.length > 60
-                ? optimizedResume.contactInfo.name.split(/[\n|•,]/)[0].trim().split(/\s+/).slice(0, 3).join(' ') || 'Candidate'
-                : optimizedResume.contactInfo.name}
+              {name}
             </h1>
-            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm text-gray-700 font-sans">
-              {optimizedResume.contactInfo.email && <span className="whitespace-nowrap">{optimizedResume.contactInfo.email}</span>}
-              {optimizedResume.contactInfo.phone && <span className="hidden sm:inline">•</span>}
-              {optimizedResume.contactInfo.phone && <span className="whitespace-nowrap">{optimizedResume.contactInfo.phone}</span>}
-              {optimizedResume.contactInfo.location && <span className="hidden sm:inline">•</span>}
-              {optimizedResume.contactInfo.location && <span className="whitespace-nowrap">{optimizedResume.contactInfo.location}</span>}
-            </div>
-            {(optimizedResume.contactInfo.linkedin || optimizedResume.contactInfo.website) && (
+            
+            {/* Contact details - only show if we have at least one item */}
+            {contactItems.length > 0 && (
+              <div className="text-sm text-gray-700 font-sans">
+                {contactItems.map((item, idx) => (
+                  <span key={idx}>
+                    {idx > 0 && <span className="mx-2 text-gray-400">•</span>}
+                    <span className="whitespace-nowrap">{item}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+            
+            {/* LinkedIn / Website links */}
+            {(linkedin || website) && (
               <div className="flex flex-wrap items-center justify-center gap-3 text-sm text-blue-600 mt-2 font-sans">
-                {optimizedResume.contactInfo.linkedin && (
-                  <a href={`https://${optimizedResume.contactInfo.linkedin}`} className="hover:underline whitespace-nowrap">
+                {linkedin && (
+                  <a href={`https://${linkedin.replace(/^https?:\/\//, '')}`} className="hover:underline whitespace-nowrap">
                     LinkedIn
                   </a>
                 )}
-                {optimizedResume.contactInfo.website && (
-                  <a href={`https://${optimizedResume.contactInfo.website}`} className="hover:underline whitespace-nowrap">
+                {website && (
+                  <a href={`https://${website.replace(/^https?:\/\//, '')}`} className="hover:underline whitespace-nowrap">
                     Website
                   </a>
                 )}
               </div>
             )}
           </div>
-        )}
+          )
+        })()}
 
         {/* Sections */}
         <div className="space-y-8">
