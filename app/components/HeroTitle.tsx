@@ -8,8 +8,8 @@ interface HeroTitleProps {
   animated?: boolean
 }
 
-const headline = "Recruiters keep skipping your résumé?"
-const subtitle = "We'll help you fix it."
+const headline = "Get a résumé recruiters actually read."
+const subtitle = "Your résumé is analyzed against the job and rewritten to maximize your chances of an interview."
 const words = headline.split(' ')
 // More gradual scaling: mobile -> tablet -> desktop
 const lineHeight = 'text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl'

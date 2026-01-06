@@ -101,12 +101,17 @@ export interface ResumeAnalysis {
   whatWorks: string[] // Bullet points of existing strengths
   whatsMissing: string[] // Bullet points of gaps the job wants
   keywordsToTarget: {
+    // Deep analysis theme arrays
+    jobThemes?: string[] // Themes/keywords required by job
+    resumeThemes?: string[] // Themes/keywords present in resume
+    missingThemes?: string[] // Themes in job but not in resume
+    // Legacy fields (kept for backwards compatibility)
     verbs: string[] // "Led", "Architected", "Scaled"
-    nouns: string[] // "microservices", "REST APIs"
+    nouns?: string[] // "microservices", "REST APIs"
     concepts: string[] // "cross-functional collaboration"
     techStack: string[] // "Python", "AWS", "Docker"
-    softSkills: string[] // "leadership", "communication"
-    compliance: string[] // "security clearance", "GDPR"
+    softSkills?: string[] // "leadership", "communication"
+    compliance?: string[] // "security clearance", "GDPR"
   }
   rationaleForChanges: string // Paragraph explaining the overall strategy
   constraints?: AnalysisConstraints // Explicit boundaries (added by curator-analyzer)

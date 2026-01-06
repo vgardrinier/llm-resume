@@ -23,6 +23,7 @@ export default function Home() {
   const [structuredResult, setStructuredResult] = useState<StructuredResumeResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [useStructuredFlow, setUseStructuredFlow] = useState(true) // Feature flag for new flow
+  const [analysisMode, setAnalysisMode] = useState<'fast' | 'deep'>('fast') // Default to Fast Mode
   const [generationError, setGenerationError] = useState<string | null>(null)
   const [companyName, setCompanyName] = useState<string | null>(null)
   const [showResume, setShowResume] = useState(false)
@@ -44,6 +45,17 @@ export default function Home() {
   // Quick extraction state
   const [quickMetadata, setQuickMetadata] = useState<{ companyName?: string | null; jobTitle?: string | null; location?: string | null } | null>(null)
   const [fullJdPromise, setFullJdPromise] = useState<Promise<string> | null>(null)
+  
+  // Baseline fit score state (appears during loading)
+  const [baselineFit, setBaselineFit] = useState<{
+    overallScore: number
+    breakdown: {
+      keywordMatch: number
+      themeAlignment: number
+      experienceRelevance: number
+      skillOverlap: number
+    }
+  } | null>(null)
 
   // State to store resolved flags for display (location -> flag emoji)
   const [resolvedFlags, setResolvedFlags] = useState<Map<string, string>>(new Map())
@@ -133,7 +145,22 @@ export default function Home() {
     setFullJdPromise(null)
   }, [jobUrl])
 
-  const generateResume = async () => {
+  const generateResume = async (overrideMode?: 'fast' | 'deep') => {
+    // Validate inputs before starting
+    if (!currentResume || currentResume.trim().length === 0) {
+      setGenerationError('Please upload your resume first.')
+      return
+    }
+
+    // Check if we have job description OR if full JD is loading
+    if (!jobDescription || jobDescription.trim().length === 0) {
+      if (!fullJdPromise) {
+        setGenerationError('Please provide a job description or URL.')
+        return
+      }
+      // If fullJdPromise exists, generateResume will wait for it (line 189-203)
+    }
+
     // Start timing from button click
     const userClickStart = performance.now()
     const timingBreakdown: Record<string, number> = {
@@ -144,13 +171,23 @@ export default function Home() {
       stateUpdate: 0,
       total: 0
     }
-    
+
+    // Use override mode if provided, otherwise use state
+    const currentMode = overrideMode || analysisMode
+    if (overrideMode) {
+      setAnalysisMode(overrideMode)
+    }
+
     setPhase('output')
     setLoading(true)
+    setStructuredResult(null) // Clear previous results to show loading narrative
     setShowResume(false) // Reset resume visibility
-    
+    setBaselineFit(null) // Reset baseline fit score for new analysis
+
     timingBreakdown.buttonClick = performance.now() - userClickStart
-    
+
+    let pollInterval: NodeJS.Timeout | null = null
+
     try {
       // If we have a background full JD extraction promise, wait for it
       let finalJobDescription = jobDescription
@@ -171,6 +208,7 @@ export default function Home() {
       // Debug: Log inputs before API call
       console.log('[Frontend] Starting resume generation', {
         step: 'start',
+        mode: currentMode,
         hasJob: !!finalJobDescription,
         hasResume: !!currentResume,
         jobLength: finalJobDescription?.length || 0,
@@ -179,64 +217,102 @@ export default function Home() {
         waitedForFullJd: !!fullJdPromise,
       })
 
-      // Choose API endpoint based on feature flag
-      const apiEndpoint = useStructuredFlow ? '/api/orchestrator-structured' : '/api/orchestrator'
+      // Choose API endpoint based on mode
+      const apiEndpoint = currentMode === 'fast' ? '/api/analyze-fast-v2' : '/api/analyze-deep'
 
       const apiCallStart = performance.now()
+
+      let data: any
+
+      // Generate a jobId for tracking (especially for Deep Mode baseline fit)
+      const jobId = `job_${Date.now()}_${Math.random().toString(36).substring(7)}`
+
+      // Deep Mode (formerly Premium) and Fast Mode both run synchronously now
+      // to avoid serverless termination issues in background tasks.
+      const requestBody = currentMode === 'fast' 
+        ? {
+            originalResume: currentResume,
+            jobDescription: finalJobDescription,
+            jobTitle: quickMetadata?.jobTitle || null,
+            companyName: companyName || quickMetadata?.companyName || null,
+            // Fallback fields for some model versions
+            job_description: finalJobDescription,
+            candidate_resume: currentResume,
+            creative_mode: creativeMode,
+          }
+        : {
+            job_description: finalJobDescription,
+            candidate_resume: currentResume,
+            creative_mode: creativeMode,
+            jobId, // Pass jobId to track progress/baseline fit
+          }
+
+      // If in Deep Mode, start polling for status (baseline fit)
+      if (currentMode === 'deep') {
+        pollInterval = setInterval(async () => {
+          try {
+            const statusRes = await fetch(`/api/analyze-status?jobId=${jobId}`)
+            if (statusRes.ok) {
+              const statusData = await statusRes.json()
+              if (statusData.baselineFit) {
+                setBaselineFit({
+                  overallScore: statusData.baselineFit.overallScore,
+                  breakdown: statusData.baselineFit.breakdown
+                })
+              }
+            }
+          } catch (e) {
+            console.warn('[Frontend] Status polling failed', e)
+          }
+        }, 2000)
+      }
+
       const response = await fetch(apiEndpoint, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          job_description: finalJobDescription,
-          candidate_resume: currentResume,
-          creative_mode: creativeMode,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
       })
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
         console.error('[Frontend] API error response', {
-          step: 'api_error',
+          mode: currentMode,
           status: response.status,
-          statusText: response.statusText,
           error: errorData,
         })
 
-        // Provide user-friendly error messages based on status code
+        // Provide user-friendly error messages
         let userMessage = 'Failed to generate resume. Please try again.'
         if (response.status === 400) {
-          // Check if it's a job description length issue
-          if (errorData.error?.includes('incomplete') || errorData.error?.includes('minimum')) {
-            userMessage = errorData.error + (errorData.details ? ` ${errorData.details}` : '')
-          } else {
-            userMessage = errorData.error || 'Invalid request. Please check your inputs and try again.'
-          }
+          userMessage = errorData.error || 'Invalid request. Please check your inputs.'
         } else if (response.status === 429) {
           userMessage = 'Too many requests. Please wait a moment and try again.'
-        } else if (response.status === 500) {
-          userMessage = errorData.error || 'Our servers encountered an issue. Please try again in a moment.'
+        } else if (response.status === 504) {
+          userMessage = 'The analysis took too long. Please try Fast Mode instead.'
         } else if (response.status >= 500) {
-          userMessage = 'Service temporarily unavailable. Please try again shortly.'
+          userMessage = errorData.error || 'Our servers encountered an issue. Please try again.'
         }
 
         throw new Error(userMessage)
       }
 
+      data = await response.json()
+      console.log(`[Frontend] ${currentMode === 'deep' ? 'Deep' : 'Fast'} analysis completed`)
+
+
       // Parse response based on which flow we're using
       timingBreakdown.apiCall = performance.now() - apiCallStart
       const parseStart = performance.now()
-      
+
       if (useStructuredFlow) {
-        const data: StructuredResumeResponse = await response.json()
+        const structuredData: StructuredResumeResponse = data
         timingBreakdown.responseParse = performance.now() - parseStart
 
         // Extract server-side timing if available
-        const serverTiming = data.metadata?.timing || {}
-        
+        const serverTiming = structuredData.metadata?.timing || {}
+
         const stateUpdateStart = performance.now()
-        setStructuredResult(data)
+        setStructuredResult(structuredData)
         timingBreakdown.stateUpdate = performance.now() - stateUpdateStart
         
         timingBreakdown.total = performance.now() - userClickStart
@@ -287,55 +363,34 @@ export default function Home() {
             return bottlenecks.length > 0 ? bottlenecks : ['✅ All timings look reasonable']
           })()
         })
-      } else {
-        const data: GenerateInsightsResponse = await response.json()
-        timingBreakdown.responseParse = performance.now() - parseStart
-
-        const stateUpdateStart = performance.now()
-        setResult(data)
-        timingBreakdown.stateUpdate = performance.now() - stateUpdateStart
-        
-        timingBreakdown.total = performance.now() - userClickStart
-
-        console.log('[Frontend] Legacy API response received', {
-          step: 'api_response',
-          hasInsights: !!data.insights,
-          hasFitScore: !!data.insights?.fit,
-          fitScoreBefore: data.insights?.fit?.score_before,
-          fitScoreAfter: data.insights?.fit?.score_after,
-          hasOptimizedResume: !!data.optimized_resume,
-          optimizedResumeLength: data.optimized_resume?.length || 0,
-        })
-
-        console.log('⏱️ TIMING BREAKDOWN (Button Click → Output Reveal):', {
-          'Client-Side': {
-            'Button Click → Setup': `${timingBreakdown.buttonClick.toFixed(0)}ms`,
-            'Full JD Wait (if any)': `${timingBreakdown.fullJdWait.toFixed(0)}ms`,
-            'API Call (network + server)': `${timingBreakdown.apiCall.toFixed(0)}ms`,
-            'Response Parse': `${timingBreakdown.responseParse.toFixed(0)}ms`,
-            'State Update': `${timingBreakdown.stateUpdate.toFixed(0)}ms`,
-            'TOTAL CLIENT TIME': `${timingBreakdown.total.toFixed(0)}ms (${(timingBreakdown.total / 1000).toFixed(1)}s)`
-          }
-        })
       }
 
       setGenerationError(null) // Clear any previous errors on success
     } catch (error) {
-      console.error('Error generating resume:', error)
-      
+      console.error('[Frontend] Error generating resume:', error)
+      console.error('[Frontend] Error details:', {
+        errorType: error?.constructor?.name,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        mode: analysisMode,
+        hasJob: !!jobDescription,
+        hasResume: !!currentResume,
+      })
+
       // Handle different error types with user-friendly messages
-      let errorMessage = 'Failed to generate resume. Please try again.'
-      
+      let errorMessage = 'Failed to complete analysis. Please try again.'
+
       if (error instanceof TypeError && error.message.includes('fetch')) {
         errorMessage = 'Network error. Please check your connection and try again.'
       } else if (error instanceof Error) {
         errorMessage = error.message
       }
-      
+
       setGenerationError(errorMessage)
       // Reset phase to input so user can try again
       setPhase('input')
     } finally {
+      if (pollInterval) clearInterval(pollInterval)
       setLoading(false)
     }
   }
@@ -508,6 +563,7 @@ export default function Home() {
         if (quickData.companyName) setCompanyName(quickData.companyName)
 
         // Start full JD extraction in background
+        console.log('[Frontend] 🚀 Triggering background full JD extraction now...')
         const fullExtractionPromise = fetch('/api/fetch-job', {
           method: 'POST',
           headers: {
@@ -540,7 +596,10 @@ export default function Home() {
                 finalJobDescription = `${prefixParts.join('\n')}\n\n${fullData.jobDescription}`
               }
             }
-            
+
+            // Update state so button becomes enabled
+            setJobDescription(finalJobDescription)
+
             return finalJobDescription
           })
           .catch((error) => {
@@ -559,6 +618,13 @@ export default function Home() {
       console.log('[Frontend] Quick extraction returned full data or failed, using directly')
       if (quickData.companyName) setCompanyName(quickData.companyName)
       
+      // Store metadata for display
+      setQuickMetadata({
+        companyName: quickData.companyName || null,
+        jobTitle: quickData.jobTitle || null,
+        location: quickData.location || null,
+      })
+      
       let finalJobDescription = quickData.jobDescription || ''
       if (quickData.jobTitle || quickData.location) {
         const prefixParts: string[] = []
@@ -571,6 +637,7 @@ export default function Home() {
       setJobDescription(finalJobDescription)
       
       setUrlFetchSuccess(true)
+      setUrlLoading(false) // CRITICAL: Stop loading spinner
       setManualJobTitle('') // Clear manual entry on successful URL fetch
 
       // Store company info if needed (for display later)
@@ -698,7 +765,7 @@ export default function Home() {
                       <ErrorAlert
                         message={generationError}
                         onDismiss={() => setGenerationError(null)}
-                        onRetry={generateResume}
+                        onRetry={() => generateResume()}
                         variant="error"
                       />
                     </div>
@@ -706,6 +773,32 @@ export default function Home() {
 
                   {/* Floating capsule */}
                   <div className="backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.05)] rounded-2xl px-4 py-4 md:px-6 md:py-5 lg:px-8 lg:py-6 space-y-3">
+                    {/* Mode Toggle - Pill style at top of form */}
+                    <div className="flex justify-center pb-3">
+                      <div className="inline-flex bg-gray-100 rounded-full p-1 gap-1">
+                        <button
+                          onClick={() => setAnalysisMode('fast')}
+                          className={`px-6 py-2 rounded-full font-sans text-sm font-medium transition-all ${
+                            analysisMode === 'fast'
+                              ? 'bg-gray-900 text-white shadow-sm'
+                              : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                        >
+                          Quick Optimize
+                        </button>
+                        <button
+                          onClick={() => setAnalysisMode('deep')}
+                          className={`px-6 py-2 rounded-full font-sans text-sm font-medium transition-all ${
+                            analysisMode === 'deep'
+                              ? 'bg-gray-900 text-white shadow-sm'
+                              : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                        >
+                          Full Analysis
+                        </button>
+                      </div>
+                    </div>
+
                     {/* Desktop: URL Input and Upload side by side, Mobile: stacked */}
                     <div className="flex flex-col md:flex-row gap-2">
                       {/* Job URL Input */}
@@ -720,16 +813,34 @@ export default function Home() {
                           className="flex-1 min-h-[56px] px-4 border border-gray-300 rounded-xl focus:ring-2 focus:ring-gray-900 focus:border-gray-900 transition-all hover:border-gray-400 backdrop-blur-sm bg-white/60 placeholder:text-gray-500 text-gray-900 text-sm md:text-base font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
                           disabled={urlLoading}
                         />
-                        <Tooltip key="fetch-job-tooltip" content="Fetch job description" position="top" align="left" delay={200}>
+                        <Tooltip key="fetch-job-tooltip" content={urlFetchSuccess ? "Job description extracted successfully" : "Fetch job description"} position="top" align="left" delay={200}>
                           <button
                             type="button"
                             onClick={handleFetchJobFromUrl}
                             disabled={urlLoading || !jobUrl.trim()}
-                            className="min-h-[56px] min-w-[56px] rounded-xl bg-gray-900 hover:bg-gray-800 disabled:bg-gray-300 disabled:cursor-not-allowed text-white flex items-center justify-center transition-all flex-shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
+                            className={`min-h-[56px] min-w-[56px] rounded-xl text-white border flex items-center justify-center transition-all flex-shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.05)] ${
+                              urlFetchSuccess
+                                ? 'bg-green-600 hover:bg-green-700 border-green-600'
+                                : urlLoading
+                                ? 'bg-gray-300 border-gray-300'
+                                : 'bg-gray-900 hover:bg-gray-800 border-gray-900'
+                            }`}
                             aria-label="Fetch job description"
                           >
                             {urlLoading ? (
                               <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                            ) : urlFetchSuccess ? (
+                              <motion.svg
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1 }}
+                                transition={{ type: "spring", stiffness: 200, damping: 15 }}
+                                className="h-5 w-5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                stroke="currentColor"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                              </motion.svg>
                             ) : (
                               <Link2 className="h-4 w-4" />
                             )}
@@ -815,41 +926,11 @@ export default function Home() {
                       </div>
                     </div>
 
-                    {/* Mobile: Upload text below icon */}
-                    <div className="md:hidden flex justify-center">
-                      <AnimatePresence mode="wait">
-                        {uploadedFile && currentResume && !parseLoading ? (
-                          <motion.div
-                            key="success-mobile"
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 10 }}
-                            transition={{ duration: 0.3 }}
-                            className="text-xs text-green-900 backdrop-blur-sm bg-green-50/80 px-3 py-2 rounded-xl border border-green-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
-                          >
-                            ✓ {uploadedFile.name}
-                          </motion.div>
-                        ) : parseError ? (
-                          <motion.div
-                            key="error-mobile"
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 10 }}
-                            transition={{ duration: 0.3 }}
-                            className="text-xs text-red-900 backdrop-blur-sm bg-red-50/80 px-3 py-2 rounded-xl border border-red-200 truncate w-full font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]"
-                          >
-                            ⚠️ {parseError}
-                          </motion.div>
-                        ) : (
-                          <span className="text-xs text-gray-500 font-serif">Upload résumé (PDF)</span>
-                        )}
-                      </AnimatePresence>
-                    </div>
-
                     {/* Helper text and status messages */}
                     <div className="space-y-2">
+                      {/* LinkedIn/Indeed/Glassdoor logos - Hidden on mobile to save space */}
                       {!urlError && !urlFetchSuccess && (
-                        <div className="flex items-center gap-2">
+                        <div className="hidden md:flex items-center gap-2">
                           <div className="flex items-center gap-1.5">
                             <img 
                               src="/linkedin_icon.png" 
@@ -882,12 +963,12 @@ export default function Home() {
                       {/* Success message */}
                       {urlFetchSuccess && !urlLoading && (
                         <div className="text-xs text-gray-900 backdrop-blur-sm bg-white/60 px-3 py-2 rounded-xl border border-gray-200 font-serif shadow-[0_2px_10px_rgba(0,0,0,0.05)]">
-                          {quickMetadata && !jobDescription ? (
+                          {quickMetadata?.jobTitle || quickMetadata?.companyName ? (
                             <>
-                              ✓ {quickMetadata.jobTitle || 'Job'} {quickMetadata.companyName ? `- ${quickMetadata.companyName}` : ''}{getCountryFlag(quickMetadata.location)}
+                              ✓ {quickMetadata.jobTitle || 'Job'}{quickMetadata.companyName ? ` at ${quickMetadata.companyName}` : ''}{getCountryFlag(quickMetadata.location)}
                             </>
                           ) : (
-                            <>✓ Job description extracted successfully ({jobDescription.length} characters)</>
+                            <>✓ Job description extracted successfully</>
                           )}
                         </div>
                       )}
@@ -934,14 +1015,14 @@ export default function Home() {
                     {/* CTA Button - Hidden on mobile (shown as sticky bottom button) */}
                     <div className="hidden md:flex justify-center pt-6">
                       <Button
-                        onClick={generateResume}
+                        onClick={() => generateResume()}
                         disabled={(!jobDescription && !quickMetadata) || !currentResume || loading}
                         variant={(jobDescription || quickMetadata) && currentResume && !loading ? 'gradient' : 'primary'}
                         loading={loading}
-                        loadingText="Analyzing..."
+                        loadingText="Optimizing..."
                         className="text-base px-8 py-4"
                       >
-                        Analyze My Résumé
+                        Optimize My Résumé
                       </Button>
                     </div>
                   </div>
@@ -959,7 +1040,12 @@ export default function Home() {
                   {structuredResult && (
                     <ResumeWorkspace
                       data={structuredResult}
+                      mode={analysisMode}
+                      loading={loading}
                       onStartOver={startOver}
+                      onRunFullAnalysis={analysisMode === 'fast' ? () => {
+                        generateResume('deep')
+                      } : undefined}
                     />
                   )}
 
@@ -972,7 +1058,7 @@ export default function Home() {
                           <ErrorAlert
                             message={generationError}
                             onDismiss={() => setGenerationError(null)}
-                            onRetry={generateResume}
+                            onRetry={() => generateResume()}
                             variant="error"
                           />
                         </div>
@@ -987,6 +1073,7 @@ export default function Home() {
                           location={quickMetadata?.location || null}
                           resume={currentResume}
                           isLoading={loading}
+                          baselineFit={baselineFit ?? undefined}
                         />
                       )}
 
@@ -1026,14 +1113,14 @@ export default function Home() {
           className="fixed bottom-4 left-4 right-4 z-50 md:hidden"
         >
           <Button
-            onClick={generateResume}
+            onClick={() => generateResume()}
             disabled={(!jobDescription && !quickMetadata) || !currentResume || loading}
             variant={(jobDescription || quickMetadata) && currentResume && !loading ? 'gradient' : 'primary'}
             loading={loading}
-            loadingText="Analyzing..."
+            loadingText="Optimizing..."
             className="w-full text-lg font-medium shadow-lg"
           >
-            Analyze My Résumé
+            Optimize My Résumé
           </Button>
         </motion.div>
       )}

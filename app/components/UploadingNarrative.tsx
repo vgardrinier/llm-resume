@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { BaselineFitDisplay } from './BaselineFitDisplay'
 
 interface UploadingNarrativeProps {
   jobDescription?: string
@@ -10,6 +11,15 @@ interface UploadingNarrativeProps {
   location?: string | null
   resume?: string
   isLoading?: boolean // Whether the API call is still in progress
+  baselineFit?: {
+    overallScore: number
+    breakdown: {
+      keywordMatch: number
+      themeAlignment: number
+      experienceRelevance: number
+      skillOverlap: number
+    }
+  }
 }
 
 // Best-effort, non-blocking client extraction; skips if not found
@@ -33,7 +43,8 @@ export function UploadingNarrative({
   jobTitle,
   location,
   resume,
-  isLoading = true
+  isLoading = true,
+  baselineFit
 }: UploadingNarrativeProps) {
   const derivedCompany = useMemo(() => companyNameHint || extractCompanyNameClient(jobDescription) || null, [jobDescription, companyNameHint])
   const [step, setStep] = useState(0)
@@ -329,7 +340,7 @@ export function UploadingNarrative({
                     : beats[step]}
                 </motion.p>
               </AnimatePresence>
-              {isLoading && progress >= 95 && step === beats.length - 1 && lastShownBeatRef.current >= beats.length - 1 && (
+              {isLoading && progress >= 95 && step === beats.length - 1 && lastShownBeatRef.current >= beats.length - 1 && !baselineFit && (
                 <motion.p
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -343,6 +354,21 @@ export function UploadingNarrative({
           )}
         </div>
       </div>
+      
+      {/* Show baseline fit score as soon as it's available */}
+      {isLoading && baselineFit && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="w-full max-w-lg"
+        >
+          <BaselineFitDisplay 
+            overallScore={baselineFit.overallScore}
+            breakdown={baselineFit.breakdown}
+          />
+        </motion.div>
+      )}
     </div>
   )
 }

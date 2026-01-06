@@ -8,10 +8,13 @@ import { ResumeEditor } from './ResumeEditorV2'
 
 interface ResumeWorkspaceProps {
   data: StructuredResumeResponse
+  mode?: 'fast' | 'deep'
+  loading?: boolean
   onStartOver: () => void
+  onRunFullAnalysis?: () => void
 }
 
-export function ResumeWorkspace({ data, onStartOver }: ResumeWorkspaceProps) {
+export function ResumeWorkspace({ data, mode = 'deep', loading = false, onStartOver, onRunFullAnalysis }: ResumeWorkspaceProps) {
   // Track which changes have been accepted/rejected
   const [acceptedChanges, setAcceptedChanges] = useState<Set<string>>(new Set())
   const [rejectedChanges, setRejectedChanges] = useState<Set<string>>(new Set())
@@ -33,14 +36,18 @@ export function ResumeWorkspace({ data, onStartOver }: ResumeWorkspaceProps) {
   }
 
   // Helper: Normalize section names for matching (handles "Summary" vs "Professional Summary", etc.)
-  const normalizeSectionName = (name: string): string => {
+  const normalizeSectionName = (name: string | undefined): string => {
+    if (!name || typeof name !== 'string') return ''
     return name.toLowerCase().trim().replace(/\s+/g, ' ')
   }
 
   // Helper: Match change section to resume section title
-  const matchesSection = (changeSection: string, sectionTitle: string): boolean => {
+  const matchesSection = (changeSection: string | undefined, sectionTitle: string | undefined): boolean => {
     const normalizedChange = normalizeSectionName(changeSection)
     const normalizedTitle = normalizeSectionName(sectionTitle)
+
+    // If either is empty, no match
+    if (!normalizedChange || !normalizedTitle) return false
     
     // Direct match
     if (normalizedChange === normalizedTitle) return true
@@ -95,19 +102,65 @@ export function ResumeWorkspace({ data, onStartOver }: ResumeWorkspaceProps) {
   }), [data.changes, data.optimizedResume.sections])
 
   const handleAcceptChange = (changeId: string) => {
+    // Find the change being accepted
+    const acceptedChange = data.changes.find(c => c.id === changeId)
+    
+    // Auto-reject sibling alternatives on the same line
+    // (If multiple suggestions exist on same line, accepting one should resolve the line)
+    let siblingsToReject: string[] = []
+    if (acceptedChange?.position?.sectionIndex !== undefined && acceptedChange?.position?.bulletIndex !== undefined) {
+      // Find other changes at the same position
+      siblingsToReject = data.changes
+        .filter(c => 
+          c.id !== changeId &&
+          c.section === acceptedChange.section &&
+          c.position?.sectionIndex === acceptedChange.position?.sectionIndex &&
+          c.position?.bulletIndex === acceptedChange.position?.bulletIndex
+        )
+        .map(c => c.id)
+    }
+    
     setAcceptedChanges(prev => new Set(prev).add(changeId))
     setRejectedChanges(prev => {
       const next = new Set(prev)
       next.delete(changeId)
+      // Auto-reject siblings (alternatives on same line)
+      siblingsToReject.forEach(id => next.add(id))
       return next
     })
   }
 
   const handleRejectChange = (changeId: string) => {
-    setRejectedChanges(prev => new Set(prev).add(changeId))
+    // Find the change being rejected
+    const rejectedChange = data.changes.find(c => c.id === changeId)
+    
+    // Auto-reject sibling alternatives on the same line
+    // (If multiple suggestions exist on same line, rejecting one should revert to original)
+    let siblingsToReject: string[] = []
+    if (rejectedChange?.position?.sectionIndex !== undefined && rejectedChange?.position?.bulletIndex !== undefined) {
+      // Find other changes at the same position
+      siblingsToReject = data.changes
+        .filter(c => 
+          c.id !== changeId &&
+          c.section === rejectedChange.section &&
+          c.position?.sectionIndex === rejectedChange.position?.sectionIndex &&
+          c.position?.bulletIndex === rejectedChange.position?.bulletIndex
+        )
+        .map(c => c.id)
+    }
+    
+    setRejectedChanges(prev => {
+      const next = new Set(prev)
+      next.add(changeId)
+      // Auto-reject siblings (alternatives on same line) - this reverts to original
+      siblingsToReject.forEach(id => next.add(id))
+      return next
+    })
     setAcceptedChanges(prev => {
       const next = new Set(prev)
       next.delete(changeId)
+      // Also remove siblings from accepted (in case they were accepted)
+      siblingsToReject.forEach(id => next.delete(id))
       return next
     })
   }
@@ -153,32 +206,79 @@ export function ResumeWorkspace({ data, onStartOver }: ResumeWorkspaceProps) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
-      className="w-full flex gap-8 py-8"
+      className={`w-full flex gap-8 py-8 ${mode === 'fast' ? 'justify-center' : ''}`}
       style={{ scrollbarGutter: 'stable' }}
     >
-      {/* Two-column desk layout */}
-      {/* Left Pane: Glass Dashboard - Fixed width (sections animate individually) */}
-      <div className="w-[360px] shrink-0 h-[calc(100vh-8rem)] overflow-y-auto">
-        <div className="backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.1)] rounded-2xl p-6">
-          <TheBrain
-            analysis={data.analysis}
-            salary={data.salary}
-            changesCount={visibleChanges.length}
-            acceptedCount={visibleChanges.filter(c => acceptedChanges.has(c.id)).length}
-            rejectedCount={visibleChanges.filter(c => rejectedChanges.has(c.id)).length}
-            onStartOver={onStartOver}
-          />
+      {/* Left Pane: Glass Dashboard - Only show in Deep Mode */}
+      {mode === 'deep' && (
+        <div className="w-[360px] shrink-0 h-[calc(100vh-8rem)] overflow-y-auto">
+          <div className="backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.1)] rounded-2xl p-6">
+            <TheBrain
+              analysis={data.analysis}
+              salary={data.salary}
+              changesCount={visibleChanges.length}
+              acceptedCount={visibleChanges.filter(c => acceptedChanges.has(c.id)).length}
+              rejectedCount={visibleChanges.filter(c => rejectedChanges.has(c.id)).length}
+              mode={mode}
+              onStartOver={onStartOver}
+              onRunFullAnalysis={onRunFullAnalysis}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Right Pane: Glass Resume Editor - Appears all at once after left panel sections */}
+      {/* Right Pane: Resume Editor */}
       <motion.div
         variants={rightPanelVariants}
         initial="hidden"
         animate="visible"
-        className="flex-1 min-w-[700px] h-[calc(100vh-8rem)] overflow-y-auto"
+        className={`${
+          mode === 'fast'
+            ? 'w-full max-w-[1200px] overflow-y-auto'
+            : 'flex-1 min-w-[700px] h-[calc(100vh-8rem)] overflow-y-auto'
+        }`}
       >
-        <div className="backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.1)] rounded-2xl p-6 h-full">
+        {/* Fast Mode Header - Show above CV */}
+        {mode === 'fast' && (
+          <div className="backdrop-blur-md bg-gradient-to-r from-gray-900 to-gray-700 border border-gray-800 shadow-[0_4px_30px_rgba(0,0,0,0.2)] rounded-2xl p-6 mb-6 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold mb-2 font-serif">
+                  Quick Optimize
+                </h2>
+                <p className="text-sm text-gray-200 font-sans">
+                  Your CV has been optimized with high-impact changes. Want fit scores and diagnostics?
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                {onRunFullAnalysis && (
+                  <div className="flex flex-col items-end gap-1">
+                    <button
+                      onClick={onRunFullAnalysis}
+                      disabled={loading}
+                      className={`py-2 px-6 rounded-xl transition-all shadow-lg font-sans text-sm font-medium flex items-center gap-2 ${
+                        loading
+                          ? 'bg-gray-300 text-gray-600 cursor-not-allowed'
+                          : 'bg-white text-gray-900 hover:bg-gray-100'
+                      }`}
+                    >
+                      {loading ? 'Running...' : 'Run Full Analysis'}
+                    </button>
+                    <span className="text-xs text-gray-300 font-sans">(re-runs with diagnostics)</span>
+                  </div>
+                )}
+                <button
+                  onClick={onStartOver}
+                  className="text-gray-300 hover:text-white underline text-sm transition-colors font-sans"
+                >
+                  Start over
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className={`backdrop-blur-md bg-white/60 border border-gray-200/50 shadow-[0_4px_30px_rgba(0,0,0,0.1)] rounded-2xl p-6 ${mode === 'fast' ? 'h-auto' : 'h-full'}`}>
           <ResumeEditor
             optimizedResume={data.optimizedResume}
             changes={data.changes}

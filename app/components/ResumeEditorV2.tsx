@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useReactToPrint } from 'react-to-print'
 import type { StructuredResume, ResumeChange } from '@/types/api'
-import { Check, X, Info, Download } from 'lucide-react'
+import { Check, X, Info, Download, ChevronRight, ChevronLeft, Sparkles } from 'lucide-react'
 import { Button } from './Button'
 import { DownloadModal, FeedbackData } from './DownloadModal'
 import { generateWordDocument } from '@/lib/utils/generateWordDocument'
@@ -21,6 +21,38 @@ interface ResumeEditorProps {
   companyName?: string
 }
 
+// Grammarly-style underline colors (subtle, professional)
+const UNDERLINE_COLORS = {
+  modification: {
+    line: 'border-amber-400',
+    lineHover: 'border-amber-500',
+    dot: 'bg-amber-400',
+    text: 'text-amber-700',
+    bg: 'bg-amber-50',
+  },
+  addition: {
+    line: 'border-emerald-400',
+    lineHover: 'border-emerald-500', 
+    dot: 'bg-emerald-400',
+    text: 'text-emerald-700',
+    bg: 'bg-emerald-50',
+  },
+  deletion: {
+    line: 'border-rose-400',
+    lineHover: 'border-rose-500',
+    dot: 'bg-rose-400',
+    text: 'text-rose-700',
+    bg: 'bg-rose-50',
+  },
+  metric: {
+    line: 'border-violet-400',
+    lineHover: 'border-violet-500',
+    dot: 'bg-violet-400',
+    text: 'text-violet-700',
+    bg: 'bg-violet-50',
+  },
+}
+
 // Pre-index changes for O(1) lookup instead of O(n²) filtering
 type ChangeIndex = {
   bySectionAndBullet: Map<string, ResumeChange[]>
@@ -29,7 +61,8 @@ type ChangeIndex = {
 }
 
 // Normalize section name for consistent matching (case-insensitive, trimmed)
-function normalizeSectionName(name: string): string {
+function normalizeSectionName(name: string | undefined): string {
+  if (!name || typeof name !== 'string') return ''
   return name.toLowerCase().trim().replace(/\s+/g, ' ')
 }
 
@@ -132,9 +165,76 @@ export function ResumeEditor({
   jobTitle,
   companyName
 }: ResumeEditorProps) {
-  const [hoveredChange, setHoveredChange] = useState<string | null>(null)
+  // GRAMMARLY-STYLE: Click to expand (not hover)
+  const [activeChangeId, setActiveChangeId] = useState<string | null>(null)
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false)
   const resumeRef = useRef<HTMLDivElement>(null)
+  
+  // Track user input for [X] placeholders: Map<changeId, Map<placeholderIndex, value>>
+  const [metricInputs, setMetricInputs] = useState<Map<string, Map<number, string>>>(new Map())
+  
+  // Keyboard navigation: close on Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && activeChangeId) {
+        setActiveChangeId(null)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [activeChangeId])
+  
+  // GRAMMARLY-STYLE: Click outside to close
+  useEffect(() => {
+    if (!activeChangeId) return
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      // Check if click is outside any suggestion card
+      const target = e.target as HTMLElement
+      if (!target.closest('[data-suggestion-card]') && !target.closest('[data-suggestion-text]')) {
+        setActiveChangeId(null)
+      }
+    }
+    
+    // Delay to prevent immediate close on the same click that opened it
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside)
+    }, 100)
+    
+    return () => {
+      clearTimeout(timeoutId)
+      document.removeEventListener('click', handleClickOutside)
+    }
+  }, [activeChangeId])
+  
+  // Helper: Set metric value for a change
+  const setMetricValue = (changeId: string, placeholderIndex: number, value: string) => {
+    setMetricInputs(prev => {
+      const next = new Map(prev)
+      if (!next.has(changeId)) {
+        next.set(changeId, new Map())
+      }
+      next.get(changeId)!.set(placeholderIndex, value)
+      return next
+    })
+  }
+  
+  // Helper: Get display text with [X] replaced by user input
+  const getTextWithMetrics = (text: string, changeId: string): string => {
+    if (!text.includes('[X]')) return text
+    
+    const changeInputs = metricInputs.get(changeId)
+    if (!changeInputs) return text
+    
+    let placeholderIndex = 0
+    
+    // Replace all [X] occurrences safely (avoids infinite loop if value is '[X]')
+    return text.replace(/\[X\]/g, () => {
+      const value = changeInputs.get(placeholderIndex) || '[X]'
+      placeholderIndex++
+      return value
+    })
+  }
 
   const handlePrint = useReactToPrint({
     contentRef: resumeRef,
@@ -157,6 +257,46 @@ export function ResumeEditor({
     `
   })
 
+  // Helper: Apply metric inputs to resume structure (for download)
+  const applyMetricsToResume = (resume: StructuredResume): StructuredResume => {
+    // Deep clone to avoid mutating original
+    const cloned = JSON.parse(JSON.stringify(resume)) as StructuredResume
+    
+    // Find all changes that have metrics and apply them
+    changes.forEach(change => {
+      if (!change.suggested.includes('[X]')) return
+      if (getChangeStatus(change.id) === 'rejected') return // Skip rejected changes
+      
+      const textWithMetrics = getTextWithMetrics(change.suggested, change.id)
+      
+      // Find and replace in the cloned resume
+      cloned.sections.forEach(section => {
+        if (typeof section.content === 'string') {
+          // Simple string replacement for summary sections
+          if (section.content === change.suggested) {
+            section.content = textWithMetrics
+          }
+        } else if (Array.isArray(section.content)) {
+          if (section.type === 'experience' || section.type === 'projects') {
+            section.content.forEach((entry: any) => {
+              if (entry.bullets && Array.isArray(entry.bullets)) {
+                entry.bullets = entry.bullets.map((bullet: string) => {
+                  // Replace if this bullet matches the change
+                  if (bullet === change.suggested) {
+                    return textWithMetrics
+                  }
+                  return bullet
+                })
+              }
+            })
+          }
+        }
+      })
+    })
+    
+    return cloned
+  }
+  
   const handleDownload = async (format: 'pdf' | 'word', feedback: FeedbackData) => {
     // Log feedback to console
     console.log('Download initiated:', {
@@ -168,6 +308,9 @@ export function ResumeEditor({
     })
 
     const fileName = `${optimizedResume.contactInfo.name.replace(/\s+/g, '_')}_${companyName && companyName.toLowerCase() !== 'company' ? companyName.replace(/\s+/g, '_') : 'Rightfit'}`
+    
+    // Apply metric values before download
+    const resumeWithMetrics = applyMetricsToResume(optimizedResume)
 
     if (format === 'pdf') {
       // Close modal and trigger print dialog
@@ -176,9 +319,9 @@ export function ResumeEditor({
         handlePrint()
       }, 300) // Small delay to let modal close animation finish
     } else if (format === 'word') {
-      // Generate and download Word document
+      // Generate and download Word document with metrics applied
       try {
-        await generateWordDocument(optimizedResume, `${fileName}.docx`)
+        await generateWordDocument(resumeWithMetrics, `${fileName}.docx`)
         setIsDownloadModalOpen(false)
       } catch (error) {
         console.error('Error generating Word document:', error)
@@ -228,6 +371,42 @@ export function ResumeEditor({
   
   // DEBUG: Log changes breakdown on mount/update
   useEffect(() => {
+    // CRITICAL DEBUG: Check for duplicate positions (multiple changes at same location)
+    const positionMap = new Map<string, any[]>()
+    changes.forEach(c => {
+      if (c.position?.sectionIndex !== undefined && c.position?.bulletIndex !== undefined) {
+        const key = `${c.section}-${c.position.sectionIndex}-${c.position.bulletIndex}`
+        if (!positionMap.has(key)) positionMap.set(key, [])
+        positionMap.get(key)!.push(c)
+      }
+    })
+    
+    // Log any positions with multiple changes (this causes the "2" badge)
+    const duplicatePositions = Array.from(positionMap.entries()).filter(([_, changes]) => changes.length > 1)
+    if (duplicatePositions.length > 0) {
+      console.warn('[ResumeEditor] ⚠️ DUPLICATE POSITIONS DETECTED - Multiple changes at same location:', 
+        duplicatePositions.map(([key, changes]) => ({
+          position: key,
+          count: changes.length,
+          changes: changes.map(c => ({
+            id: c.id,
+            type: c.type,
+            originalPreview: c.original?.substring(0, 50),
+            suggestedPreview: c.suggested?.substring(0, 50)
+          }))
+        }))
+      )
+    }
+    
+    // Log all change positions for debugging
+    console.log('[ResumeEditor] All change positions:', changes.map(c => ({
+      id: c.id,
+      type: c.type,
+      section: c.section,
+      position: c.position,
+      suggestedPreview: c.suggested?.substring(0, 40)
+    })))
+    
     const changesByType = changes.reduce((acc: any, c: any) => {
       acc[c.type] = (acc[c.type] || 0) + 1
       return acc
@@ -410,61 +589,79 @@ export function ResumeEditor({
       ? (firstChange.original && firstChange.original.trim().length > 0)
         ? firstChange.original  // For deletions, show original (what will be removed)
         : originalText
-      : (isValidSuggestion(firstChange.suggested) ? firstChange.suggested : originalText) // For additions/modifications, show suggested (what it will become)
+      : (isValidSuggestion(firstChange.suggested) 
+          ? getTextWithMetrics(firstChange.suggested, firstChange.id) // Replace [X] with user input
+          : originalText) // For additions/modifications, show suggested (what it will become)
 
-    // Use different colors for different change types
-    // Yellow for modifications (edits), Green/Blue for additions (new content)
-    const highlightClasses = isAddition
-      ? `bg-green-200/90 border-b-2 border-green-600 px-1 rounded-sm cursor-pointer transition-all duration-200 hover:bg-green-300/90 hover:border-green-700`
-      : isDeletion
-      ? `bg-red-200/90 border-b-2 border-red-600 px-1 rounded-sm cursor-pointer transition-all duration-200 hover:bg-red-300/90 hover:border-red-700`
-      : `bg-yellow-200/90 border-b-2 border-yellow-600 px-1 rounded-sm cursor-pointer transition-all duration-200 hover:bg-yellow-300/90 hover:border-yellow-700`
+    // Check if any pending changes have unfilled [X] placeholders
+    const hasUnfilledPlaceholders = pendingChanges.some(c => {
+      if (!c.suggested.includes('[X]')) return false
+      const changeInputs = metricInputs.get(c.id)
+      if (!changeInputs) return true // No inputs at all
+      const placeholderCount = (c.suggested.match(/\[X\]/g) || []).length
+      // Check if all placeholders have values
+      for (let i = 0; i < placeholderCount; i++) {
+        const value = changeInputs.get(i)
+        if (!value || value.trim().length === 0) return true
+      }
+      return false
+    })
     
-    const badgeColor = isAddition
-      ? 'bg-green-600'
+    // GRAMMARLY-STYLE: Subtle underlines instead of heavy background highlights
+    // Determines color based on change type
+    const colorScheme = hasUnfilledPlaceholders
+      ? UNDERLINE_COLORS.metric
+      : isAddition
+      ? UNDERLINE_COLORS.addition
       : isDeletion
-      ? 'bg-red-600'
-      : 'bg-yellow-600'
-    
-    const shadowColor = isAddition
-      ? 'rgba(34, 197, 94, 0.2)' // green
-      : isDeletion
-      ? 'rgba(239, 68, 68, 0.2)' // red
-      : 'rgba(234, 179, 8, 0.2)' // yellow
+      ? UNDERLINE_COLORS.deletion
+      : UNDERLINE_COLORS.modification
 
-    // Show original text with highlight, and handle multiple changes
-    const hasMultipleChanges = pendingChanges.length > 1
+    const isActive = activeChangeId === pendingChanges[0]?.id
+    
+    // GRAMMARLY-STYLE: Underline only, no background (cleaner, more professional)
+    const underlineClasses = `
+      border-b-2 border-dotted ${colorScheme.line}
+      cursor-pointer transition-all duration-150
+      hover:${colorScheme.lineHover} hover:border-solid
+      ${isActive ? `${colorScheme.lineHover} border-solid` : ''}
+    `.trim().replace(/\s+/g, ' ')
     
     return (
-      <span className="relative inline-block group">
-        {/* Show text with highlight when there are pending changes */}
+      <span className="relative inline">
+        {/* GRAMMARLY-STYLE: Click to expand, not hover */}
         <span
-          className={`text-gray-700 font-sans ${highlightClasses}`}
-          style={{
-            textDecoration: 'none',
-            boxShadow: `0 1px 2px ${shadowColor}`
+          data-suggestion-text
+          onClick={() => {
+            // Toggle: click again to close
+            if (isActive) {
+              setActiveChangeId(null)
+            } else {
+              setActiveChangeId(pendingChanges[0].id)
+            }
           }}
+          className={`text-gray-700 font-sans ${underlineClasses}`}
         >
           {displayText}
         </span>
-        {/* Show count badge when multiple changes are on the same line */}
-        {hasMultipleChanges && (
-          <span className={`ml-2 inline-flex items-center justify-center w-5 h-5 rounded-full ${badgeColor} text-white text-xs font-semibold font-sans shadow-sm`}>
-            {pendingChanges.length}
-          </span>
-        )}
-        {/* Render tooltip for the first pending change (or all if multiple) */}
-        {pendingChanges.length > 0 && (
+        {/* CLICK-TO-EXPAND: Show card only when this change is active */}
+        {isActive && pendingChanges.length > 0 && (
           <ChangeOverlay
             change={pendingChanges[0]}
-            allChanges={pendingChanges}
             status={getChangeStatus(pendingChanges[0].id)}
-            isHovered={hoveredChange === pendingChanges[0].id || pendingChanges.some(c => hoveredChange === c.id)}
-            onHover={() => setHoveredChange(pendingChanges[0].id)}
-            onLeave={() => setHoveredChange(null)}
-            onAccept={(changeId) => onAcceptChange(changeId)}
-            onReject={(changeId) => onRejectChange(changeId)}
-            multipleChanges={hasMultipleChanges}
+            isHovered={true}
+            onHover={() => {}}
+            onLeave={() => setActiveChangeId(null)}
+            onAccept={(changeId) => {
+              onAcceptChange(changeId)
+              setActiveChangeId(null)
+            }}
+            onReject={(changeId) => {
+              onRejectChange(changeId)
+              setActiveChangeId(null)
+            }}
+            metricInputs={metricInputs}
+            onSetMetricValue={setMetricValue}
           />
         )}
       </span>
@@ -611,7 +808,14 @@ export function ResumeEditor({
       // Simple text section (e.g., summary)
       // For summary sections, include ALL changes for this section (both positioned and non-positioned)
       // Some generators might incorrectly add positions to summary changes
-      const nonPositionedChanges = sectionChanges.filter(c => !c.position?.sectionIndex && !c.position?.bulletIndex)
+      let nonPositionedChanges = sectionChanges.filter(c => !c.position?.sectionIndex && !c.position?.bulletIndex)
+      
+      // FALLBACK: If no non-positioned changes found, but section has changes, use ALL section changes
+      // This catches cases where generator incorrectly added positions to summary changes
+      if (nonPositionedChanges.length === 0 && sectionChanges.length > 0) {
+        console.log(`[ResumeEditor] Summary section "${section.title}" has ${sectionChanges.length} positioned changes, using them as fallback`)
+        nonPositionedChanges = sectionChanges
+      }
 
       // CRITICAL: Check if this section is a rejected addition (new content that was rejected)
       // If ALL changes for this section are rejected additions with no original text, hide the entire section
@@ -632,7 +836,7 @@ export function ResumeEditor({
       }
 
       return (
-        <div className="space-y-2">
+        <div className="text-sm text-gray-700 font-sans leading-relaxed">
           {renderTextWithChanges(section.content, nonPositionedChanges, section.title)}
         </div>
       )
@@ -655,16 +859,22 @@ export function ResumeEditor({
                 </div>
 
                 <ul className="space-y-1.5 mt-2">
-                  {entry.bullets && entry.bullets.map((bullet: string, bulletIdx: number) => {
+                  {entry.bullets && Array.isArray(entry.bullets) && entry.bullets.map((bullet: string, bulletIdx: number) => {
                     // O(1) lookup using pre-indexed map (uses core section name for consistent matching)
                     const bulletKey = `${coreSectionName}-${entryIdx}-${bulletIdx}`
                     // CRITICAL: Pass ALL changes (including rejected) to renderTextWithChanges
                     // The render function needs rejected changes to access their .original text for reverting
-                    let bulletChanges = (changeIndex.bySectionAndBullet.get(bulletKey) || [])
+                    let bulletChanges: ResumeChange[] = (changeIndex.bySectionAndBullet.get(bulletKey) || [])
 
                     // Fallback: If no changes found via indexed lookup, try multiple matching strategies
                     // CRITICAL: This handles cases where section name matching failed during indexing OR positions don't match
                     if (bulletChanges.length === 0 && changes.length > 0) {
+                      // Get all section changes for fallback matching
+                      const sectionChanges = changes.filter(c => {
+                        const changeCoreSection = getCoreSectionName(c.section || '')
+                        return changeCoreSection === coreSectionName
+                      })
+                      
                       // Strategy 1: Try exact position match with core section name
                       bulletChanges = changes.filter(c => {
                         const changeCoreSection = getCoreSectionName(c.section || '')
@@ -676,20 +886,63 @@ export function ResumeEditor({
                         return matchesCore && matchesPosition
                       })
                       
-                      // Strategy 2: If still no matches, try content-based matching for modifications
-                      // This handles cases where generator didn't provide correct positions
+                      // Strategy 2: If still no matches, try content-based matching
+                      // CRITICAL FIX: Also try content matching for changes with INVALID positions
+                      // A position is invalid if it points to a sectionIndex that doesn't exist
                       if (bulletChanges.length === 0) {
-                        // Include ALL changes (even rejected) so renderTextWithChanges can access original text
-                        const sectionChanges = changes.filter(c => {
-                          const changeCoreSection = getCoreSectionName(c.section || '')
-                          return changeCoreSection === coreSectionName
-                        })
+                        // Helper: Check if a position is valid (exists in the resume)
+                        const isValidPosition = (pos: any): boolean => {
+                          if (!pos || pos.sectionIndex === undefined || pos.bulletIndex === undefined) {
+                            return false // No position data
+                          }
+                          // Check if the position exists in this section
+                          if (!Array.isArray(section.content)) return false
+                          const entry = section.content[pos.sectionIndex]
+                          if (!entry || !entry.bullets) return false
+                          return pos.bulletIndex < entry.bullets.length
+                        }
+                        
+                        // Helper: Fuzzy string similarity (0-1 score)
+                        const similarity = (a: string, b: string): number => {
+                          const longer = a.length > b.length ? a : b
+                          const shorter = a.length > b.length ? b : a
+                          if (longer.length === 0) return 1.0
+                          if (shorter.length === 0) return 0.0
+                          
+                          // Check if shorter is contained in longer
+                          if (longer.includes(shorter)) {
+                            return shorter.length / longer.length
+                          }
+                          
+                          // Check word overlap
+                          const wordsA = a.split(/\s+/)
+                          const wordsB = b.split(/\s+/)
+                          const commonWords = wordsA.filter(w => wordsB.includes(w) && w.length > 3)
+                          const overlap = commonWords.length / Math.max(wordsA.length, wordsB.length)
+                          
+                          return overlap
+                        }
                         
                         // For modifications, try to match by content similarity
                         // We check BOTH original (old) and suggested (new) text against the bullet (new)
                         // because we are rendering the optimized resume (new text)
-                        // Note: sectionChanges already filtered out rejected in the parent filter
                         bulletChanges = sectionChanges.filter(c => {
+                          // Check if this change has a VALID position that points elsewhere
+                          // If position is valid but doesn't match this bullet, skip content matching
+                          // If position is INVALID (doesn't exist in resume), allow content matching
+                          if (c.position?.sectionIndex !== undefined && c.position?.bulletIndex !== undefined) {
+                            const hasValidPosition = isValidPosition(c.position)
+                            if (hasValidPosition) {
+                              // Position is valid but for a different bullet - don't match by content
+                              return false
+                            }
+                            // Position is INVALID (e.g., sectionIndex 2 when only 0,1 exist)
+                            // Fall through to content matching
+                            if (process.env.NODE_ENV === 'development') {
+                              console.log(`[ResumeEditor] Change ${c.id} has INVALID position ${c.position.sectionIndex}-${c.position.bulletIndex}, trying content match`)
+                            }
+                          }
+                          
                           if (c.type === 'modification') {
                             const bulletLower = bullet.toLowerCase().trim()
                             
@@ -697,10 +950,16 @@ export function ResumeEditor({
                             // This is the most reliable check since bullet IS the suggested text
                             if (c.suggested) {
                               const suggestedLower = c.suggested.toLowerCase().trim()
-                              // Exact match or close enough
+                              const sim = similarity(suggestedLower, bulletLower)
+                              
+                              // Match if: exact, contains, or high similarity (>60%)
                               if (suggestedLower === bulletLower || 
                                   bulletLower.includes(suggestedLower) || 
-                                  (suggestedLower.length > 20 && suggestedLower.includes(bulletLower))) {
+                                  suggestedLower.includes(bulletLower) ||
+                                  sim > 0.6) {
+                                if (process.env.NODE_ENV === 'development' && sim < 1.0) {
+                                  console.log(`[ResumeEditor] Fuzzy match (suggested) for bullet ${entryIdx}-${bulletIdx}, similarity: ${sim.toFixed(2)}`)
+                                }
                                 return true
                               }
                             }
@@ -709,16 +968,20 @@ export function ResumeEditor({
                             // This happens if the bullet hasn't been updated yet or if matching logic is fuzzy
                             if (c.original) {
                               const originalLower = c.original.toLowerCase().trim()
-                              // Check if original text is similar to bullet (exact match or bullet contains original)
+                              const sim = similarity(originalLower, bulletLower)
+                              
+                              // Match if: exact, contains, or high similarity (>60%)
                               const isMatch = originalLower === bulletLower || 
                                              bulletLower.includes(originalLower) ||
-                                             originalLower.includes(bulletLower)
+                                             originalLower.includes(bulletLower) ||
+                                             sim > 0.6
                               
                               if (isMatch && process.env.NODE_ENV === 'development') {
                                 console.log(`[ResumeEditor] Found modification via content matching for bullet ${entryIdx}-${bulletIdx}:`, {
                                   changeId: c.id,
                                   original: c.original.substring(0, 50),
                                   bullet: bullet.substring(0, 50),
+                                  similarity: sim.toFixed(2),
                                   position: c.position,
                                   expectedPosition: { sectionIndex: entryIdx, bulletIndex: bulletIdx }
                                 })
@@ -727,6 +990,21 @@ export function ResumeEditor({
                               return isMatch
                             }
                           }
+                          
+                          // Check 3: For additions, match if suggested text is similar to bullet
+                          if (c.type === 'addition' && c.suggested) {
+                            const bulletLower = bullet.toLowerCase().trim()
+                            const suggestedLower = c.suggested.toLowerCase().trim()
+                            const sim = similarity(suggestedLower, bulletLower)
+                            
+                            if (sim > 0.8) { // Higher threshold for additions (80%)
+                              if (process.env.NODE_ENV === 'development') {
+                                console.log(`[ResumeEditor] Found addition via content matching for bullet ${entryIdx}-${bulletIdx}, similarity: ${sim.toFixed(2)}`)
+                              }
+                              return true
+                            }
+                          }
+                          
                           return false
                         })
                       }
@@ -785,6 +1063,19 @@ export function ResumeEditor({
                       }
                     }
 
+                    // CRITICAL: Check if this bullet is a rejected addition with no original content
+                    // If so, skip rendering the entire <li> element (not just empty text)
+                    const isRejectedAdditionBullet = bulletChanges.length > 0 && bulletChanges.every(c => 
+                      c.type === 'addition' && 
+                      getChangeStatus(c.id) === 'rejected' &&
+                      (!c.original || c.original.trim().length === 0)
+                    )
+
+                    // Skip rendering if it's a rejected addition (removes the bullet point entirely)
+                    if (isRejectedAdditionBullet) {
+                      return null
+                    }
+
                     return (
                       <li key={bulletIdx} className="flex gap-2 text-sm leading-relaxed">
                         <span className="text-gray-400 flex-shrink-0 mt-0.5">•</span>
@@ -828,21 +1119,36 @@ export function ResumeEditor({
                 }
               }
               
+              const isSkillActive = activeChangeId === change?.id
+              
               return (
                 <span
                   key={idx}
-                  className={`px-3 py-1 rounded-lg text-xs font-sans ${classes} ${idx >= 10 ? 'print:hidden' : ''}`}
+                  onClick={() => {
+                    if (change && getChangeStatus(change.id) === 'pending') {
+                      setActiveChangeId(isSkillActive ? null : change.id)
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-sans ${classes} ${idx >= 10 ? 'print:hidden' : ''}`}
                 >
                   {skill}
-                  {change && getChangeStatus(change.id) === 'pending' && (
+                  {change && getChangeStatus(change.id) === 'pending' && isSkillActive && (
                     <ChangeOverlay
                       change={change}
                       status="pending"
-                      isHovered={hoveredChange === change.id}
-                      onHover={() => setHoveredChange(change.id)}
-                      onLeave={() => setHoveredChange(null)}
-                      onAccept={onAcceptChange}
-                      onReject={onRejectChange}
+                      isHovered={true}
+                      onHover={() => {}}
+                      onLeave={() => setActiveChangeId(null)}
+                      onAccept={(changeId) => {
+                        onAcceptChange(changeId)
+                        setActiveChangeId(null)
+                      }}
+                      onReject={(changeId) => {
+                        onRejectChange(changeId)
+                        setActiveChangeId(null)
+                      }}
+                      metricInputs={metricInputs}
+                      onSetMetricValue={setMetricValue}
                     />
                   )}
                 </span>
@@ -878,10 +1184,13 @@ export function ResumeEditor({
                 {entry.date && (
                   <div className="text-sm text-gray-600 font-sans">{entry.date}</div>
                 )}
-                {entry.details && entry.details.length > 0 && (
-                  <ul className="mt-1 space-y-1">
+                {entry.details && Array.isArray(entry.details) && entry.details.length > 0 && (
+                  <ul className="mt-2 space-y-1.5">
                     {entry.details.map((detail: string, detailIdx: number) => (
-                      <li key={detailIdx} className="text-sm text-gray-600 font-sans">• {detail}</li>
+                      <li key={detailIdx} className="flex gap-2 text-sm text-gray-700 font-sans leading-relaxed">
+                        <span className="text-gray-400 flex-shrink-0 mt-0.5">•</span>
+                        <span>{detail}</span>
+                      </li>
                     ))}
                   </ul>
                 )}
@@ -895,6 +1204,24 @@ export function ResumeEditor({
     return null
   }
 
+  // Count changes with unfilled [X] placeholders
+  const unfilledMetricsCount = useMemo(() => {
+    return changes.filter(c => {
+      if (getChangeStatus(c.id) === 'rejected') return false
+      if (!c.suggested.includes('[X]')) return false
+      
+      const changeInputs = metricInputs.get(c.id)
+      if (!changeInputs) return true
+      
+      const placeholderCount = (c.suggested.match(/\[X\]/g) || []).length
+      for (let i = 0; i < placeholderCount; i++) {
+        const value = changeInputs.get(i)
+        if (!value || value.trim().length === 0) return true
+      }
+      return false
+    }).length
+  }, [changes, metricInputs, acceptedChanges, rejectedChanges])
+  
   return (
     <>
       <DownloadModal
@@ -904,13 +1231,42 @@ export function ResumeEditor({
       />
       
       <div className="space-y-6 h-full flex flex-col">
-        {/* Action Bar - Inside glass container */}
+        {/* GRAMMARLY-STYLE: Action Bar with progress */}
         <div className="bg-white/80 backdrop-blur-sm border border-gray-200/50 shadow-[0_2px_8px_rgba(0,0,0,0.05)] rounded-lg px-6 py-4 flex items-center justify-between">
-        <div>
-          <p className="text-sm text-gray-600 font-sans">
-            {getVisibleChanges.length} suggestions • {acceptedChanges.size} accepted
-            {rejectedChanges.size > 0 && ` • ${rejectedChanges.size} rejected`}
-          </p>
+        <div className="flex flex-col gap-2">
+          {/* Progress indicator - Grammarly-style */}
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-amber-500" />
+              <span className="text-sm font-medium text-gray-800 font-sans">
+                {acceptedChanges.size + rejectedChanges.size} of {getVisibleChanges.length} reviewed
+              </span>
+            </div>
+            {/* Mini progress bar */}
+            <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-amber-400 to-emerald-400 transition-all duration-300"
+                style={{ 
+                  width: `${getVisibleChanges.length > 0 
+                    ? ((acceptedChanges.size + rejectedChanges.size) / getVisibleChanges.length) * 100 
+                    : 0}%` 
+                }}
+              />
+            </div>
+          </div>
+          {/* Color legend - compact */}
+          <div className="flex items-center gap-4 text-xs text-gray-500 font-sans">
+            <span className="flex items-center gap-1.5">
+              <span className="w-4 h-0.5 border-b-2 border-dotted border-amber-400"></span>
+              Rewrite
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-4 h-0.5 border-b-2 border-dotted border-emerald-400"></span>
+              Addition
+            </span>
+            <span className="text-gray-400">•</span>
+            <span className="text-gray-400 italic">Click underlined text to review</span>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <Button
@@ -938,34 +1294,93 @@ export function ResumeEditor({
         fontSize: 'inherit'
       }}>
         {/* Contact Info */}
-        {optimizedResume.contactInfo && (
+        {optimizedResume.contactInfo && (() => {
+          // FRONTEND SAFETY: Comprehensive validation for contact info fields
+          let name = optimizedResume.contactInfo.name || ''
+          let email = optimizedResume.contactInfo.email || ''
+          let phone = optimizedResume.contactInfo.phone || ''
+          let location = optimizedResume.contactInfo.location || ''
+          const linkedin = optimizedResume.contactInfo.linkedin || ''
+          const website = optimizedResume.contactInfo.website || ''
+          
+          // Simple name validation: if it looks like a name (short, mostly letters), use it
+          // The backend should have already extracted the name properly
+          const isValidName = (s: string) => {
+            if (!s || s.length < 2 || s.length > 50) return false
+            // Should be mostly letters (allow spaces, hyphens, apostrophes)
+            const letterCount = (s.match(/[\p{L}]/gu) || []).length
+            return letterCount / s.length > 0.8
+          }
+          
+          if (!isValidName(name)) {
+            name = 'Candidate'
+          }
+          
+          // Validate email (must look like an email)
+          if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+            email = ''
+          }
+          email = email.trim()
+          
+          // Reject phone if it looks like a date range
+          if (phone) {
+            const isDatePattern = /\b(19|20)\d{2}\s*[-–]\s*(19|20)?\d{2,4}\b/.test(phone) ||
+                                 /\bpresent\b/i.test(phone) ||
+                                 /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/i.test(phone)
+            if (isDatePattern) {
+              phone = ''
+            }
+          }
+          phone = phone.replace(/[()•|/\\]/g, '').trim()
+          
+          // Clean location of dates and garbage
+          location = location.replace(/\b\d{4}\s*[-–]\s*\d{4}\b/g, '')
+          location = location.replace(/\b(19|20)\d{2}\b/g, '')
+          location = location.replace(/[()•|/\\]/g, '').trim()
+          
+          // Build contact items array (only non-empty values)
+          const contactItems: string[] = []
+          if (email) contactItems.push(email)
+          if (phone) contactItems.push(phone)
+          if (location) contactItems.push(location)
+          
+          return (
           <div className="mb-10 text-center max-w-full">
+            {/* Name - always on its own line */}
             <h1 className="text-3xl font-bold text-gray-900 mb-3 font-serif tracking-tight">
-              {optimizedResume.contactInfo.name}
+              {name}
             </h1>
-            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-sm text-gray-700 font-sans">
-              {optimizedResume.contactInfo.email && <span className="whitespace-nowrap">{optimizedResume.contactInfo.email}</span>}
-              {optimizedResume.contactInfo.phone && <span className="hidden sm:inline">•</span>}
-              {optimizedResume.contactInfo.phone && <span className="whitespace-nowrap">{optimizedResume.contactInfo.phone}</span>}
-              {optimizedResume.contactInfo.location && <span className="hidden sm:inline">•</span>}
-              {optimizedResume.contactInfo.location && <span className="whitespace-nowrap">{optimizedResume.contactInfo.location}</span>}
-            </div>
-            {(optimizedResume.contactInfo.linkedin || optimizedResume.contactInfo.website) && (
+            
+            {/* Contact details - only show if we have at least one item */}
+            {contactItems.length > 0 && (
+              <div className="text-sm text-gray-700 font-sans">
+                {contactItems.map((item, idx) => (
+                  <span key={idx}>
+                    {idx > 0 && <span className="mx-2 text-gray-400">•</span>}
+                    <span className="whitespace-nowrap">{item}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+            
+            {/* LinkedIn / Website links */}
+            {(linkedin || website) && (
               <div className="flex flex-wrap items-center justify-center gap-3 text-sm text-blue-600 mt-2 font-sans">
-                {optimizedResume.contactInfo.linkedin && (
-                  <a href={`https://${optimizedResume.contactInfo.linkedin}`} className="hover:underline whitespace-nowrap">
+                {linkedin && (
+                  <a href={`https://${linkedin.replace(/^https?:\/\//, '')}`} className="hover:underline whitespace-nowrap">
                     LinkedIn
                   </a>
                 )}
-                {optimizedResume.contactInfo.website && (
-                  <a href={`https://${optimizedResume.contactInfo.website}`} className="hover:underline whitespace-nowrap">
+                {website && (
+                  <a href={`https://${website.replace(/^https?:\/\//, '')}`} className="hover:underline whitespace-nowrap">
                     Website
                   </a>
                 )}
               </div>
             )}
           </div>
-        )}
+          )
+        })()}
 
         {/* Sections */}
         <div className="space-y-8">
@@ -1031,132 +1446,168 @@ export function ResumeEditor({
 // Change Overlay Component (shows original with suggestion overlay - NOT replacement)
 interface ChangeOverlayProps {
   change: ResumeChange
-  allChanges?: ResumeChange[] // When multiple changes exist on the same line
   status: 'accepted' | 'rejected' | 'pending'
   isHovered: boolean
   onHover: () => void
   onLeave: () => void
   onAccept: (changeId: string) => void
   onReject: (changeId: string) => void
-  multipleChanges?: boolean
-  changeIndex?: number
+  metricInputs: Map<string, Map<number, string>>
+  onSetMetricValue: (changeId: string, placeholderIndex: number, value: string) => void
 }
 
 function ChangeOverlay({
   change,
-  allChanges = [change],
   status,
   isHovered,
   onHover,
   onLeave,
   onAccept,
   onReject,
-  multipleChanges = false
+  metricInputs,
+  onSetMetricValue
 }: ChangeOverlayProps) {
+  // Helper: Check if change has [X] placeholders
+  const hasPlaceholders = (text: string | undefined): boolean => {
+    return !!text && text.includes('[X]')
+  }
+  
+  // Helper: Count [X] placeholders in text
+  const countPlaceholders = (text: string): number => {
+    return (text.match(/\[X\]/g) || []).length
+  }
+  
+  // Helper: Get placeholder label from reason (e.g., "team size", "revenue", "users")
+  const getPlaceholderLabel = (reason: string, index: number): string => {
+    const lower = reason.toLowerCase()
+    
+    // Common patterns
+    if (lower.includes('team') && (lower.includes('size') || lower.includes('people') || lower.includes('member'))) {
+      return 'team size'
+    }
+    if (lower.includes('revenue') || lower.includes('sales') || lower.includes('dollar')) {
+      return 'revenue/amount'
+    }
+    if (lower.includes('user') || lower.includes('customer')) {
+      return 'users/customers'
+    }
+    if (lower.includes('percent') || lower.includes('%')) {
+      return 'percentage'
+    }
+    if (lower.includes('time') || lower.includes('hour') || lower.includes('day')) {
+      return 'time/duration'
+    }
+    if (lower.includes('project')) {
+      return 'project count'
+    }
+    
+    // Fallback
+    return `value ${index + 1}`
+  }
   return (
     <>
-      {/* Invisible hover area that covers the highlighted text */}
-      <span
-        onMouseEnter={onHover}
-        onMouseLeave={onLeave}
-        className="absolute inset-0 cursor-pointer"
-        style={{ zIndex: 1 }}
-      />
-
-      {/* Tooltip with all changes when multiple exist on the same line */}
+      {/* GRAMMARLY-STYLE: Click-based card, no hover area needed */}
       <AnimatePresence>
         {isHovered && (
           <motion.div
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 5 }}
-            transition={{ duration: 0.15, delay: 0.2 }}
-            onMouseEnter={onHover} // Keep tooltip open when hovering over it
-            onMouseLeave={onLeave}
-            className="absolute z-50 top-full left-0 mt-2 w-80 backdrop-blur-md bg-white/95 border border-gray-200 shadow-lg rounded-lg p-3"
+            data-suggestion-card
+            initial={{ opacity: 0, y: 8, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.96 }}
+            transition={{ duration: 0.15 }}
+            onClick={(e) => e.stopPropagation()} // Prevent closing when clicking inside
+            className="absolute z-50 top-full left-0 mt-3 w-80 bg-white border border-gray-200 shadow-xl rounded-xl overflow-hidden"
+            style={{ boxShadow: '0 10px 40px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.08)' }}
           >
-            {multipleChanges && allChanges.length > 1 ? (
-              // Show all changes when multiple exist
-              <div className="space-y-3">
-                <div className="text-xs font-semibold text-gray-900 font-sans mb-2">
-                  {allChanges.length} suggestions on this line:
-                </div>
-                {allChanges.map((c, idx) => (
-                  <div key={c.id} className="border-b border-gray-200 pb-3 last:border-0 last:pb-0">
-                    <div className="flex items-start gap-2 mb-2">
-                      <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                      <p className="text-xs text-gray-700 font-sans flex-1">{c.reason}</p>
-                    </div>
-                    {c.original && c.type !== 'addition' && (
-                      <div className="mb-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-gray-600 font-sans">
-                        <span className="font-medium">Original:</span> {c.original}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onAccept(c.id)
-                        }}
-                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors"
-                        title="Accept"
-                      >
-                        <Check className="h-4 w-4 text-green-600" />
-                        <span className="text-xs font-medium text-green-700 font-sans">Accept</span>
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onReject(c.id)
-                        }}
-                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors"
-                        title="Reject"
-                      >
-                        <X className="h-4 w-4 text-red-600" />
-                        <span className="text-xs font-medium text-red-700 font-sans">Reject</span>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              // Show single change
-              <>
-                <div className="flex items-start gap-2 mb-3">
-                  <Info className="h-4 w-4 text-blue-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-gray-700 font-sans flex-1">{change.reason}</p>
+            {/* Close button */}
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onLeave()
+              }}
+              className="absolute top-2 right-2 p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors z-10"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            
+            {/* Single suggestion card - clean and simple */}
+            <div className="p-4">
+                <div className="flex items-start gap-2 mb-3 pr-6">
+                  <Info className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-gray-700 font-sans flex-1 leading-relaxed">{change.reason}</p>
                 </div>
                 {change.original && change.type !== 'addition' && (
-                  <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-xs text-gray-600 font-sans">
-                    <span className="font-medium">Original:</span> {change.original}
+                  <div className="mb-3 p-2.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-sans">
+                    <span className="font-medium text-gray-500">Original:</span>
+                    <span className="ml-1.5 line-through text-gray-400">{change.original}</span>
                   </div>
                 )}
-                <div className="flex items-center gap-2 pt-2 border-t border-gray-200">
+                
+                {/* Suggested text preview */}
+                <div className="mb-3 p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-xs font-sans">
+                  <span className="font-medium text-emerald-600">Suggested:</span>
+                  <span className="ml-1.5 text-gray-700">{change.suggested}</span>
+                </div>
+                
+                {/* Metric Input Fields for [X] placeholders */}
+                {hasPlaceholders(change.suggested) && (
+                  <div className="mb-3 p-3 bg-violet-50 border border-violet-200 rounded-lg">
+                    <div className="text-xs font-medium text-violet-800 mb-2 font-sans">
+                      📝 Add your specific numbers:
+                    </div>
+                    {Array.from({ length: countPlaceholders(change.suggested) }).map((_, idx) => {
+                      const currentValue = metricInputs.get(change.id)?.get(idx) || ''
+                      const label = getPlaceholderLabel(change.reason, idx)
+                      
+                      return (
+                        <div key={idx} className="mb-2 last:mb-0">
+                          <label className="block text-xs text-gray-600 mb-1 font-sans capitalize">
+                            {label}:
+                          </label>
+                          <input
+                            type="text"
+                            value={currentValue}
+                            onChange={(e) => {
+                              e.stopPropagation()
+                              onSetMetricValue(change.id, idx, e.target.value)
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                            placeholder={`Enter ${label}...`}
+                            className="w-full px-2.5 py-1.5 text-sm border border-violet-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white font-sans"
+                          />
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                
+                {/* Action buttons - GRAMMARLY-STYLE */}
+                <div className="flex items-center gap-2 pt-3 border-t border-gray-100">
+                  {/* GRAMMARLY-STYLE: Accept is prominent, Dismiss is subtle */}
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
                       onAccept(change.id)
                     }}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-green-50 hover:bg-green-100 border border-green-200 rounded-lg transition-colors"
-                    title="Accept"
+                    className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors shadow-sm"
+                    title="Accept suggestion"
                   >
-                    <Check className="h-4 w-4 text-green-600" />
-                    <span className="text-xs font-medium text-green-700 font-sans">Accept</span>
+                    <Check className="h-4 w-4" />
+                    <span className="text-sm font-medium font-sans">Accept</span>
                   </button>
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
                       onReject(change.id)
                     }}
-                    className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors"
-                    title="Reject"
+                    className="px-4 py-2.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Dismiss"
                   >
-                    <X className="h-4 w-4 text-red-600" />
-                    <span className="text-xs font-medium text-red-700 font-sans">Reject</span>
+                    <span className="text-sm font-medium font-sans">Dismiss</span>
                   </button>
                 </div>
-              </>
-            )}
+              </div>
           </motion.div>
         )}
       </AnimatePresence>
