@@ -111,6 +111,9 @@ function sanitizeContactInfo(raw: ContactInfo, originalResume: string): ContactI
   // STEP 1: Clean the name field
   let name = raw.name || ''
   
+  // CRITICAL: Remove any email addresses from name (common LLM parsing error)
+  name = name.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '').trim()
+  
   // Remove location words from name
   const nameWords = name.split(/\s+/)
   const cleanedNameWords = nameWords.filter(word => {
@@ -123,8 +126,8 @@ function sanitizeContactInfo(raw: ContactInfo, originalResume: string): ContactI
   name = name.replace(/\b\d{4}\s*[-–]\s*\d{4}\b/g, '').trim()
   name = name.replace(/\b(19|20)\d{2}\b/g, '').trim()
   
-  // Remove common garbage characters (including / and \)
-  name = name.replace(/[()•|/\\]/g, '').trim()
+  // Remove common garbage characters (including / \ and @)
+  name = name.replace(/[()•|/\\@]/g, '').trim()
   
   // If name is still too long or suspicious, extract from original resume
   if (name.length > 50 || name.length < 2 || !/^[A-Za-zÀ-ÿ\s\-'.]+$/.test(name)) {

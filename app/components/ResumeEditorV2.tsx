@@ -1304,17 +1304,19 @@ export function ResumeEditor({
           const website = optimizedResume.contactInfo.website || ''
           
           // Clean the name field:
-          // 1. Remove location words (Spain, USA, etc.)
+          // 1. Remove any email addresses from name (common parsing error)
+          name = name.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '')
+          // 2. Remove location words (Spain, USA, etc.)
           const locationWords = /\b(spain|usa|uk|france|germany|canada|australia|india|nyc|sf|la|london|paris|berlin|remote|hybrid|california|texas|florida|new york|barcelona|madrid|munich|amsterdam|dublin|singapore|san francisco|los angeles|seattle|boston|chicago|austin)\b/gi
           name = name.replace(locationWords, '')
-          // 2. Remove dates
+          // 3. Remove dates
           name = name.replace(/\b\d{4}\s*[-–]\s*\d{4}\b/g, '')
           name = name.replace(/\b(19|20)\d{2}\b/g, '')
-          // 3. Remove garbage characters (including / which appears in the screenshot)
-          name = name.replace(/[()•|/\\]/g, '')
-          // 4. Normalize whitespace
+          // 4. Remove garbage characters (including / which appears in the screenshot)
+          name = name.replace(/[()•|/\\@]/g, '')
+          // 5. Normalize whitespace
           name = name.replace(/\s+/g, ' ').trim()
-          // 5. If still too long, take first 3 words
+          // 6. If still too long, take first 3 words
           if (name.length > 60) {
             name = name.split(/[\n|•,]/)[0].trim().split(/\s+/).slice(0, 3).join(' ')
           }
