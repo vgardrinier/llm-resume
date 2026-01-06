@@ -95,54 +95,54 @@ Return ONLY valid JSON (no markdown):
   }
 }
 
-// Words that should NEVER appear in a person's name
-const BLOCKED_NAME_WORDS = new Set([
-  // Section headers
-  'skills', 'experience', 'education', 'summary', 'projects', 'certifications',
-  'languages', 'interests', 'achievements', 'objective', 'profile', 'contact',
-  'phone', 'email', 'address', 'linkedin', 'github', 'portfolio', 'references',
-  'professional', 'technical', 'work', 'history', 'employment', 'career',
-  'personal', 'information', 'details', 'about', 'me', 'resume', 'cv',
-  'curriculum', 'vitae', 'present', 'current',
-  // Months
-  'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
-  'january', 'february', 'march', 'april', 'june', 'july', 'august',
-  'september', 'october', 'november', 'december',
-  // Locations
-  'spain', 'usa', 'uk', 'france', 'germany', 'canada', 'australia', 'india',
-  'nyc', 'sf', 'la', 'london', 'paris', 'berlin', 'remote', 'hybrid',
-  'california', 'texas', 'florida', 'massachusetts', 'washington',
-  'barcelona', 'madrid', 'munich', 'amsterdam', 'dublin', 'singapore',
-  'seattle', 'boston', 'chicago', 'austin', 'europe', 'asia', 'americas', 'emea', 'apac'
-])
+/**
+ * EXTRACT NAME FROM ORIGINAL RESUME
+ * 
+ * Don't trust LLM for name - extract directly from resume.
+ * Resumes almost always start with the person's name on the first line.
+ */
+function extractNameFromResume(resumeText: string): string {
+  const lines = resumeText.split('\n').map(l => l.trim()).filter(l => l.length > 0)
+  
+  // Look at first 5 lines to find a name-like string
+  for (let i = 0; i < Math.min(5, lines.length); i++) {
+    const line = lines[i]
+    
+    // Skip if line contains email, phone, URL, or numbers
+    if (/@/.test(line)) continue
+    if (/\d{3,}/.test(line)) continue // Phone numbers or dates
+    if (/https?:|www\.|\.com|\.org|\.net/i.test(line)) continue
+    if (/linkedin|github/i.test(line)) continue
+    
+    // A name should be: 2-4 words, mostly letters, 5-40 chars
+    const cleaned = line.replace(/[^\p{L}\s\-']/gu, '').trim()
+    const words = cleaned.split(/\s+/).filter(w => w.length >= 2)
+    
+    if (words.length >= 2 && words.length <= 4 && cleaned.length >= 5 && cleaned.length <= 40) {
+      // Check all words start with uppercase (proper name format)
+      const looksLikeName = words.every(w => /^[\p{Lu}]/u.test(w) || w === w.toUpperCase())
+      if (looksLikeName) {
+        return words.join(' ')
+      }
+    }
+  }
+  
+  // Fallback: just take the first line's first 2-3 words that are letters
+  const firstLine = lines[0] || ''
+  const words = firstLine.split(/\s+/).filter(w => /^[\p{L}\-']+$/u.test(w) && w.length >= 2)
+  if (words.length >= 2) {
+    return words.slice(0, 3).join(' ')
+  }
+  
+  return 'Candidate'
+}
 
 function sanitizeContactInfo(raw: ContactInfo, originalResume: string): ContactInfo {
   const sanitized: ContactInfo = {}
   
-  // STEP 1: Clean the name field with comprehensive filtering
-  let name = raw.name || ''
-  
-  // Remove email addresses
-  name = name.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, '')
-  // Remove phone numbers
-  name = name.replace(/[\+]?[\d\s\-().]{7,}/g, '')
-  // Remove URLs
-  name = name.replace(/https?:\/\/[^\s]+/gi, '')
-  name = name.replace(/www\.[^\s]+/gi, '')
-  name = name.replace(/linkedin\.com[^\s]*/gi, '')
-  // Remove dates
-  name = name.replace(/\b\d{4}\s*[-–]\s*\d{4}\b/g, '')
-  name = name.replace(/\b(19|20)\d{2}\b/g, '')
-  // Remove garbage characters
-  name = name.replace(/[()•|/\\@#:;,.\-_]/g, ' ')
-  
-  // Filter out blocked words
-  const nameWords = name.split(/\s+/).filter(word => {
-    const lower = word.toLowerCase().replace(/[,.]$/g, '')
-    return lower.length > 1 && !BLOCKED_NAME_WORDS.has(lower)
-  })
-  // Take only first 3 words (a real name is typically 2-3 words)
-  name = nameWords.slice(0, 3).join(' ').trim()
+  // STEP 1: Extract name directly from original resume (don't trust LLM)
+  // This is the most reliable approach - resumes always start with the name
+  const name = extractNameFromResume(originalResume)
   
   // If name is still too long or suspicious, extract from original resume
   if (name.length > 50 || name.length < 2 || !/^[A-Za-zÀ-ÿ\s\-'.]+$/.test(name)) {
