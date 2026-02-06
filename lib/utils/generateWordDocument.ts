@@ -1,7 +1,17 @@
-import { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, convertInchesToTwip, Packer } from 'docx'
+// TEMPORARILY DISABLED - docx package exports are broken
+// import { Document, Paragraph, TextRun, HeadingLevel, AlignmentType, convertInchesToTwip, Packer } from 'docx'
 import type { StructuredResume } from '@/types/api'
 
 export async function generateWordDocument(
+  resume: StructuredResume,
+  fileName: string
+): Promise<void> {
+  console.warn('[generateWordDocument] Word export temporarily disabled due to docx package issues')
+  throw new Error('Word document generation temporarily disabled')
+}
+
+/* COMMENTED OUT UNTIL docx PACKAGE IS FIXED
+export async function generateWordDocument_DISABLED(
   resume: StructuredResume,
   fileName: string
 ): Promise<void> {
@@ -294,4 +304,5 @@ export async function generateWordDocument(
   document.body.removeChild(a)
   URL.revokeObjectURL(url)
 }
+*/
 

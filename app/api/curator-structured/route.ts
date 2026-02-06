@@ -271,13 +271,14 @@ You will receive:
 <instructions>
 Your task is to validate each change against the original resume AND the original analysis constraints:
 
-1. Validate changes for honesty:
-   - Check if changes properly use semantic transformations (FROM → TO mappings) when applicable
-   - Remove changes that invent facts not in the original (check against analysis.constraints.cannot_invent)
-   - If a change adds a metric/number not in original → REMOVE IT
-   - If a change adds a technology not in original → REMOVE IT
-   - If a change adds a company/project not in original → REMOVE IT
-   - CRITICAL: Remove no-op changes where original and suggested text are identical (waste of user attention)
+1. Validate changes for honesty (STRICT - this is the primary job):
+   - If a change invents a NUMBER not in original → REMOVE IT (e.g. "improved by 35%" when no % exists)
+   - If a change invents a TECHNOLOGY not in original → REMOVE IT (e.g. adding "React" when only "JavaScript" mentioned)
+   - If a change invents a COMPANY/PROJECT not in original → REMOVE IT
+   - If a change invents FACTS not supported by original → REMOVE IT (e.g. "led team of 5" when no team size mentioned)
+   - If a change claims impact not in original → REMOVE IT (e.g. "increased revenue" when original just says "supported sales")
+   - CRITICAL: Remove no-op changes where original and suggested are identical
+   - ALLOWED: Qualitative improvements (e.g. "improved" → "improved significantly") if impact was claimed in original
 
 2. Validate changes follow analysis patterns:
    - Distinguish between rewrite patterns and addable content:

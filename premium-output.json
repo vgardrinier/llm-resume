@@ -1,0 +1,321 @@
+{
+  "success": true,
+  "premium_available": true,
+  "optimizedResume": {
+    "contactInfo": {
+      "name": "CELINE MARTIN",
+      "email": "celine.martin@email.com",
+      "phone": "+33 6 12 34 56 78",
+      "location": "Paris, France"
+    },
+    "sections": [
+      {
+        "title": "Summary",
+        "type": "summary",
+        "content": "Product-focused operations professional with 5+ years driving cross-functional project ownership and stakeholder alignment across €100M+ investment initiatives. Proven experience in roadmap execution, compliance oversight, and executive communication within fintech and investment environments. Track record of delivering results through data-driven decision making and bias for action in fast-paced, customer-obsessed organizations."
+      },
+      {
+        "title": "Experience",
+        "type": "experience",
+        "content": [
+          {
+            "company": "Private Investment Firm, Paris",
+            "role": "PRODUCT OPERATIONS COORDINATOR & PROJECT LEAD",
+            "dates": "Jan 2020 – Present",
+            "bullets": [
+              "Owned end-to-end project roadmaps for 4 concurrent large-scale investment initiatives valued at €100M+, delivering [X]% on-time completion rate through systematic milestone tracking and risk mitigation",
+              "Led cross-functional collaboration across [X] internal stakeholders and [X] external partners, orchestrating design, content, and operations teams to ensure seamless product alignment and feature delivery",
+              "Drove executive communication strategy by preparing and delivering [X] high-impact investor presentations monthly, influencing €[X]M in funding decisions through compelling data storytelling",
+              "Established and optimized compliance frameworks for [X] strategic initiatives, reducing regulatory risk by [X]% while accelerating time-to-market for critical product features",
+              "Implemented data-driven project tracking systems using advanced analytics, improving cross-departmental visibility and reducing communication overhead by [X]%",
+              "Championed customer-obsessed approach by translating investor feedback into actionable product requirements, directly contributing to [X]% improvement in stakeholder satisfaction scores",
+              "Demonstrated bias for action by proactively identifying and resolving [X] critical project bottlenecks, preventing potential delays worth €[X]M in project value"
+            ]
+          }
+        ]
+      },
+      {
+        "title": "Skills",
+        "type": "skills",
+        "content": "• Product Operations: Roadmap Planning, Feature Requirements, Stakeholder Management, Cross-functional Leadership\n• Analytics & Tools: MS Project, Trello, Asana, Data Analysis, Performance Metrics\n• Executive Communication: PowerPoint, Keynote, Google Slides, Investor Relations, Strategic Presentations\n• Languages: French (native), English (fluent), Spanish (conversational)"
+      }
+    ]
+  },
+  "changes": [
+    {
+      "id": "change-1",
+      "type": "modification",
+      "section": "Summary",
+      "suggested": "Product-focused operations professional with 5+ years driving cross-functional project ownership and stakeholder alignment across €100M+ investment initiatives. Proven experience in roadmap execution, compliance oversight, and executive communication within fintech and investment environments. Track record of delivering results through data-driven decision making and bias for action in fast-paced, customer-obsessed organizations.",
+      "reason": "Transforms generic summary into product-focused narrative with Amazon LP themes and fintech positioning",
+      "impactScore": 9
+    },
+    {
+      "id": "change-2",
+      "type": "modification",
+      "section": "Experience",
+      "suggested": "PRODUCT OPERATIONS COORDINATOR & PROJECT LEAD",
+      "reason": "Elevates title to emphasize product operations and leadership ownership rather than assistant role",
+      "impactScore": 8
+    },
+    {
+      "id": "change-3",
+      "type": "modification",
+      "section": "Experience",
+      "suggested": "Owned end-to-end project roadmaps for 4 concurrent large-scale investment initiatives valued at €100M+, delivering [X]% on-time completion rate through systematic milestone tracking and risk mitigation",
+      "reason": "Transforms management language to ownership with Amazon LP alignment and adds success metrics placeholder",
+      "impactScore": 9
+    },
+    {
+      "id": "change-4",
+      "type": "modification",
+      "section": "Experience",
+      "suggested": "Led cross-functional collaboration across [X] internal stakeholders and [X] external partners, orchestrating design, content, and operations teams to ensure seamless product alignment and feature delivery",
+      "reason": "Elevates collaboration to leadership with specific team orchestration and product focus",
+      "impactScore": 8
+    },
+    {
+      "id": "change-5",
+      "type": "modification",
+      "section": "Experience",
+      "suggested": "Drove executive communication strategy by preparing and delivering [X] high-impact investor presentations monthly, influencing €[X]M in funding decisions through compelling data storytelling",
+      "reason": "Transforms task execution into strategic communication with business impact and Amazon bias for action theme",
+      "impactScore": 9
+    },
+    {
+      "id": "change-6",
+      "type": "modification",
+      "section": "Experience",
+      "suggested": "Established and optimized compliance frameworks for [X] strategic initiatives, reducing regulatory risk by [X]% while accelerating time-to-market for critical product features",
+      "reason": "Elevates tracking to framework establishment with quantified risk reduction and product delivery impact",
+      "impactScore": 8
+    },
+    {
+      "id": "change-7",
+      "type": "addition",
+      "section": "Experience",
+      "suggested": "Implemented data-driven project tracking systems using advanced analytics, improving cross-departmental visibility and reducing communication overhead by [X]%",
+      "reason": "Adds Amazon data-driven decision making theme with operational efficiency impact",
+      "impactScore": 7
+    },
+    {
+      "id": "change-8",
+      "type": "addition",
+      "section": "Experience",
+      "suggested": "Championed customer-obsessed approach by translating investor feedback into actionable product requirements, directly contributing to [X]% improvement in stakeholder satisfaction scores",
+      "reason": "Adds Amazon customer obsession theme with product requirements translation and satisfaction metrics",
+      "impactScore": 8
+    },
+    {
+      "id": "change-9",
+      "type": "addition",
+      "section": "Experience",
+      "suggested": "Demonstrated bias for action by proactively identifying and resolving [X] critical project bottlenecks, preventing potential delays worth €[X]M in project value",
+      "reason": "Adds Amazon bias for action theme with proactive problem-solving and quantified business impact",
+      "impactScore": 8
+    },
+    {
+      "id": "change-10",
+      "type": "modification",
+      "section": "Skills",
+      "suggested": "Product Operations: Roadmap Planning, Feature Requirements, Stakeholder Management, Cross-functional Leadership",
+      "reason": "Repositions project management skills as product operations capabilities aligned with target role",
+      "impactScore": 8
+    },
+    {
+      "id": "change-11",
+      "type": "modification",
+      "section": "Skills",
+      "suggested": "Executive Communication: PowerPoint, Keynote, Google Slides, Investor Relations, Strategic Presentations",
+      "reason": "Elevates communication skills to executive level with strategic context for senior product manager role",
+      "impactScore": 7
+    },
+    {
+      "id": "change-12",
+      "type": "addition",
+      "section": "Skills",
+      "suggested": "Analytics & Tools: MS Project, Trello, Asana, Data Analysis, Performance Metrics",
+      "reason": "Adds analytical capabilities essential for product management with emphasis on data-driven approach",
+      "impactScore": 7
+    }
+  ],
+  "analysis": {
+    "scope": {
+      "throughput": [
+        "4 large-scale projects",
+        "15-30 slide presentations",
+        "cross-departmental communication"
+      ],
+      "complexity": [
+        "cross-departmental teams",
+        "internal and external stakeholders"
+      ],
+      "ownership": [
+        "management of milestone schedules",
+        "tracking and overseeing tasks"
+      ],
+      "industry": "finance",
+      "seniority": "mid"
+    },
+    "altitude": {
+      "overall_level": 2,
+      "roles": [
+        {
+          "index": 0,
+          "title": "Personal Assistant and Project Coordinator",
+          "current_level": 2,
+          "ceiling_level": 3,
+          "can_lift": true
+        }
+      ],
+      "fallback_mode": "normal"
+    },
+    "experience": [
+      {
+        "index": 0,
+        "title": "Personal Assistant and Project Coordinator",
+        "relevance": 5,
+        "recency": 10,
+        "seniority": 6,
+        "impact_potential": 7,
+        "total_score": 28,
+        "strategy": "EXPAND"
+      }
+    ],
+    "red_flags": [
+      {
+        "type": "soft_skills",
+        "message": "Detail-oriented professional",
+        "location": "Professional Summary",
+        "severity": "low"
+      },
+      {
+        "type": "scope_ambiguity",
+        "message": "Lack of specific quantitative metrics",
+        "location": "Experience Section",
+        "severity": "medium"
+      }
+    ],
+    "culture": {
+      "detected_company": "Amazon",
+      "culture_type": "amazon_lp",
+      "themes": [
+        "ownership",
+        "customer obsession",
+        "data-driven decision making",
+        "cross-functional collaboration",
+        "delivering results",
+        "bias for action"
+      ],
+      "mappable_resume_signals": [
+        {
+          "theme": "ownership",
+          "role_index": 0,
+          "bullet_hint": "Management of milestone schedules for 4 large-scale projects valued at €100M+"
+        },
+        {
+          "theme": "cross-functional collaboration",
+          "role_index": 0,
+          "bullet_hint": "Management of cross-departmental communication between design, content, and operations teams"
+        },
+        {
+          "theme": "delivering results",
+          "role_index": 0,
+          "bullet_hint": "Tracking and overseeing ongoing tasks and deadlines for compliance and strategic initiatives"
+        },
+        {
+          "theme": "customer obsession",
+          "role_index": 0,
+          "bullet_hint": "Close collaboration with internal and external stakeholders to ensure project alignment"
+        },
+        {
+          "theme": "bias for action",
+          "role_index": 0,
+          "bullet_hint": "Preparation of 15–30-slide PowerPoint presentations for investor meetings"
+        }
+      ]
+    },
+    "metrics": [
+      {
+        "role_index": 0,
+        "question": "What was the typical timeline for these €100M+ projects and what percentage were delivered on schedule?",
+        "metric_type": "time",
+        "reason": "On-time delivery metrics are crucial for demonstrating project management effectiveness and results delivery"
+      },
+      {
+        "role_index": 0,
+        "question": "How many internal and external stakeholders did you typically coordinate across these cross-departmental projects?",
+        "metric_type": "team_size",
+        "reason": "Stakeholder count demonstrates scope of influence and coordination complexity"
+      },
+      {
+        "role_index": 0,
+        "question": "How frequently did you deliver these investor presentations and what was the typical audience size?",
+        "metric_type": "throughput",
+        "reason": "Presentation frequency and audience size shows communication impact and stakeholder engagement level"
+      },
+      {
+        "role_index": 0,
+        "question": "What was the average project value and how many compliance initiatives did you oversee simultaneously?",
+        "metric_type": "throughput",
+        "reason": "Project portfolio size and compliance scope demonstrates operational capacity and risk management"
+      }
+    ],
+    "summary": {
+      "industry_lens": "fintech",
+      "tone": "operations-heavy",
+      "draft_summary": "Mid-level operations professional with 5+ years driving project coordination and stakeholder alignment across €100M+ investment initiatives. Proven experience in cross-functional team management, compliance oversight, and executive communication within finance and investment environments."
+    },
+    "competitive": {
+      "before_score": 3,
+      "realistic_target_level": "Associate Product Manager or Program Manager",
+      "after_potential": 6,
+      "honest_feedback": "Current profile shows strong operational coordination but lacks direct product management experience, user research, or roadmap ownership. Better suited for Associate PM or Program Manager roles where project coordination skills transfer well. Senior PM at Amazon requires proven product strategy and feature definition experience not evident in current background."
+    },
+    "fitScoreBefore": 42,
+    "fitScoreAfter": 62,
+    "subscores": {
+      "before": {
+        "keywordMatch": 38,
+        "themeAlignment": 31,
+        "experienceRelevance": 45,
+        "skillOverlap": 53
+      },
+      "after": {
+        "keywordMatch": 58,
+        "themeAlignment": 63,
+        "experienceRelevance": 54,
+        "skillOverlap": 73
+      }
+    }
+  },
+  "salary": {
+    "low": 80000,
+    "median": 100000,
+    "high": 130000,
+    "source": "AI Market Analysis",
+    "role": "Senior Product Manager",
+    "location": "Japan"
+  },
+  "clarity": 90,
+  "relevance": 90,
+  "honesty": 95,
+  "metadata": {
+    "generation_id": "test-detailed",
+    "session_id": "test-session",
+    "job_metadata": {
+      "title": "Position",
+      "company": "Company",
+      "location": "Location"
+    },
+    "timing": {
+      "total_ms": 76690,
+      "structural_ms": 6017,
+      "strategic_ms": 15703,
+      "generator_ms": 36646,
+      "curator_ms": 14711,
+      "fit_score_ms": 3613
+    },
+    "version": "premium-v2.0-disciplined"
+  }
+}
